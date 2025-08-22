@@ -1,7 +1,6 @@
 .vercel
 .env*.local
 
-
 # Create .gitignore file
 cat > .gitignore << EOF
 # Large files
