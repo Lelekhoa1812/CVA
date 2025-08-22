@@ -1,0 +1,32 @@
+.vercel
+.env*.local
+
+
+# Create .gitignore file
+cat > .gitignore << EOF
+# Large files
+*.mov
+*.mp4
+*.avi
+*.wmv
+*.zip
+*.rar
+*.7z
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node modules (if applicable)
+node_modules/
+
+# Python virtual environments
+venv/
+.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+EOF
