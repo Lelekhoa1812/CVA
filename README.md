@@ -2,6 +2,8 @@
 
 A modern web application that helps users create personalized cover letters using AI and their professional profile information.
 
+[Live Demo](https://cva-mauve.vercel.app)
+
 ## Features
 
 - **User Authentication**: Secure login/register system with bcrypt password hashing
