@@ -4,6 +4,23 @@ A modern, professional web application that uses AI to generate personalized cov
 
 ![CV Assistant Demo](https://cva-mauve.vercel.app/)
 
+## 📸 Screenshots
+
+### 🏠 Dashboard
+![Dashboard](./imgsrc/dashboard.png)
+*Main dashboard with overview of the CV Assistant application*
+
+### 🔐 Authentication
+![Credentials](./imgsrc/credential.png)
+*Secure login and registration interface*
+
+### 👤 Profile Management
+![Profile](./imgsrc/profile.png)
+*User profile management with experience and skills*
+
+### ✨ Cover Letter Generation
+![Generate](./imgsrc/generate.png)
+*AI-powered cover letter generation interface*
 
 ## ✨ Features
 
@@ -39,7 +56,7 @@ A modern, professional web application that uses AI to generate personalized cov
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Lelekhoa1812/CVA.git
    cd cv-assistant
    ```
 
@@ -99,6 +116,7 @@ cv-assistant/
 │       ├── gemini.ts         # AI integration
 │       └── models/           # Database models
 ├── public/                   # Static assets
+├── imgsrc/                   # Application screenshots
 ├── tailwind.config.ts        # Tailwind configuration
 ├── next.config.ts           # Next.js configuration
 └── package.json             # Dependencies and scripts
@@ -129,7 +147,7 @@ The application uses MongoDB with the following main collections:
 ## 🎯 Usage Guide
 
 ### 1. Getting Started
-1. **Register/Login**: Create an account or sign in
+1. **Register/Login**: Create an account or sign in using the authentication interface
 2. **Complete Profile**: Add your professional experience, skills, and projects
 3. **Generate Cover Letters**: Use the AI-powered generator
 
@@ -291,12 +309,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-repo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)
-- **Email**: support@cvassistant.com
+- **Issues**: [GitHub Issues](https://github.com/Lelekhoa1812/CVA/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Lelekhoa1812/CVA/discussions)
+- **Email**: binkhoa1812@gmail.com
 
 ---
-
-**Made with ❤️ by [Your Name]**
 
 *Transform your job applications with AI-powered cover letters that stand out to employers.*
