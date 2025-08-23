@@ -16,13 +16,15 @@ A modern, professional web application that uses AI to generate personalized cov
 
 ### 👤 Profile Management
 ![Uploading Resume](./imgsrc/upload-resume.png)
-*Leverage OCR and VLM technologies to parse your Resume*
+*Leverage OCR and VLM technologies to parse your Resume and enhance it*
+![Description Enhancer](./imgsrc/enhance.png)
+*Enhance your Project and Experience description*
 ![Profile](./imgsrc/profile.png)
 *User profile management with experience and skills*
 
 ### ✨ Cover Letter Generation
 ![Generate](./imgsrc/generate.png)
-*AI-powered cover letter generation interface*
+*AI-powered cover letter generation interface, reasoning in CoT*
 
 ## ✨ Features
 
