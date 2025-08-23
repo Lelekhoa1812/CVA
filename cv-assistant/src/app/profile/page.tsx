@@ -11,6 +11,8 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [enhancingProject, setEnhancingProject] = useState<number | null>(null);
+  const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -32,6 +34,86 @@ export default function ProfilePage() {
   }
   function addExperience() {
     setProfile(p => ({ ...p, experiences: [...p.experiences, { companyName: '', role: '', timeFrom: '', timeTo: '', description: '', _needsSummary: true }] }));
+  }
+
+  function deleteProject(index: number) {
+    setProfile(p => ({ ...p, projects: p.projects.filter((_, i) => i !== index) }));
+  }
+
+  function deleteExperience(index: number) {
+    setProfile(p => ({ ...p, experiences: p.experiences.filter((_, i) => i !== index) }));
+  }
+
+  async function enhanceProject(index: number) {
+    const project = profile.projects[index];
+    if (!project.description.trim()) {
+      setError('Please add a description before enhancing');
+      return;
+    }
+
+    setEnhancingProject(index);
+    setError(null);
+    try {
+      const res = await fetch('/api/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'project',
+          name: project.name,
+          description: project.description
+        })
+      });
+
+      if (!res.ok) {
+        setError('Failed to enhance project description');
+        return;
+      }
+
+      const data = await res.json();
+      const newProjects = [...profile.projects];
+      newProjects[index].description = data.enhancedDescription;
+      setProfile(p => ({ ...p, projects: newProjects }));
+    } catch {
+      setError('Failed to enhance project description');
+    } finally {
+      setEnhancingProject(null);
+    }
+  }
+
+  async function enhanceExperience(index: number) {
+    const experience = profile.experiences[index];
+    if (!experience.description.trim()) {
+      setError('Please add a description before enhancing');
+      return;
+    }
+
+    setEnhancingExperience(index);
+    setError(null);
+    try {
+      const res = await fetch('/api/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'experience',
+          name: `${experience.companyName} - ${experience.role}`,
+          description: experience.description
+        })
+      });
+
+      if (!res.ok) {
+        setError('Failed to enhance experience description');
+        return;
+      }
+
+      const data = await res.json();
+      const newExperiences = [...profile.experiences];
+      newExperiences[index].description = data.enhancedDescription;
+      setProfile(p => ({ ...p, experiences: newExperiences }));
+    } catch {
+      setError('Failed to enhance experience description');
+    } finally {
+      setEnhancingExperience(null);
+    }
   }
 
   async function save() {
@@ -148,10 +230,10 @@ export default function ProfilePage() {
           </div>
           <div className="space-y-4">
             {profile.projects.map((project, index) => (
-              <div key={index} className="border border-border rounded-lg p-4 bg-card">
+              <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Project Name</label>
+                    <label className="block text-sm mb-1 text-foreground">Project Name</label>
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={project.name} onChange={e => {
                       const newProjects = [...profile.projects];
                       newProjects[index].name = e.target.value;
@@ -159,12 +241,49 @@ export default function ProfilePage() {
                     }} />
                   </div>
                   <div>
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Description</label>
+                    <label className="block text-sm mb-1 text-foreground">Description</label>
                     <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={project.description} onChange={e => {
                       const newProjects = [...profile.projects];
                       newProjects[index].description = e.target.value;
                       setProfile(p => ({ ...p, projects: newProjects }));
                     }} />
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete this project?')) {
+                      deleteProject(index);
+                    }
+                  }} 
+                  className="absolute top-2 right-2 p-2 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full transition-all duration-200"
+                  title="Delete Project"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+                <div className="absolute bottom-2 right-2 group">
+                  <button 
+                    onClick={() => enhanceProject(index)} 
+                    disabled={enhancingProject === index}
+                    className={`relative p-2 rounded-full transition-all duration-300 transform group-hover:scale-110 group-hover:shadow-lg ${
+                      enhancingProject === index 
+                        ? 'text-muted-foreground cursor-not-allowed' 
+                        : 'text-primary hover:text-primary/80 hover:bg-primary/10'
+                    }`}
+                  >
+                    {enhancingProject === index ? (
+                      <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-6 h-6" fill="currentColor" stroke="none" viewBox="0 0 24 24">
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                    Enhance your description
+                    <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
                   </div>
                 </div>
               </div>
@@ -179,26 +298,26 @@ export default function ProfilePage() {
           </div>
           <div className="space-y-4">
             {profile.experiences.map((experience, index) => (
-              <div key={index} className="border border-border rounded-lg p-4 bg-card">
+              <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Company Name</label>
+                    <label className="block text-sm mb-1 text-foreground">Company Name</label>
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.companyName} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].companyName = e.target.value;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
-                                      <div>
-                      <label className="block text-sm dark:text-white mb-2 text-foreground">Role</label>
-                      <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.role} onChange={e => {
+                  <div>
+                    <label className="block text-sm mb-2 text-foreground">Role</label>
+                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.role} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].role = e.target.value;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
                   <div>
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Time From</label>
+                    <label className="block text-sm mb-1 text-foreground">Time From</label>
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeFrom} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].timeFrom = e.target.value;
@@ -206,7 +325,7 @@ export default function ProfilePage() {
                     }} />
                   </div>
                   <div>
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Time To</label>
+                    <label className="block text-sm mb-1 text-foreground">Time To</label>
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeTo} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].timeTo = e.target.value;
@@ -214,12 +333,49 @@ export default function ProfilePage() {
                     }} />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm dark:text-white mb-1 text-foreground">Description</label>
+                    <label className="block text-sm mb-1 text-foreground">Description</label>
                     <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={experience.description} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].description = e.target.value;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete this experience?')) {
+                      deleteExperience(index);
+                    }
+                  }} 
+                  className="absolute top-2 right-2 p-2 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full transition-all duration-200"
+                  title="Delete Experience"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+                <div className="absolute bottom-2 right-2 group">
+                  <button 
+                    onClick={() => enhanceExperience(index)} 
+                    disabled={enhancingExperience === index}
+                    className={`relative p-2 rounded-full transition-all duration-300 transform group-hover:scale-110 group-hover:shadow-lg ${
+                      enhancingExperience === index 
+                        ? 'text-muted-foreground cursor-not-allowed' 
+                        : 'text-primary hover:text-primary/80 hover:bg-primary/10'
+                    }`}
+                  >
+                    {enhancingExperience === index ? (
+                      <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-6 h-6" fill="currentColor" stroke="none" viewBox="0 0 24 24">
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                    Enhance your description
+                    <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
                   </div>
                 </div>
               </div>

@@ -15,11 +15,12 @@ A modern, professional web application that uses AI to generate personalized cov
 *Secure login and registration interface*
 
 ### 👤 Profile Management
+![Uploading Resume](./imgsrc/upload-resume.png)
+*Leverage OCR and VLM technologies to parse your Resume*
 ![Profile](./imgsrc/profile.png)
 *User profile management with experience and skills*
 
 ### ✨ Cover Letter Generation
-![Uploading Resume](./imgsrc/upload-resume.png)
 ![Generate](./imgsrc/generate.png)
 *AI-powered cover letter generation interface*
 
@@ -43,7 +44,7 @@ A modern, professional web application that uses AI to generate personalized cov
 - **Tailwind CSS**: Utility-first styling with custom design system
 - **MongoDB**: Scalable database for user profiles and data storage
 - **JWT Authentication**: Secure user authentication and session management
-- **Google Gemini AI**: Advanced AI for intelligent content generation
+- **Google Gemini**: Advanced LLM for intelligent content generation, integrated with RAG, CoT and summarise-enhancer techniques.
 
 ## 🚀 Quick Start
 
