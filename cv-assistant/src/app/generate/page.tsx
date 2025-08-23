@@ -34,7 +34,7 @@ export default function GeneratePage() {
   useEffect(() => { if (shouldSelect && jobDescription.trim()) { setIndices(null); } }, [jobDescription, shouldSelect]);
 
   return (
-    <div className="min-h-screen from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <div className="max-w-6xl mx-auto p-6 space-y-8">
         {/* Header Section */}
         <div className="text-center space-y-4 animate-fade-in">
@@ -136,7 +136,7 @@ export default function GeneratePage() {
                     {indices && items.length > 0 && (
                       <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
                         <div className="flex items-center space-x-2 text-green-700 dark:text-green-300 text-sm">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                           <span>Selected {indices.length} relevant items</span>

@@ -2,7 +2,7 @@
 
 A modern, professional web application that uses AI to generate personalized cover letters based on job descriptions and user profiles. Built with Next.js 15, TypeScript, and Tailwind CSS.
 
-![CV Assistant Demo](https://cva-mauve.vercel.app/)
+[CV Assistant Demo](https://cva-mauve.vercel.app/)
 
 ## 📸 Screenshots
 
@@ -19,6 +19,7 @@ A modern, professional web application that uses AI to generate personalized cov
 *User profile management with experience and skills*
 
 ### ✨ Cover Letter Generation
+![Uploading Resume](./imgsrc/upload-resume.png)
 ![Generate](./imgsrc/generate.png)
 *AI-powered cover letter generation interface*
 
@@ -298,14 +299,8 @@ CMD ["npm", "start"]
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/Lelekhoa1812/CVA/blob/main/LICENSE.txt) file for details.
 
-## 🙏 Acknowledgments
-
-- **Next.js Team** for the amazing framework
-- **Tailwind CSS** for the utility-first CSS framework
-- **Google Gemini** for AI capabilities
-- **MongoDB** for the database solution
 
 ## 📞 Support
 

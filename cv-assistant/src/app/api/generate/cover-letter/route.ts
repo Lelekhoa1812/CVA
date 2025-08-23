@@ -20,15 +20,37 @@ export async function POST(req: NextRequest) {
   ];
   const selected = Array.isArray(indices) && indices.length ? indices.map((i:number)=>items[i]).filter(Boolean) : items;
 
+  // Build contact information section
+  const contactInfo = [];
+  if (profile?.name) contactInfo.push(`Name: ${profile.name}`);
+  if (profile?.phone) contactInfo.push(`Phone: ${profile.phone}`);
+  if (profile?.email) contactInfo.push(`Email: ${profile.email}`);
+  if (profile?.website) contactInfo.push(`Website: ${profile.website}`);
+  if (profile?.linkedin) contactInfo.push(`LinkedIn: ${profile.linkedin}`);
+  if (profile?.languages) contactInfo.push(`Languages: ${profile.languages}`);
+
   const pro = getModel('gemini-2.5-pro');
   const prompt = `Write a professional, concise cover letter for ${profile?.name || 'the candidate'} applying to ${company}.
-Include: education (${profile?.major || ''} at ${profile?.school || ''}), and leverage the following relevant items with emphasis on impact. Avoid generic fluff.
 
-Job Description:\n${jobDescription}
+      CONTACT INFORMATION (include at the top):
+      ${contactInfo.join('\n')}
 
-Relevant Items:\n${selected.map((it)=>`- [${it.type}] ${it.name}: ${it.summary || it.description || ''}`).join('\n')}
+      EDUCATION:
+      ${profile?.major || ''} at ${profile?.school || ''}
 
-Format with greeting, 2-3 short paragraphs, bullet highlights if appropriate, and a closing. Keep under 350 words.`;
+      JOB DESCRIPTION:
+      ${jobDescription}
+
+      RELEVANT EXPERIENCE & PROJECTS (leverage these with emphasis on impact):
+      ${selected.map((it)=>`- [${it.type}] ${it.name}: ${it.summary || it.description || ''}`).join('\n')}
+
+      INSTRUCTIONS:
+      - Format with proper greeting, 2-3 focused paragraphs, and professional closing
+      - Include the contact information at the top
+      - Leverage the relevant items to show specific value and impact
+      - Keep under 350 words
+      - Avoid generic fluff - be specific and results-oriented
+      - Match the tone and style appropriate for the company and role`;
 
   const res = await pro.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
   const text = res.response.text();

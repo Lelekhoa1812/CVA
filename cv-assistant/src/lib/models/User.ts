@@ -9,8 +9,8 @@ const ProjectSchema = new Schema({
 const ExperienceSchema = new Schema({
   companyName: { type: String, required: true },
   role: { type: String, required: true },
-  timeFrom: { type: Date, required: true },
-  timeTo: { type: Date, required: true },
+  timeFrom: { type: String, default: '' },
+  timeTo: { type: String, default: '' },
   description: { type: String, default: '' },
   summary: { type: String, default: '' },
 });
@@ -21,6 +21,9 @@ const ProfileSchema = new Schema({
   school: { type: String, default: '' },
   email: { type: String, default: '' },
   phone: { type: String, default: '' },
+  website: { type: String, default: '' },
+  linkedin: { type: String, default: '' },
+  languages: { type: String, default: '' },
   projects: { type: [ProjectSchema], default: [] },
   experiences: { type: [ExperienceSchema], default: [] },
 });
