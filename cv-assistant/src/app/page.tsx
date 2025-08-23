@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-screen from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <div className="max-w-6xl mx-auto px-6 py-12">
         {/* Hero Section */}
         <div className="text-center space-y-8 animate-fade-in">
@@ -19,7 +19,7 @@ export default function Home() {
             <span className="text-4xl md:text-5xl">in Minutes</span>
           </h1>
           
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+          <p className="text-xl text-muted-foreground dark:text-gray-400 max-w-3xl mx-auto leading-relaxed">
             Transform your professional experience into compelling cover letters that stand out to employers. 
             Our AI analyzes job descriptions and your profile to create personalized, impactful content.
           </p>
@@ -97,8 +97,8 @@ export default function Home() {
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                 <span className="text-2xl font-bold text-primary">1</span>
               </div>
-              <h3 className="text-xl font-semibold">Add Job Details</h3>
-              <p className="text-muted-foreground">
+              <h3 className="text-xl dark:text-white font-semibold">Add Job Details</h3>
+              <p className="text-muted-foreground dark:text-gray-400">
                 Enter the company name and paste the job description to help our AI understand the role.
               </p>
             </div>
@@ -107,8 +107,8 @@ export default function Home() {
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                 <span className="text-2xl font-bold text-primary">2</span>
               </div>
-              <h3 className="text-xl font-semibold">AI Analysis</h3>
-              <p className="text-muted-foreground">
+              <h3 className="text-xl dark:text-white font-semibold">AI Analysis</h3>
+              <p className="text-muted-foreground dark:text-gray-400">
                 Our AI analyzes the job requirements and your profile to identify the best matches.
               </p>
             </div>
@@ -117,8 +117,8 @@ export default function Home() {
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                 <span className="text-2xl font-bold text-primary">3</span>
               </div>
-              <h3 className="text-xl font-semibold">Generate & Customize</h3>
-              <p className="text-muted-foreground">
+              <h3 className="text-xl dark:text-white font-semibold">Generate & Customize</h3>
+              <p className="text-muted-foreground dark:text-gray-400">
                 Get your personalized cover letter and customize it to make it perfect for your application.
               </p>
             </div>

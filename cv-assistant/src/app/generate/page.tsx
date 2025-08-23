@@ -47,7 +47,7 @@ export default function GeneratePage() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
             Create Your Perfect Cover Letter
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground dark:text-gray-400 max-w-2xl mx-auto">
             Transform your experience into compelling cover letters that stand out to employers
           </p>
         </div>
