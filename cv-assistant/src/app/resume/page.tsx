@@ -225,12 +225,15 @@ export default function ResumePage() {
                         // Check if AI is ready and parse style preferences
                         if (data.message.includes('<READY>')) {
                           const firstMessage = newMessages.find(m => m.role === 'user');
-                          if (firstMessage) {
+                          const secondMessage = newMessages.find((m, i) => m.role === 'user' && i > 0);
+                          if (firstMessage && secondMessage) {
                             try {
+                              // Parse both style and content density preferences
+                              const combinedResponse = `${firstMessage.content}\n\nContent density preference: ${secondMessage.content}`;
                               const styleRes = await fetch('/api/resume/style-parser', { 
                                 method: 'POST', 
                                 headers: { 'Content-Type': 'application/json' }, 
-                                body: JSON.stringify({ userResponse: firstMessage.content }) 
+                                body: JSON.stringify({ userResponse: combinedResponse }) 
                               });
                               const styleData = await styleRes.json();
                               setStylePreferences(styleData);

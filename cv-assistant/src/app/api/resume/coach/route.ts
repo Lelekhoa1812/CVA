@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
 1. TEMPLATE: "What's your preferred font size - smaller (10pt) for more content, or larger (12pt) for readability? Also, do you want any text to be bold or italic for emphasis?"
 
-2. CONTENT DENSITY: "How would you like your resume content formatted? Choose: 'concise' (shorter, focused bullets), 'balanced' (standard length), or 'detailed' (expanded with more context and achievements)?"
+2. CONTENT DENSITY: "How would you like your resume content formatted? Choose: 'concise' (shorter, focused bullets), 'balanced' (standard length), or 'detailed' (expanded more context and achievements)?"
 
 3. CONTENT: "For your projects and experiences, what are your most impressive quantified achievements? (e.g., 'Increased sales by 25%', 'Led team of 8 developers', 'Reduced costs by $50K')"
 

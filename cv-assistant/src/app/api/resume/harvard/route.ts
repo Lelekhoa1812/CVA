@@ -63,7 +63,32 @@ export async function POST(req: NextRequest) {
             const p = profile.projects[idx];
             if (!p) continue;
             const base = p.summary || '';
-            enhancedProjectSummaries[idx] = await improve(`Improve these resume bullet points for a project in crisp, high-impact bullets (2-3 bullets max). Keep content precise, factual, and ATS-friendly. Return only bullets separated by newlines.${qaNotes}\nProject name: ${p.name||''}\nBullets/summary to improve:\n${base}`);
+            let improved = await improve(`Improve these resume bullet points for a project in crisp, high-impact bullets (2-3 bullets max). Keep content precise, factual, and ATS-friendly. Return only bullets separated by newlines.${qaNotes}\nProject name: ${p.name||''}\nBullets/summary to improve:\n${base}`);
+            
+            // Apply content density processing
+            if (contentDensity === 'concise') {
+              const summaryRes = await fetch(`${req.nextUrl.origin}/api/resume/summarize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: improved, contentType: 'project' })
+              });
+              if (summaryRes.ok) {
+                const summaryData = await summaryRes.json();
+                improved = summaryData.summarizedContent;
+              }
+            } else if (contentDensity === 'detailed') {
+              const enhanceRes = await fetch(`${req.nextUrl.origin}/api/resume/enhance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: improved, contentType: 'project', qaContext: qaNotes })
+              });
+              if (enhanceRes.ok) {
+                const enhanceData = await enhanceRes.json();
+                improved = enhanceData.enhancedContent;
+              }
+            }
+            
+            enhancedProjectSummaries[idx] = improved;
           }
         }
       }
@@ -77,7 +102,32 @@ export async function POST(req: NextRequest) {
             const ex = profile.experiences[idx];
             if (!ex) continue;
             const base = ex.summary || '';
-            enhancedExperienceSummaries[idx] = await improve(`Improve these resume bullet points for a work experience in crisp, high-impact bullets (2-3 bullets max). Use quantified achievements when possible. Return only bullets separated by newlines.${qaNotes}\nCompany: ${ex.companyName||''}\nRole: ${ex.role||''}\nBullets/summary to improve:\n${base}`);
+            let improved = await improve(`Improve these resume bullet points for a work experience in crisp, high-impact bullets (2-3 bullets max). Use quantified achievements when possible. Return only bullets separated by newlines.${qaNotes}\nCompany: ${ex.companyName||''}\nRole: ${ex.role||''}\nBullets/summary to improve:\n${base}`);
+            
+            // Apply content density processing
+            if (contentDensity === 'concise') {
+              const summaryRes = await fetch(`${req.nextUrl.origin}/api/resume/summarize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: improved, contentType: 'experience' })
+              });
+              if (summaryRes.ok) {
+                const summaryData = await summaryRes.json();
+                improved = summaryData.summarizedContent;
+              }
+            } else if (contentDensity === 'detailed') {
+              const enhanceRes = await fetch(`${req.nextUrl.origin}/api/resume/enhance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: improved, contentType: 'experience', qaContext: qaNotes })
+              });
+              if (enhanceRes.ok) {
+                const enhanceData = await enhanceRes.json();
+                improved = enhanceData.enhancedContent;
+              }
+            }
+            
+            enhancedExperienceSummaries[idx] = improved;
           }
         }
       }
