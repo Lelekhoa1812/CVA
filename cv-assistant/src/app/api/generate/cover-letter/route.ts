@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       - Include the contact information at the top
       - Leverage the relevant items to show specific value and impact
       - Keep under 350 words
-      - Avoid generic fluff - be specific and results-oriented
+      - Avoid generic fluff, not markdown, no comments - be specific and results-oriented
       - Match the tone and style appropriate for the company and role`;
 
   const res = await pro.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });

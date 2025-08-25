@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const model = getModel('gemini-2.5-flash-lite');
     
-    const prompt = `Enhance and tailor the following ${type} description to be more professional, impactful, and suitable for a resume/CV. 
+    const prompt = `Enhance and tailor the following ${type} description to be more professional, impactful for a CV. 
 
 ${type === 'project' ? 'Project' : 'Experience'}: ${name}
 
@@ -22,13 +22,11 @@ Current Description:
 ${description}
 
 Instructions:
-- Make it more professional and impactful
 - Use action verbs and quantifiable results when possible
 - Focus on achievements and outcomes
 - Keep it concise but comprehensive
 - Maintain the core information while improving clarity and impact
-- Use bullet points or structured format if appropriate
-- Make it suitable for professional applications
+- Return answer in text-only, no comments, not markdown
 
 Return only the enhanced description, no other text.
 

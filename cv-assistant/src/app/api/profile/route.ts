@@ -19,10 +19,10 @@ export async function PUT(req: NextRequest) {
   await connectToDatabase();
 
   // Generate summaries for new/updated items using flash model
-  const model = getModel('gemini-2.5-flash');
+  const model = getModel('gemini-2.5-flash-lite');
 
   async function summarize(text: string) {
-    const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: `Summarize in 1-2 concise bullet sentences:
+    const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: `Summarize in 1-2 concise sentences, return answer in text-only, no comments, not markdown:
 ${text}
 ` }] }] });
     return res.response.text().trim();

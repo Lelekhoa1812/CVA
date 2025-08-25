@@ -237,6 +237,7 @@ export default function ProfilePage() {
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={project.name} onChange={e => {
                       const newProjects = [...profile.projects];
                       newProjects[index].name = e.target.value;
+                      newProjects[index]._needsSummary = true;
                       setProfile(p => ({ ...p, projects: newProjects }));
                     }} />
                   </div>
@@ -245,6 +246,7 @@ export default function ProfilePage() {
                     <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={project.description} onChange={e => {
                       const newProjects = [...profile.projects];
                       newProjects[index].description = e.target.value;
+                      newProjects[index]._needsSummary = true;
                       setProfile(p => ({ ...p, projects: newProjects }));
                     }} />
                   </div>
@@ -305,6 +307,7 @@ export default function ProfilePage() {
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.companyName} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].companyName = e.target.value;
+                      newExperiences[index]._needsSummary = true;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
@@ -313,6 +316,7 @@ export default function ProfilePage() {
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.role} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].role = e.target.value;
+                      newExperiences[index]._needsSummary = true;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
@@ -321,14 +325,16 @@ export default function ProfilePage() {
                     <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeFrom} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].timeFrom = e.target.value;
+                      newExperiences[index]._needsSummary = true;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
                   <div>
                     <label className="block text-sm mb-1 text-foreground">Time To</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeTo} onChange={e => {
+                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder-text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeTo} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].timeTo = e.target.value;
+                      newExperiences[index]._needsSummary = true;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
@@ -337,6 +343,7 @@ export default function ProfilePage() {
                     <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={experience.description} onChange={e => {
                       const newExperiences = [...profile.experiences];
                       newExperiences[index].description = e.target.value;
+                      newExperiences[index]._needsSummary = true;
                       setProfile(p => ({ ...p, experiences: newExperiences }));
                     }} />
                   </div>
