@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -88,19 +89,37 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-900 dark:text-white">Password</label>
+              <label className="text-sm font-medium text-gray-900 dark:text-white">Password</label>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
                 <input 
-                  type="password" 
+                  type={showPassword ? 'text' : 'password'}
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
-                  className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
+                  className="w-full pl-10 pr-12 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
                   placeholder="Enter your password"
                   required 
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
+                >
+                  {showPassword ? (
+                    // Eye-off icon
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M3.53 2.47a.75.75 0 1 0-1.06 1.06l2.26 2.26C3.56 7.08 2.39 8.68 1.6 10.5a.75.75 0 0 0 0 .6C3.35 14.7 7.33 18 12 18c1.86 0 3.6-.47 5.14-1.28l3.33 3.33a.75.75 0 0 0 1.06-1.06l-18-18ZM12 16.5c-3.9 0-7.26-2.7-8.9-5.7.66-1.28 1.68-2.54 2.93-3.55l2.2 2.2A4.5 4.5 0 0 0 12 16.5Zm0-9a4.5 4.5 0 0 1 4.5 4.5c0 .37-.05.73-.14 1.07l2.3 2.3c1.07-.86 1.99-1.9 2.64-3.07a.75.75 0 0 0 0-.6C20.65 7.3 16.67 4 12 4c-1.02 0-1.99.14-2.9.4l1.64 1.64c.41-.09.84-.14 1.26-.14Z" />
+                    </svg>
+                  ) : (
+                    // Eye icon
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 5c-4.67 0-8.65 3.3-10.4 7.1a.75.75 0 0 0 0 .6C3.35 16.7 7.33 20 12 20s8.65-3.3 10.4-7.1a.75.75 0 0 0 0-.6C20.67 8.3 16.69 5 12 5Zm0 12.5c-3.9 0-7.26-2.7-8.9-5.7 1.64-3 5-5.7 8.9-5.7s7.26 2.7 8.9 5.7c-1.64 3-5 5.7-8.9 5.7Zm0-9a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5Z" />
+                    </svg>
+                  )}
+                </button>
               </div>
             </div>
 
