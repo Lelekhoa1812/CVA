@@ -13,6 +13,10 @@ export default function ResumePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [enhance, setEnhance] = useState<boolean>(false);
+  const [messages, setMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
+  const [coachInput, setCoachInput] = useState<string>('');
+  const [coaching, setCoaching] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -25,7 +29,7 @@ export default function ResumePage() {
   }, []);
 
   const totalSelected = selectedProjects.length + selectedExperiences.length;
-  const limitReached = totalSelected > 10;
+  const limitReached = totalSelected > 7;
 
   function toggle(index: number, list: number[], setList: (v: number[]) => void) {
     setList(list.includes(index) ? list.filter(i => i !== index) : [...list, index]);
@@ -34,7 +38,7 @@ export default function ResumePage() {
   async function generate() {
     if (!profile) return;
     if (limitReached) {
-      setError('You can include at most 10 items across projects and experiences.');
+      setError('You can include at most 7 items across projects and experiences.');
       return;
     }
     setLoading(true);
@@ -43,7 +47,7 @@ export default function ResumePage() {
     const res = await fetch('/api/resume/harvard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skills, selectedProjects, selectedExperiences })
+      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: messages })
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -85,12 +89,13 @@ export default function ResumePage() {
                 onChange={e => setSkills(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-2">Comma-separated list. Will appear under Skills.</p>
+              <p className="text-xs text-muted-foreground mt-2">Tips: Don't overcrowd this section. Keep it concise and relevant.</p>
             </div>
 
             <div className="bg-card border rounded-xl p-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-semibold">Projects</h2>
-                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/10 selected</span>
+                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/7 selected</span>
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.projects?.map((p, i) => (
@@ -113,7 +118,7 @@ export default function ResumePage() {
             <div className="bg-card border rounded-xl p-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-semibold">Experiences</h2>
-                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/10 selected</span>
+                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/7 selected</span>
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.experiences?.map((ex, i) => (
@@ -132,7 +137,7 @@ export default function ResumePage() {
                 ))}
               </div>
               {limitReached && (
-                <div className="mt-2 text-xs text-destructive">You can include at most 10 items. Please deselect some.</div>
+                <div className="mt-2 text-xs text-destructive">You can include at most 7 items. Please deselect some.</div>
               )}
             </div>
 
@@ -158,8 +163,70 @@ export default function ResumePage() {
             </div>
             {pdfUrl && (
               <div className="flex gap-3">
-                <button onClick={reset} className="px-4 py-2 border rounded hover:bg-accent">Retry</button>
+                <button onClick={reset} className="px-4 py-2 border rounded bg-purple-500 text-white hover:bg-purple-900">Retry</button>
                 <a href={pdfUrl} download="resume.pdf" className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90">Download PDF</a>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2 mt-4">
+              <input id="enhance" type="checkbox" className="w-4 h-4" checked={enhance} onChange={e=>setEnhance(e.target.checked)} />
+              <label htmlFor="enhance" className="text-sm dark:text-gray-100 text-foreground">Enhance with AI</label>
+            </div>
+            {enhance && (
+              <div className="mt-3 border rounded-lg p-3">
+                <div className="text-sm dark:text-white text-foreground font-medium mb-2">AI Coaching</div>
+                <div className="max-h-48 overflow-auto space-y-2 bg-background/50 dark:bg-black p-2 rounded">
+                  {messages.length === 0 && (
+                    <div className="text-xs dark:text-gray-100 text-muted-foreground">The assistant will ask targeted questions to tailor your resume. Type your first message or click Ask to begin.</div>
+                  )}
+                  {messages.map((m, idx) => (
+                    <div key={idx} className={`${m.role==='assistant'?'text-foreground':'text-foreground'} dark:text-gray-100 text-sm`}>
+                      <span className="font-semibold mr-1">{m.role==='assistant'?'AI:':'You:'}</span>
+                      <span>{m.content}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <textarea 
+                    value={coachInput} 
+                    onChange={e=>setCoachInput(e.target.value)} 
+                    onKeyDown={e=>{
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (coachInput.trim() && messages.length>0) {
+                          const newMessages = [...messages, { role: 'user' as const, content: coachInput.trim() }];
+                          setMessages(newMessages);
+                          setCoachInput('');
+                          setCoaching(true);
+                          fetch('/api/resume/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages }) })
+                            .then(res => res.json())
+                            .then(data => setMessages(m=>[...m, { role: 'assistant', content: data.message }]))
+                            .finally(() => setCoaching(false));
+                        }
+                      }
+                    }}
+                    className="flex-1 border rounded px-2 py-1 bg-background resize-none" 
+                    placeholder="Type your answer... (Enter to send, Shift+Enter for new line)" 
+                    rows={2}
+                  />
+                  <button
+                    onClick={async ()=>{
+                      if (!coachInput.trim() && messages.length>0) return;
+                      const newMessages = coachInput.trim()? [...messages, { role: 'user' as const, content: coachInput.trim() }]:[...messages];
+                      setMessages(newMessages);
+                      setCoachInput('');
+                      setCoaching(true);
+                      try {
+                        const res = await fetch('/api/resume/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages }) });
+                        const data = await res.json();
+                        setMessages(m=>[...m, { role: 'assistant', content: data.message }]);
+                      } finally { setCoaching(false); }
+                    }}
+                    className="px-3 py-1 bg-secondary rounded text-sm"
+                    disabled={coaching}
+                  >{coaching?'Asking...':'Ask'}</button>
+                </div>
+                <p className="text-xs dark:text-gray-100 text-muted-foreground mt-2">AI will continue asking until it responds with "&lt;READY&gt;" indicating it has enough context. Then click Generate.</p>
               </div>
             )}
           </div>

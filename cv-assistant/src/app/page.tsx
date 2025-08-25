@@ -10,18 +10,18 @@ export default function Home() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span>AI-Powered Cover Letter Generator</span>
+            <span>AI-Powered Cover Letters & Resumes</span>
           </div>
           
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
             Create Perfect Cover Letters
             <br />
-            <span className="text-4xl md:text-5xl">in Minutes</span>
+            <span className="text-4xl md:text-5xl">and Customized Resumes</span>
           </h1>
           
           <p className="text-xl text-muted-foreground dark:text-gray-400 max-w-3xl mx-auto leading-relaxed">
-            Transform your professional experience into compelling cover letters that stand out to employers. 
-            Our AI analyzes job descriptions and your profile to create personalized, impactful content.
+            Transform your professional experience into compelling cover letters and tailored resumes. 
+            Our AI analyzes job descriptions and your profile to create personalized, impactful career documents.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
@@ -57,7 +57,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold mb-2">AI-Powered Analysis</h3>
             <p className="text-muted-foreground">
-              Our AI analyzes job descriptions and your profile to identify the most relevant skills and experiences.
+              Our AI analyzes job descriptions and your profile to identify the best skills and experiences for both letters and resumes.
             </p>
           </div>
 
@@ -69,7 +69,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold mb-2">Professional Content</h3>
             <p className="text-muted-foreground">
-              Generate polished, professional cover letters that highlight your strengths and match job requirements.
+              Generate polished, professional cover letters and resumes that highlight your strengths and match job requirements.
             </p>
           </div>
 
@@ -81,7 +81,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold mb-2">Lightning Fast</h3>
             <p className="text-muted-foreground">
-              Create compelling cover letters in minutes, not hours. Save time while improving your job applications.
+              Create compelling cover letters and customized resumes in minutes, not hours.
             </p>
           </div>
         </div>
@@ -119,7 +119,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl dark:text-white font-semibold">Generate & Customize</h3>
               <p className="text-muted-foreground dark:text-gray-400">
-                Get your personalized cover letter and customize it to make it perfect for your application.
+                Get your personalized cover letter and customize your resume for your application.
               </p>
             </div>
           </div>
@@ -130,7 +130,7 @@ export default function Home() {
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
             <h2 className="text-3xl font-bold mb-4">Ready to Land Your Dream Job?</h2>
             <p className="text-xl mb-6 opacity-90">
-              Start creating professional cover letters that get you noticed by top employers.
+              Start creating professional cover letters and customized resumes that get you noticed by top employers.
             </p>
             <Link
               href="/generate"
