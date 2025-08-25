@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const prompt = `Parse this user response about resume styling preferences and return a JSON object with these exact keys:
 
 {
-  "fontSize": "10pt" or "12pt",
+  "fontSize": "10pt", "12pt" or "xxpt,
   "useBold": true or false,
   "useItalic": true or false,
   "boldSections": ["array of section names to make bold"],

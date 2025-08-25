@@ -100,7 +100,11 @@ export default function ResumePage() {
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.projects?.map((p, i) => (
-                  <label key={i} className="flex items-start space-x-3 p-2 rounded hover:bg-accent cursor-pointer">
+                  <label key={i} className={`flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
+                    selectedProjects.includes(i) 
+                      ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
+                      : 'hover:bg-accent'
+                  }`}>
                     <input
                       type="checkbox"
                       className="mt-1"
@@ -123,7 +127,11 @@ export default function ResumePage() {
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.experiences?.map((ex, i) => (
-                  <label key={i} className="flex items-start space-x-3 p-2 rounded hover:bg-accent cursor-pointer">
+                  <label key={i} className={`flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
+                    selectedExperiences.includes(i) 
+                      ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
+                      : 'hover:bg-accent'
+                  }`}>
                     <input
                       type="checkbox"
                       className="mt-1"
@@ -222,14 +230,44 @@ export default function ResumePage() {
                         const data = await res.json();
                         setMessages(m=>[...m, { role: 'assistant', content: data.message }]);
                         
-                        // Check if AI is ready and parse style preferences
+                        // Process each question asynchronously as it comes in
+                        const userMessages = newMessages.filter(m => m.role === 'user');
+                        if (userMessages.length === 1) {
+                          // First question - parse style preferences
+                          try {
+                            const styleRes = await fetch('/api/resume/style-parser', { 
+                              method: 'POST', 
+                              headers: { 'Content-Type': 'application/json' }, 
+                              body: JSON.stringify({ userResponse: userMessages[0].content }) 
+                            });
+                            const styleData = await styleRes.json();
+                            setStylePreferences(styleData);
+                          } catch (error) {
+                            console.error('Failed to parse style preferences:', error);
+                          }
+                        } else if (userMessages.length === 2) {
+                          // Second question - update content density preference
+                          try {
+                            const combinedResponse = `${userMessages[0].content}\n\nContent density preference: ${userMessages[1].content}`;
+                            const styleRes = await fetch('/api/resume/style-parser', { 
+                              method: 'POST', 
+                              headers: { 'Content-Type': 'application/json' }, 
+                              body: JSON.stringify({ userResponse: combinedResponse }) 
+                            });
+                            const styleData = await styleRes.json();
+                            setStylePreferences(styleData);
+                          } catch (error) {
+                            console.error('Failed to parse style preferences:', error);
+                          }
+                        }
+                        
+                        // Check if AI is ready and finalize preferences
                         if (data.message.includes('<READY>')) {
-                          const firstMessage = newMessages.find(m => m.role === 'user');
-                          const secondMessage = newMessages.find((m, i) => m.role === 'user' && i > 0);
-                          if (firstMessage && secondMessage) {
+                          const userMessages = newMessages.filter(m => m.role === 'user');
+                          if (userMessages.length >= 4) {
                             try {
-                              // Parse both style and content density preferences
-                              const combinedResponse = `${firstMessage.content}\n\nContent density preference: ${secondMessage.content}`;
+                              // Final parsing with all preferences
+                              const combinedResponse = `${userMessages[0].content}\n\nContent density preference: ${userMessages[1].content}\n\nAchievements: ${userMessages[2].content}\n\nTechnologies and challenges: ${userMessages[3].content}`;
                               const styleRes = await fetch('/api/resume/style-parser', { 
                                 method: 'POST', 
                                 headers: { 'Content-Type': 'application/json' }, 
@@ -238,7 +276,7 @@ export default function ResumePage() {
                               const styleData = await styleRes.json();
                               setStylePreferences(styleData);
                             } catch (error) {
-                              console.error('Failed to parse style preferences:', error);
+                              console.error('Failed to parse final preferences:', error);
                             }
                           }
                         }
