@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { skills, selectedProjects, selectedExperiences, enhance, qa } = await req.json();
+  const { skills, selectedProjects, selectedExperiences, enhance, qa, stylePreferences } = await req.json();
   if (!Array.isArray(selectedProjects) || !Array.isArray(selectedExperiences)) {
     return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   }
@@ -19,40 +19,66 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
-  type Project = { name?: string; summary?: string };
-  type Experience = { companyName?: string; role?: string; summary?: string };
+  type Project = { name?: string; summary?: string; description?: string };
+  type Experience = { companyName?: string; role?: string; summary?: string; description?: string; timeFrom?: string; timeTo?: string };
   type Profile = { name?: string; major?: string; school?: string; email?: string; phone?: string; website?: string; linkedin?: string; languages?: string; projects?: Project[]; experiences?: Experience[] };
   const profile = (user?.profile || {}) as Profile;
 
-  // Optionally enhance content with Gemini for better bullet points and skills line
+  // Parse style preferences and enhance content if requested
   let enhancedSkills: string | undefined = undefined;
-  let enhancedProjectSummaries: Record<number, string> = {};
-  let enhancedExperienceSummaries: Record<number, string> = {};
-  if (enhance) {
+  const enhancedProjectSummaries: Record<number, string> = {};
+  const enhancedExperienceSummaries: Record<number, string> = {};
+  let fontSize = 11;
+  let useBold = false;
+  let useItalic = false;
+  let contentDensity = 'balanced';
+  
+  if (enhance && stylePreferences) {
     try {
+      // Parse style preferences
+      fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
+      useBold = stylePreferences.useBold || false;
+      useItalic = stylePreferences.useItalic || false;
+      contentDensity = stylePreferences.contentDensity || 'balanced';
+      
+      // Enhance content with Gemini
       const model = getModel('gemini-2.5-flash');
       async function improve(prompt: string) {
         const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
         return res.response.text().trim();
       }
-      const qaNotes = Array.isArray(qa) && qa.length ? `\nContext from Q&A (user and assistant messages):\n${qa.map((m: any)=>`[${m.role}] ${m.content}`).join('\n')}` : '';
+      
+      const qaNotes = Array.isArray(qa) && qa.length ? `\nContext from Q&A (user and assistant messages):\n${qa.map((m: { role: string; content: string })=>`[${m.role}] ${m.content}`).join('\n')}` : '';
+      
       if (skills) {
         enhancedSkills = await improve(`Rewrite these skills as a concise comma-separated list, removing redundancy and keeping professional tone.${qaNotes}\nSkills:\n${skills}`);
       }
-      if (Array.isArray(profile.projects)) {
-        for (const idx of selectedProjects) {
-          const p = profile.projects[idx];
-          if (!p) continue;
-          const base = p.summary || '';
-          enhancedProjectSummaries[idx] = await improve(`Improve these resume bullet points for a project in crisp, high-impact bullets (2-3 bullets max). Keep content precise, factual, and ATS-friendly. Return only bullets separated by newlines.${qaNotes}\nProject name: ${p.name||''}\nBullets/summary to improve:\n${base}`);
+      
+      // Process projects in chunks to avoid overload
+      if (Array.isArray(profile.projects) && selectedProjects.length > 0) {
+        const chunkSize = Math.ceil(selectedProjects.length / 2);
+        for (let i = 0; i < selectedProjects.length; i += chunkSize) {
+          const chunk = selectedProjects.slice(i, i + chunkSize);
+          for (const idx of chunk) {
+            const p = profile.projects[idx];
+            if (!p) continue;
+            const base = p.summary || '';
+            enhancedProjectSummaries[idx] = await improve(`Improve these resume bullet points for a project in crisp, high-impact bullets (2-3 bullets max). Keep content precise, factual, and ATS-friendly. Return only bullets separated by newlines.${qaNotes}\nProject name: ${p.name||''}\nBullets/summary to improve:\n${base}`);
+          }
         }
       }
-      if (Array.isArray(profile.experiences)) {
-        for (const idx of selectedExperiences) {
-          const ex = profile.experiences[idx];
-          if (!ex) continue;
-          const base = ex.summary || '';
-          enhancedExperienceSummaries[idx] = await improve(`Improve these resume bullet points for a work experience in crisp, high-impact bullets (2-3 bullets max). Use quantified achievements when possible. Return only bullets separated by newlines.${qaNotes}\nCompany: ${ex.companyName||''}\nRole: ${ex.role||''}\nBullets/summary to improve:\n${base}`);
+      
+      // Process experiences in chunks to avoid overload
+      if (Array.isArray(profile.experiences) && selectedExperiences.length > 0) {
+        const chunkSize = Math.ceil(selectedExperiences.length / 2);
+        for (let i = 0; i < selectedExperiences.length; i += chunkSize) {
+          const chunk = selectedExperiences.slice(i, i + chunkSize);
+          for (const idx of chunk) {
+            const ex = profile.experiences[idx];
+            if (!ex) continue;
+            const base = ex.summary || '';
+            enhancedExperienceSummaries[idx] = await improve(`Improve these resume bullet points for a work experience in crisp, high-impact bullets (2-3 bullets max). Use quantified achievements when possible. Return only bullets separated by newlines.${qaNotes}\nCompany: ${ex.companyName||''}\nRole: ${ex.role||''}\nBullets/summary to improve:\n${base}`);
+          }
         }
       }
     } catch {}
@@ -85,6 +111,52 @@ export async function POST(req: NextRequest) {
     ensureSpace(size + 8);
     page.drawText(text, { x, y, size, font: bold ? helvBold : helv, color: rgb(0, 0, 0) });
     y -= size + 6;
+  }
+
+  function drawMarkdownText(text: string, x: number, size = 11) {
+    const words = text.split(/(\*\*.*?\*\*|\*.*?\*)/);
+    let currentX = x;
+    const maxWidth = right - left;
+    
+    for (const word of words) {
+      if (word.startsWith('**') && word.endsWith('**')) {
+        // Bold text
+        const content = word.slice(2, -2);
+        const width = helvBold.widthOfTextAtSize(content, size);
+        if (currentX + width > right) {
+          currentX = x;
+          y -= size + 4;
+          ensureSpace(size + 4);
+        }
+        page.drawText(content, { x: currentX, y, size, font: helvBold, color: rgb(0, 0, 0) });
+        currentX += width;
+      } else if (word.startsWith('*') && word.endsWith('*')) {
+        // Italic text
+        const content = word.slice(1, -1);
+        const width = helv.widthOfTextAtSize(content, size);
+        if (currentX + width > right) {
+          currentX = x;
+          y -= size + 4;
+          ensureSpace(size + 4);
+        }
+        page.drawText(content, { x: currentX, y, size, font: helv, color: rgb(0, 0, 0) });
+        currentX += width;
+      } else if (word.trim()) {
+        // Regular text
+        const words = word.split(/\s+/);
+        for (const w of words) {
+          const width = helv.widthOfTextAtSize(w + ' ', size);
+          if (currentX + width > right) {
+            currentX = x;
+            y -= size + 4;
+            ensureSpace(size + 4);
+          }
+          page.drawText(w + ' ', { x: currentX, y, size, font: helv, color: rgb(0, 0, 0) });
+          currentX += width;
+        }
+      }
+    }
+    y -= size + 4;
   }
 
   function drawSection(title: string) {
@@ -213,12 +285,17 @@ export async function POST(req: NextRequest) {
 
   // Education
   drawSection('Education');
-  drawText(`${profile.school || ''}`, left, 11, true);
-  drawText(`${profile.major || ''}`, left, 10, false);
+  drawText(`${profile.school || ''}`, left, fontSize, useBold);
+  drawText(`${profile.major || ''}`, left, fontSize - 1, false);
 
   // Skills
   drawSection('Skills');
-  drawText((enhancedSkills || skills || '').trim() || (profile.languages || ''), left, 10, false);
+  const skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  if (skillsText.includes('**') || skillsText.includes('*')) {
+    drawMarkdownText(skillsText, left, fontSize - 1);
+  } else {
+    drawText(skillsText, left, fontSize - 1, false);
+  }
 
   // Projects
   if (Array.isArray(profile.projects) && selectedProjects.length) {
@@ -226,9 +303,19 @@ export async function POST(req: NextRequest) {
     for (const idx of selectedProjects) {
       const p = profile.projects[idx];
       if (!p) continue;
-      drawText(p.name || 'Untitled Project', left, 11, true);
-      const s = enhancedProjectSummaries[idx] || p.summary;
-      if (s) drawBulletBlock(s);
+      drawText(p.name || 'Untitled Project', left, fontSize, useBold);
+      // Use original content + enhanced summary if available
+      const originalContent = p.description || p.summary || '';
+      const enhancedContent = enhancedProjectSummaries[idx];
+      const finalContent = enhancedContent || originalContent;
+      
+      if (finalContent) {
+        if (finalContent.includes('**') || finalContent.includes('*')) {
+          drawMarkdownText(finalContent, left, fontSize - 1);
+        } else {
+          drawBulletBlock(finalContent);
+        }
+      }
       y -= 4;
     }
   }
@@ -239,9 +326,26 @@ export async function POST(req: NextRequest) {
     for (const idx of selectedExperiences) {
       const ex = profile.experiences[idx];
       if (!ex) continue;
-      drawText(`${ex.companyName || ''} — ${ex.role || ''}`.trim(), left, 11, true);
-      const s = enhancedExperienceSummaries[idx] || ex.summary;
-      if (s) drawBulletBlock(s);
+      // Include dates in the header
+      const timeInfo = `${ex.timeFrom || ''} - ${ex.timeTo || ''}`.trim();
+      const headerText = `${ex.companyName || ''} — ${ex.role || ''}`.trim();
+      drawText(headerText, left, fontSize, useBold);
+      if (timeInfo && timeInfo !== ' - ') {
+        drawText(timeInfo, left, fontSize - 1, false);
+      }
+      
+      // Use original content + enhanced summary if available
+      const originalContent = ex.description || ex.summary || '';
+      const enhancedContent = enhancedExperienceSummaries[idx];
+      const finalContent = enhancedContent || originalContent;
+      
+      if (finalContent) {
+        if (finalContent.includes('**') || finalContent.includes('*')) {
+          drawMarkdownText(finalContent, left, fontSize - 1);
+        } else {
+          drawBulletBlock(finalContent);
+        }
+      }
       y -= 4;
     }
   }

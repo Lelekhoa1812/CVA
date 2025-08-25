@@ -17,6 +17,7 @@ export default function ResumePage() {
   const [messages, setMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
   const [coachInput, setCoachInput] = useState<string>('');
   const [coaching, setCoaching] = useState<boolean>(false);
+  const [stylePreferences, setStylePreferences] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
@@ -47,7 +48,7 @@ export default function ResumePage() {
     const res = await fetch('/api/resume/harvard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: messages })
+      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: messages, stylePreferences })
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -89,7 +90,7 @@ export default function ResumePage() {
                 onChange={e => setSkills(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-2">Comma-separated list. Will appear under Skills.</p>
-              <p className="text-xs text-muted-foreground mt-2">Tips: Don't overcrowd this section. Keep it concise and relevant.</p>
+              <p className="text-xs text-muted-foreground mt-2">Tips: Don&apos;t overcrowd this section. Keep it concise and relevant.</p>
             </div>
 
             <div className="bg-card border rounded-xl p-6">
@@ -220,13 +221,31 @@ export default function ResumePage() {
                         const res = await fetch('/api/resume/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages }) });
                         const data = await res.json();
                         setMessages(m=>[...m, { role: 'assistant', content: data.message }]);
+                        
+                        // Check if AI is ready and parse style preferences
+                        if (data.message.includes('<READY>')) {
+                          const firstMessage = newMessages.find(m => m.role === 'user');
+                          if (firstMessage) {
+                            try {
+                              const styleRes = await fetch('/api/resume/style-parser', { 
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'application/json' }, 
+                                body: JSON.stringify({ userResponse: firstMessage.content }) 
+                              });
+                              const styleData = await styleRes.json();
+                              setStylePreferences(styleData);
+                            } catch (error) {
+                              console.error('Failed to parse style preferences:', error);
+                            }
+                          }
+                        }
                       } finally { setCoaching(false); }
                     }}
                     className="px-3 py-1 bg-secondary rounded text-sm"
                     disabled={coaching}
                   >{coaching?'Asking...':'Ask'}</button>
                 </div>
-                <p className="text-xs dark:text-gray-100 text-muted-foreground mt-2">AI will continue asking until it responds with "&lt;READY&gt;" indicating it has enough context. Then click Generate.</p>
+                <p className="text-xs dark:text-gray-100 text-muted-foreground mt-2">AI will continue asking until it responds with &quot;&lt;READY&gt;&quot; indicating it has enough context. Then click Generate.</p>
               </div>
             )}
           </div>
