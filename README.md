@@ -38,7 +38,7 @@ CV Assistant is a full-featured professional development platform that combines 
 ### 📄 Resume Builder
 
 #### Resume Creation Interface
-![Resume Builder](./imgsrc/resume/on-hold.png)
+![Resume Builder](./imgsrc/resume/view.png)
 *Main resume builder interface with project/experience selection and AI enhancement options*
 
 #### Styling Customization
@@ -55,12 +55,15 @@ CV Assistant is a full-featured professional development platform that combines 
 ![Content Editing](./imgsrc/resume/content-coach/done-item.png)
 *Once finished with an item, please wait for the system ingest and process your data*
 
+![Progressing State](./imgsrc/resume/on-hold.png)
+*Once on coaching agent mode, you can't generate, press `Reset` to exit*
+
 #### Completion
 ![Resume Complete](./imgsrc/resume/done.png)
 *Successfully generated resume with enhanced content and styling preferences applied*
 
 #### Preview
-Have a look at our [Resume Sample](https://github.com/Lelekhoa1812/CVA/blob/main/imgsrc/sample.pdf)
+Have a look at our [Resume Sample](https://github.com/Lelekhoa1812/CVA/blob/main/imgsrc/sample.pdf)  
 *Give us feedback if you have any thought on improvements*
 
 ## ✨ Features
