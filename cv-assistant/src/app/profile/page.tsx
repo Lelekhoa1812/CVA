@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react';
 
 type Project = { name: string; description: string; summary?: string; _needsSummary?: boolean };
 type Experience = { companyName: string; role: string; timeFrom: string; timeTo: string; description: string; summary?: string; _needsSummary?: boolean };
-type Profile = { name: string; major: string; school: string; email: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
+type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Profile>({ name: '', major: '', school: '', email: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
+  const [profile, setProfile] = useState<Profile>({ name: '', major: '', school: '', studyPeriod: '', email: '', workEmail: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -19,7 +19,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/profile');
       if (res.ok) {
         const data = await res.json();
-        setProfile(data.profile || { name: '', major: '', school: '', email: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
+        setProfile(data.profile || { name: '', major: '', school: '', studyPeriod: '', email: '', workEmail: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
       }
       setLoading(false);
     })();
@@ -162,7 +162,17 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) return <div className="p-6 text-foreground">Loading...</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+          <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-r-primary/50 rounded-full animate-[spin_1.2s_linear_infinite_reverse]"></div>
+        </div>
+        <div className="text-sm text-foreground dark:text-gray-100 animate-pulse">Loading your profile...</div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
@@ -187,8 +197,16 @@ export default function ProfilePage() {
             <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.school} onChange={e=>up('school', e.target.value)} />
           </div>
           <div>
+            <label className="block text-sm dark:text-white mb-1 text-foreground">Study Period <span className="text-muted-foreground dark:text-white text-xs">(start year - end year)</span></label>
+            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" placeholder="2019 - 2023" value={profile.studyPeriod || ''} onChange={e=>up('studyPeriod', e.target.value)} />
+          </div>
+          <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Email</label>
             <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.email} onChange={e=>up('email', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm dark:text-white mb-1 text-foreground">Work Email <span className="text-muted-foreground dark:text-white text-xs">(optional, preferred)</span></label>
+            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" placeholder="you@company.com" value={profile.workEmail || ''} onChange={e=>up('workEmail', e.target.value)} />
           </div>
           <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Website URL <span className="text-muted-foreground dark:text-white text-xs">(optional)</span></label>
@@ -435,7 +453,7 @@ export default function ProfilePage() {
             accept=".pdf,.doc,.docx" 
             onChange={uploadResume} 
             disabled={ocrLoading}
-            className={`block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 transition-colors duration-200 ${ocrLoading ? 'opacity-50 cursor-not-allowed' : ''}`} 
+            className={`block w-full text-sm text-black dark:text-gray-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 transition-colors duration-200 ${ocrLoading ? 'opacity-50 cursor-not-allowed' : ''}`} 
           />
           
           {ocrLoading && (

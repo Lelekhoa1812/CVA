@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
-  const profile = user?.profile;
+  const profile = user?.profile as any;
   type Item = { type: 'project' | 'experience'; name: string; description: string; summary: string };
   const items: Item[] = [
     ...((profile?.projects || []).map((p: { name: string; description: string; summary: string }) => ({ type: 'project' as const, name: p.name, description: p.description, summary: p.summary })) ),
@@ -24,12 +24,11 @@ export async function POST(req: NextRequest) {
   const contactInfo = [];
   if (profile?.name) contactInfo.push(`Name: ${profile.name}`);
   if (profile?.phone) contactInfo.push(`Phone: ${profile.phone}`);
-  if (profile?.email) contactInfo.push(`Email: ${profile.email}`);
+  if (profile?.workEmail || profile?.email) contactInfo.push(`Email: ${profile.workEmail || profile.email}`);
   if (profile?.website) contactInfo.push(`Website: ${profile.website}`);
   if (profile?.linkedin) contactInfo.push(`LinkedIn: ${profile.linkedin}`);
   if (profile?.languages) contactInfo.push(`Languages: ${profile.languages}`);
 
-  const pro = getModel('gemini-2.5-pro');
   const prompt = `Write a professional, concise cover letter for ${profile?.name || 'the candidate'} applying to ${company}.
 
       CONTACT INFORMATION (include at the top):
@@ -52,9 +51,36 @@ export async function POST(req: NextRequest) {
       - Avoid generic fluff, not markdown, no comments - be specific and results-oriented
       - Match the tone and style appropriate for the company and role`;
 
-  const res = await pro.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-  const text = res.response.text();
-  return NextResponse.json({ coverLetter: text });
+  async function tryGenerate(modelName: string) {
+    const model = getModel(modelName as any);
+    const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+    return res.response.text().trim();
+  }
+
+  try {
+    // First attempt with pro model
+    let text = await tryGenerate('gemini-2.5-pro');
+    if (!text) throw new Error('Empty cover letter');
+    return NextResponse.json({ coverLetter: text });
+  } catch (e1) {
+    // Retry once after brief delay
+    try {
+      await new Promise(r => setTimeout(r, 500));
+      let text = await tryGenerate('gemini-2.5-pro');
+      if (!text) throw new Error('Empty cover letter');
+      return NextResponse.json({ coverLetter: text });
+    } catch (e2) {
+      // Fallback to flash model
+      try {
+        let text = await tryGenerate('gemini-2.5-flash');
+        if (!text) throw new Error('Empty cover letter');
+        return NextResponse.json({ coverLetter: text, fallback: 'flash' });
+      } catch (e3) {
+        console.error('Cover letter generation failed on all models', { e1, e2, e3 });
+        return NextResponse.json({ error: 'Cover letter generation temporarily unavailable. Please try again.' }, { status: 502 });
+      }
+    }
+  }
 }
 
 

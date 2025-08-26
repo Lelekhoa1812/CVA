@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 type Project = { name: string; summary?: string };
 type Experience = { companyName: string; role: string; summary?: string };
-type Profile = { name: string; major: string; school: string; email: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
+type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
 
 export default function ResumePage() {
   const [profile, setProfile] = useState<Profile | null>(null);

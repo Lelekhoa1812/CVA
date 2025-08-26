@@ -478,8 +478,9 @@ export async function POST(req: NextRequest) {
   page.drawText(nameText, { x: nameX, y, size: nameSize, font: nameFont, color: getAccentColor() });
   y -= nameSize + 4;
   
+  const preferredEmail = (profile as any).workEmail?.trim() ? (profile as any).workEmail : profile.email;
   // Single-line centered contact; shrink font to fit one line
-  const contactFull = [profile.email, profile.phone, profile.website, profile.linkedin].filter(Boolean).join(' • ');
+  const contactFull = [preferredEmail, profile.phone, profile.website, profile.linkedin].filter(Boolean).join(' • ');
   let contactSize = 10;
   
   // Apply styling preferences to contact
@@ -504,8 +505,26 @@ export async function POST(req: NextRequest) {
   drawSection('Education');
   const school = profile.school || 'No school specified';
   const major = profile.major || 'No major specified';
-  drawText(school, left, fontSize, useBold);
+  // Draw school and study period on one line (school left, period right)
+  const studyPeriod = (profile as any).studyPeriod as string | undefined;
+  if (studyPeriod && studyPeriod.trim()) {
+    // Draw school (left)
+    drawText(school, left, fontSize, useBold);
+    // Draw study period (right, aligned to right margin on the same baseline)
+    const periodFont = useBold ? helvBold : helv;
+    const periodWidth = periodFont.widthOfTextAtSize(studyPeriod, fontSize);
+    const periodX = right - periodWidth;
+    page.drawText(studyPeriod, { x: periodX, y: y + fontSize + 6, size: fontSize, font: periodFont });
+  } else {
+    drawText(school, left, fontSize, useBold);
+  }
   drawText(major, left, fontSize - 1, false);
+
+  // Contact emails under education: prefer workEmail if present
+  // const preferredEmail = (profile as any).workEmail?.trim() ? (profile as any).workEmail : profile.email;
+  // if (preferredEmail) {
+  //   drawText(preferredEmail, left, fontSize - 1, false);
+  // }
 
   // Skills
   drawSection('Skills');
