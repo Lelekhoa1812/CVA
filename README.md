@@ -58,12 +58,18 @@ CV Assistant is a full-featured professional development platform that combines 
 ![Progressing State](./imgsrc/resume/on-hold.png)
 *Once on coaching agent mode, you can't generate, press `Reset` to exit*
 
-#### Completion
+#### Choose Template
+![Template Selector](./imgsrc/resume/preview.png)
+*Select your preferred template from our existing library*
+
+#### Generation Completion
 ![Resume Complete](./imgsrc/resume/done.png)
 *Successfully generated resume with enhanced content and styling preferences applied*
 
 #### Preview
-Have a look at our [Resume Sample](https://github.com/Lelekhoa1812/CVA/blob/main/imgsrc/sample.pdf)  
+Have a look at our resume samples:  
+[Traditional Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style1.pdf)  
+[Modernised Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style2.pdf)  
 *Give us feedback if you have any thought on improvements*
 
 ## ✨ Features
@@ -165,7 +171,8 @@ cv-assistant/
 │   │   │   ├── ocr/          # OCR functionality
 │   │   │   ├── profile/      # Profile management
 │   │   │   └── resume/       # Resume building endpoints
-│   │   │       ├── harvard/  # Harvard-style PDF generation
+│   │   │       ├── style1/   # Harvard-style PDF generation (Style 1 - Classic)
+│   │   │       ├── style2/   # Harvard-style PDF generation (Style 2 - Modern)
 │   │   │       ├── coach/    # AI coaching system
 │   │   │       ├── enhance-targeted/ # Targeted content enhancement
 │   │   │       ├── style-parser/ # Style preference parsing
@@ -386,7 +393,8 @@ CMD ["npm", "start"]
 - `POST /api/generate/select` - Select relevant items
 
 ### Resume Building
-- `POST /api/resume/harvard` - Generate Harvard-style PDF resume
+- `POST /api/resume/style1` - Generate Harvard-style PDF resume (Classic layout)
+- `POST /api/resume/style2` - Generate Harvard-style PDF resume (Modern layout)
 - `POST /api/resume/coach` - AI coaching system
 - `POST /api/resume/enhance-targeted` - Targeted content enhancement
 - `POST /api/resume/style-parser` - Parse styling preferences
@@ -396,7 +404,7 @@ CMD ["npm", "start"]
 
 ### Content Enhancement
 - `POST /api/enhance` - General content enhancement
-- `POST /api/ocr` - Resume parsing and OCR
+- `POST /api/ocr` - Resume parsing and OCR (accepts PDF, PNG, and JPG/JPEG)
 
 ## 🐛 Troubleshooting
 
