@@ -52,6 +52,9 @@ CV Assistant is a full-featured professional development platform that combines 
 ![Content Editing](./imgsrc/resume/content-coach/edit.png)
 *AI-powered content enhancement with personalized questions for each selected item*
 
+![Content Editing](./imgsrc/resume/content-coach/done-item.png)
+*Once finished with an item, please wait for the system ingest and process your data*
+
 #### Completion
 ![Resume Complete](./imgsrc/resume/done.png)
 *Successfully generated resume with enhanced content and styling preferences applied*

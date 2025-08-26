@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type Project = { name: string; summary?: string };
 type Experience = { companyName: string; role: string; summary?: string };
@@ -22,8 +22,26 @@ export default function ResumePage() {
   const [currentAgent, setCurrentAgent] = useState<'styling' | 'content' | null>(null);
   const [contentSelectedItems, setContentSelectedItems] = useState<Array<{ type: 'project' | 'experience', index: number, name: string }>>([]);
   const [currentContentItem, setCurrentContentItem] = useState<number>(0);
-  const [contentEnhancementData, setContentEnhancementData] = useState<Record<string, any>>({});
+  const [contentEnhancementData, setContentEnhancementData] = useState<Record<string, string>>({});
   const [contentEnhancementStarted, setContentEnhancementStarted] = useState<boolean>(false);
+  
+  // Debug agent changes
+  useEffect(() => {
+    console.log('Agent changed to:', currentAgent);
+    if (currentAgent === 'content') {
+      console.log('Content agent activated - checking state:', { contentEnhancementStarted, contentSelectedItems: contentSelectedItems.length });
+    }
+  }, [currentAgent, contentEnhancementStarted, contentSelectedItems.length]);
+  
+  // Debug content items selection changes
+  useEffect(() => {
+    console.log('Content selected items changed:', contentSelectedItems);
+  }, [contentSelectedItems]);
+  
+  // Debug content enhancement state changes
+  useEffect(() => {
+    console.log('Content enhancement started changed to:', contentEnhancementStarted);
+  }, [contentEnhancementStarted]);
   const [stylePreferences, setStylePreferences] = useState<{
     fontSize?: string;
     useBold?: boolean;
@@ -34,33 +52,7 @@ export default function ResumePage() {
     additionalNotes?: string;
   } | null>(null);
 
-  // Function to enhance specific targeted projects/experiences
-  async function enhanceTargetedItems(userResponse: string) {
-    if (!userResponse || userResponse.toLowerCase().includes('none')) {
-      return; // Fallback to original settings
-    }
 
-    try {
-      // Parse user response to identify which items to enhance
-      const enhanceRes = await fetch('/api/resume/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          content: userResponse, 
-          contentType: 'targeted_enhancement',
-          qaContext: [...stylingMessages, ...contentMessages].map(m => `${m.role}: ${m.content}`).join('\n')
-        })
-      });
-      
-      if (enhanceRes.ok) {
-        const enhanceData = await enhanceRes.json();
-        // The enhanced content will be used when generating the PDF
-        console.log('Enhanced targeted items:', enhanceData);
-      }
-    } catch (error) {
-      console.error('Failed to enhance targeted items:', error);
-    }
-  }
 
   // Function to start styling questions
   function startStylingQuestions() {
@@ -70,8 +62,12 @@ export default function ResumePage() {
 
   // Function to start content questions
   function startContentQuestions() {
-    // No need to call AI - questions are hard-coded in the UI
+    // Reset content enhancement state to show item selection first
+    setContentEnhancementStarted(false);
+    setContentSelectedItems([]);
+    setCurrentContentItem(0);
     setContentMessages([]);
+    console.log('Content questions started - reset to item selection mode');
   }
 
     // Function to handle question submission
@@ -97,7 +93,7 @@ export default function ResumePage() {
         if (contentCustomization) {
           setTimeout(() => {
             setCurrentAgent('content');
-            startContentQuestions();
+            startContentQuestions(); // This will reset to item selection mode
           }, 1500); // Wait 1.5 seconds before transitioning
         }
       }
@@ -118,13 +114,13 @@ export default function ResumePage() {
           if (currentItem.type === 'project') {
             const p = profile?.projects?.[currentItem.index];
             if (p) {
-              originalContent = (p as any).description || p.summary || '';
+              originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
               itemName = p.name || 'Untitled Project';
             }
           } else {
             const ex = profile?.experiences?.[currentItem.index];
             if (ex) {
-              originalContent = (ex as any).description || ex.summary || '';
+              originalContent = (ex as { description?: string; summary?: string }).description || ex.summary || '';
               itemName = `${ex.companyName || 'Company'} - ${ex.role || 'Role'}`;
             }
           }
@@ -165,7 +161,7 @@ export default function ResumePage() {
             
             // Remove processing message and show success
             setContentMessages(m => m.filter(msg => !msg.content.includes('Processing')));
-            setContentMessages(m => [...m, { role: 'assistant', content: `✅ Enhanced content for "${itemName}"!` }]);
+                                          setContentMessages(m => [...m, { role: 'assistant', content: `✅ Enhanced content for &quot;${itemName}&quot;!` }]);
             
             // Move to next item or complete
             setTimeout(() => {
@@ -210,11 +206,45 @@ export default function ResumePage() {
       return stylingMessages.length < 3;
     } else if (currentAgent === 'content') {
       // Content is in progress if items are selected, enhancement has started, but not all completed
-      if (contentSelectedItems.length === 0 || !contentEnhancementStarted) return false;
-      return currentContentItem < contentSelectedItems.length;
+      if (contentSelectedItems.length === 0 || !contentEnhancementStarted) {
+        console.log('Content coaching not in progress:', { contentSelectedItems: contentSelectedItems.length, contentEnhancementStarted });
+        return false;
+      }
+      const inProgress = currentContentItem < contentSelectedItems.length;
+      console.log('Content coaching in progress:', { currentContentItem, totalItems: contentSelectedItems.length, inProgress });
+      return inProgress;
     }
     
     return false;
+  }
+
+  // Function to check if ALL coaching is complete (both agents if enabled)
+  function isAllCoachingComplete() {
+    // If no coaching is enabled, return true
+    if (!stylingCustomization && !contentCustomization) return true;
+    
+    // Check styling agent
+    if (stylingCustomization) {
+      if (currentAgent === 'styling') {
+        return stylingMessages.length >= 3;
+      }
+      // If styling is not the current agent but was enabled, check if it's complete
+      if (stylingMessages.length < 3) return false;
+    }
+    
+    // Check content agent
+    if (contentCustomization) {
+      if (currentAgent === 'content') {
+        // Content is complete if enhancement has started and all items are processed
+        if (contentSelectedItems.length === 0 || !contentEnhancementStarted) return false;
+        return currentContentItem >= contentSelectedItems.length;
+      }
+      // If content is not the current agent but was enabled, check if it's complete
+      if (contentSelectedItems.length === 0 || !contentEnhancementStarted) return false;
+      if (currentContentItem < contentSelectedItems.length) return false;
+    }
+    
+    return true;
   }
 
 
@@ -226,7 +256,7 @@ export default function ResumePage() {
     let fontSize = '11pt';
     let useBold = false;
     let useItalic = false;
-    let contentDensity = 'balanced';
+    const contentDensity = 'balanced';
     
     // Parse font size from first answer
     if (userAnswers[0]) {
@@ -262,30 +292,7 @@ export default function ResumePage() {
     };
   }
 
-  // Function to manually parse content preferences
-  function parseContentPreferences(messages: Array<{ role: string; content: string }>) {
-    const userAnswers = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase());
-    
-    let contentDensity = 'balanced';
-    
-    // Parse content density from first answer
-    if (userAnswers[0]) {
-      if (userAnswers[0].includes('concise')) {
-        contentDensity = 'concise';
-      } else if (userAnswers[0].includes('detailed')) {
-        contentDensity = 'detailed';
-      }
-      // 'balanced' is default
-    }
-    
-    // Parse achievements from second answer
-    // Store for potential future use in content enhancement
-    
-    return {
-      contentDensity,
-      additionalNotes: 'Manually parsed content preferences'
-    };
-  }
+
 
   useEffect(() => {
     (async () => {
@@ -454,7 +461,7 @@ export default function ResumePage() {
             </div>
 
             {/* Coaching Status Indicator */}
-            {isCoachingInProgress() && (
+            {!isAllCoachingComplete() && (
               <div className="mb-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
@@ -469,14 +476,14 @@ export default function ResumePage() {
             )}
 
             <button
-              onClick={isCoachingInProgress() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : generate}
-              disabled={loading || limitReached || isCoachingInProgress()}
+              onClick={!isAllCoachingComplete() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : generate}
+              disabled={loading || limitReached || !isAllCoachingComplete()}
               className={`w-full rounded px-4 py-3 transition-all duration-200 ${
-                isCoachingInProgress() 
+                !isAllCoachingComplete() 
                   ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
                   : 'bg-primary text-primary-foreground hover:bg-primary/90'
               } ${loading ? 'opacity-75' : ''}`}
-              title={isCoachingInProgress() ? 'Please complete your AI coaching session first, or click Reset to cancel' : ''}
+              title={!isAllCoachingComplete() ? 'Please complete your AI coaching session first, or click Reset to cancel' : ''}
             >
               {loading ? 'Generating PDF...' : 'Generate PDF'}
             </button>
@@ -532,15 +539,17 @@ export default function ResumePage() {
                       <label htmlFor="content" className="text-sm dark:text-gray-100 text-foreground">Enhance your content</label>
                     </div>
                     <button
-                      onClick={() => {
-                        if (stylingCustomization) {
-                          setCurrentAgent('styling');
-                          startStylingQuestions();
-                        } else if (contentCustomization) {
-                          setCurrentAgent('content');
-                          startContentQuestions();
-                        }
-                      }}
+                                              onClick={() => {
+                          if (stylingCustomization) {
+                            console.log('Starting styling agent');
+                            setCurrentAgent('styling');
+                            startStylingQuestions();
+                          } else if (contentCustomization) {
+                            console.log('Starting content agent');
+                            setCurrentAgent('content');
+                            startContentQuestions();
+                          }
+                        }}
                       disabled={!stylingCustomization && !contentCustomization}
                       className="px-3 py-1 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50"
                     >
@@ -590,7 +599,7 @@ export default function ResumePage() {
                       <div className="mb-4">
                         {stylingMessages.length === 0 && (
                           <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 1: What's your preferred font size - Reccomended: small (10pt) for content, or large (12pt) for readability. Also, do you want any text to be bold or italic for emphasis?
+                            Question 1: What&apos;s your preferred font size - Recommended: small (10pt) for content, or large (12pt) for readability. Also, do you want any text to be bold or italic for emphasis?
                           </div>
                         )}
                         {stylingMessages.length === 1 && (
@@ -600,7 +609,7 @@ export default function ResumePage() {
                         )}
                         {stylingMessages.length === 2 && (
                           <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 3: Any specific color preferences or section emphasis you'd like to highlight?
+                            Question 3: Any specific color preferences or section emphasis you&apos;d like to highlight?
                           </div>
                         )}
                         {stylingMessages.length >= 3 && (
@@ -614,121 +623,132 @@ export default function ResumePage() {
                       </div>
                     )}
                     
-                    {currentAgent === 'content' && (
+                                        {currentAgent === 'content' && (
                       <div className="mb-4">
-                        {/* Content Item Selection */}
-                        {contentSelectedItems.length === 0 && (
-                          <div className="space-y-3">
-                            <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
-                              Select up to 3 projects or experiences to enhance (maximum 3):
-                            </div>
-                            
-                            {/* Projects */}
-                            {profile.projects && selectedProjects.length > 0 && (
-                              <div className="space-y-2">
-                                <div className="text-xs font-medium text-gray-300">Projects:</div>
-                                {selectedProjects.map((idx) => {
-                                  const p = profile.projects[idx];
-                                  if (!p) return null;
-                                  const itemKey = `project-${idx}`;
-                                  const isSelected = contentSelectedItems.some(item => item.type === 'project' && item.index === idx);
-                                  
-                                  return (
-                                    <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            if (contentSelectedItems.length < 3) {
-                                              setContentSelectedItems(prev => [...prev, { type: 'project', index: idx, name: p.name || 'Untitled Project' }]);
-                                            }
-                                          } else {
-                                            setContentSelectedItems(prev => prev.filter(item => !(item.type === 'project' && item.index === idx)));
-                                          }
-                                        }}
-                                        disabled={!isSelected && contentSelectedItems.length >= 3}
-                                        className="w-4 h-4"
-                                      />
-                                      <div className="text-sm text-gray-100">
-                                        <div className="font-medium">{p.name || 'Untitled Project'}</div>
-                                        {/* <div className="text-xs text-gray-400 truncate">{p.summary || (p as any).description || 'No description'}</div> */}
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            
-                            {/* Experiences */}
-                            {profile.experiences && selectedExperiences.length > 0 && (
-                              <div className="space-y-2">
-                                <div className="text-xs font-medium text-gray-300">Experiences:</div>
-                                {selectedExperiences.map((idx) => {
-                                  const ex = profile.experiences[idx];
-                                  if (!ex) return null;
-                                  const itemKey = `experience-${idx}`;
-                                  const isSelected = contentSelectedItems.some(item => item.type === 'experience' && item.index === idx);
-                                  
-                                  return (
-                                    <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            if (contentSelectedItems.length < 3) {
-                                              setContentSelectedItems(prev => [...prev, { type: 'experience', index: idx, name: `${ex.companyName || 'Company'} - ${ex.role || 'Role'}` }]);
-                                            }
-                                          } else {
-                                            setContentSelectedItems(prev => prev.filter(item => !(item.type === 'experience' && item.index === idx)));
-                                          }
-                                        }}
-                                        disabled={!isSelected && contentSelectedItems.length >= 3}
-                                        className="w-4 h-4"
-                                      />
-                                      <div className="text-sm text-gray-100">
-                                        <div className="font-medium">{ex.companyName || 'Company'} - {ex.role || 'Role'}</div>
-                                        {/* <div className="text-xs text-gray-400 truncate">{ex.summary || (ex as any).description || 'No description'}</div> */}
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            
-                            {/* Start Button */}
-                            {contentSelectedItems.length > 0 && (
-                              <button
-                                onClick={() => {
-                                  setContentEnhancementStarted(true);
-                                  setCurrentContentItem(0);
-                                  setContentMessages([]);
-                                }}
-                                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                              >
-                                Start Enhancing {contentSelectedItems.length} Item{contentSelectedItems.length > 1 ? 's' : ''}
-                              </button>
-                            )}
+                        {/* Content Item Selection - Always show this first */}
+                        <div className="space-y-3">
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
+                            Select up to 3 projects or experiences to enhance (maximum 3):
                           </div>
-                        )}
+                          
+                          {/* Projects */}
+                          {profile.projects && selectedProjects.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-medium text-gray-300">Projects:</div>
+                              {selectedProjects.map((idx) => {
+                                const p = profile.projects[idx];
+                                if (!p) return null;
+                                const itemKey = `project-${idx}`;
+                                const isSelected = contentSelectedItems.some(item => item.type === 'project' && item.index === idx);
+                                
+                                return (
+                                  <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          if (contentSelectedItems.length < 3) {
+                                            console.log('Project checkbox checked - adding to selection');
+                                            setContentSelectedItems(prev => [...prev, { type: 'project', index: idx, name: p.name || 'Untitled Project' }]);
+                                            console.log('Project selected, contentEnhancementStarted should remain false:', !contentEnhancementStarted);
+                                          }
+                                        } else {
+                                          console.log('Project checkbox unchecked - removing from selection');
+                                          setContentSelectedItems(prev => prev.filter(item => !(item.type === 'project' && item.index === idx)));
+                                        }
+                                      }}
+                                      disabled={!isSelected && contentSelectedItems.length >= 3}
+                                      className="w-4 h-4"
+                                    />
+                                    <div className="text-sm text-gray-100">
+                                      <div className="font-medium">{p.name || 'Untitled Project'}</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                          
+                          {/* Experiences */}
+                          {profile.experiences && selectedExperiences.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-medium text-gray-300">Experiences:</div>
+                              {selectedExperiences.map((idx) => {
+                                const ex = profile.experiences[idx];
+                                if (!ex) return null;
+                                const itemKey = `experience-${idx}`;
+                                const isSelected = contentSelectedItems.some(item => item.type === 'experience' && item.index === idx);
+                                
+                                return (
+                                  <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          if (contentSelectedItems.length < 3) {
+                                            console.log('Experience checkbox checked - adding to selection');
+                                            const experienceName = `${ex.companyName || 'Company'} - ${ex.role || 'Role'}`;
+                                            setContentSelectedItems(prev => [...prev, { type: 'experience', index: idx, name: experienceName }]);
+                                            console.log('Experience selected, contentEnhancementStarted should remain false:', !contentEnhancementStarted);
+                                          }
+                                        } else {
+                                          console.log('Experience checkbox unchecked - removing from selection');
+                                          setContentSelectedItems(prev => prev.filter(item => !(item.type === 'experience' && item.index === idx)));
+                                        }
+                                      }}
+                                      disabled={!isSelected && contentSelectedItems.length >= 3}
+                                      className="w-4 h-4"
+                                    />
+                                    <div className="text-sm text-gray-100">
+                                      <div className="font-medium">{ex.companyName || 'Company'} - {ex.role || 'Role'}</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                          
+                          {/* Start Button - Show when items are selected */}
+                          {contentSelectedItems.length > 0 && (
+                            <button
+                              onClick={() => {
+                                console.log('Start Button clicked, setting contentEnhancementStarted to true');
+                                setContentEnhancementStarted(true);
+                                setCurrentContentItem(0);
+                                setContentMessages([]);
+                              }}
+                              className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                            >
+                              Start Enhancing {contentSelectedItems.length} Item{contentSelectedItems.length > 1 ? 's' : ''}
+                            </button>
+                          )}
+                          
+                          {/* Status Message */}
+                          {contentSelectedItems.length === 0 && (
+                            <div className="text-sm text-gray-400 text-center py-2">
+                              Select projects or experiences above to begin enhancement
+                            </div>
+                          )}
+                        </div>
                         
                         {/* Content Enhancement Questions - Only show after Start Button is clicked */}
-                        {contentSelectedItems.length > 0 && contentEnhancementStarted && currentContentItem < contentSelectedItems.length && (
-                          <div className="space-y-3">
+                        {contentEnhancementStarted && contentSelectedItems.length > 0 && currentContentItem < contentSelectedItems.length && (
+                          <div className="space-y-3 mt-4">
                             <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
                               Enhancing: {contentSelectedItems[currentContentItem].name}
                             </div>
                             
                             {contentMessages.length === 0 && (
                               <div className="text-sm font-medium mb-2 bg-gray-600 text-gray-100 p-3 rounded">
-                                Question 1: How would you like this content formatted? Choose: 'concise' (shorter, focused bullets), 'preserve' (keep current length), or 'enhance' (expand with more context and achievements)?
+                                Question 1: How would you like this content formatted? Choose: &apos;concise&apos; (shorter, focused bullets), &apos;preserve&apos; (keep current length), or &apos;enhance&apos; (expand with more context and achievements)?
                               </div>
                             )}
                             
                             {contentMessages.length === 1 && (
                               <div className="text-sm font-medium mb-2 bg-gray-600 text-gray-100 p-3 rounded">
-                                Question 2: What specific aspects would you like to emphasize or modify? (e.g., "Focus on technical skills", "Highlight leadership", "Add metrics", "Make it more ATS-friendly")
+                                Question 2: What specific aspects would you like to emphasize or modify? (e.g., &quot;Focus on technical skills&quot;, &quot;Highlight leadership&quot;, &quot;Add metrics&quot;, &quot;Make it more ATS-friendly&quot;)
                               </div>
                             )}
                             
@@ -741,11 +761,11 @@ export default function ResumePage() {
                         )}
                         
                         {/* All Items Complete */}
-                        {contentSelectedItems.length > 0 && contentEnhancementStarted && currentContentItem >= contentSelectedItems.length && (
+                        {contentEnhancementStarted && contentSelectedItems.length > 0 && currentContentItem >= contentSelectedItems.length && (
                           <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
                             🎉 All content enhancements complete! 
                             <div className="mt-2 text-sm">
-                              ✅ You can now click the "Generate PDF" button to create your customized resume with enhanced content.
+                              ✅ You can now click the &quot;Generate PDF&quot; button to create your customized resume with enhanced content.
                             </div>
                           </div>
                         )}

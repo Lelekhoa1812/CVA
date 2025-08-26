@@ -509,7 +509,7 @@ export async function POST(req: NextRequest) {
       console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
       drawText(p.name || 'Untitled Project', left, fontSize, useBold);
       // Use original content + enhanced summary if available
-      const originalContent = (p as any).description || p.summary || '';
+      const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
       const enhancedContent = enhancedProjectSummaries[idx];
       const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
       const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
@@ -561,7 +561,7 @@ export async function POST(req: NextRequest) {
       }
       
       // Use original content + enhanced summary if available
-      const originalContent = (ex as any).description || ex.summary || '';
+      const originalContent = (ex as { description?: string; summary?: string }).description || ex.summary || '';
       const enhancedContent = enhancedExperienceSummaries[idx];
       const targetedEnhancedContent = contentEnhancementData?.[`experience-${idx}`];
       const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
