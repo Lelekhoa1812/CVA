@@ -1,44 +1,88 @@
-# CV Assistant - AI-Powered Cover Letter Generator
+# CV Assistant - AI-Powered Resume & Cover Letter Platform
 
-A modern, professional web application that uses AI to generate personalized cover letters based on job descriptions and user profiles. Built with Next.js 15, TypeScript, and Tailwind CSS.
+A comprehensive, modern web application that leverages AI to generate personalized cover letters and build professional resumes. Built with Next.js 15, TypeScript, Tailwind CSS, and powered by Google Gemini AI for intelligent content generation and enhancement.
 
 [CV Assistant Demo](https://cva-mauve.vercel.app/)
+
+## 🚀 Overview
+
+CV Assistant is a full-featured professional development platform that combines AI-powered content generation with intelligent resume building. The application offers two main services:
+
+1. **AI-Powered Cover Letter Generation** - Creates personalized cover letters based on job descriptions and user profiles
+2. **Intelligent Resume Builder** - Builds professional resumes with AI coaching for styling and content enhancement
 
 ## 📸 Screenshots
 
 ### 🏠 Dashboard
 ![Dashboard](./imgsrc/dashboard.png)
-*Main dashboard with overview of the CV Assistant application*
+*Main dashboard showcasing both cover letter generation and resume customization features*
 
 ### 🔐 Authentication
 ![Credentials](./imgsrc/credential.png)
-*Secure login and registration interface*
+*Secure login and registration interface with modern design*
 
 ### 👤 Profile Management
-![Uploading Resume](./imgsrc/upload-resume.png)
-*Leverage OCR and VLM technologies to parse your Resume and enhance it*
-![Description Enhancer](./imgsrc/enhance.png)
-*Enhance your Project and Experience description*
-![Profile](./imgsrc/profile.png)
-*User profile management with experience and skills*
+![Upload Resume](./imgsrc/profile/upload-resume.png)
+*Leverage OCR and VLM technologies to parse your resume and extract information automatically*
+
+![Profile Management](./imgsrc/profile/profile.png)
+*Comprehensive user profile management with experience, skills, and project management*
+
+![Content Enhancement](./imgsrc/profile/enhance.png)
+*AI-powered enhancement of project and experience descriptions using advanced LLM techniques*
 
 ### ✨ Cover Letter Generation
-![Generate](./imgsrc/generate.png)
-*AI-powered cover letter generation interface, reasoning in CoT*
+![Generate Cover Letter](./imgsrc/cv/generate.png)
+*AI-powered cover letter generation interface with intelligent reasoning and skill matching*
+
+### 📄 Resume Builder
+
+#### Resume Creation Interface
+![Resume Builder](./imgsrc/resume/on-hold.png)
+*Main resume builder interface with project/experience selection and AI enhancement options*
+
+#### Styling Customization
+![Style Coaching](./imgsrc/resume/style-coach.png)
+*AI coaching for resume styling preferences including font size, bold/italic usage, and layout options*
+
+#### Content Enhancement
+![Content Selection](./imgsrc/resume/content-coach/select.png)
+*Intelligent selection of up to 3 projects/experiences for targeted content enhancement*
+
+![Content Editing](./imgsrc/resume/content-coach/edit.png)
+*AI-powered content enhancement with personalized questions for each selected item*
+
+#### Completion
+![Resume Complete](./imgsrc/resume/done.png)
+*Successfully generated resume with enhanced content and styling preferences applied*
 
 ## ✨ Features
 
 ### 🎯 Core Functionality
+
+#### Cover Letter Generation
 - **AI-Powered Analysis**: Analyzes job descriptions and user profiles to identify relevant skills and experiences
 - **Smart Content Generation**: Creates personalized, professional cover letters in minutes
-- **Profile Management**: Store and manage your professional experience, skills, and projects
+- **Intelligent Skill Matching**: Automatically selects relevant projects and experiences
 - **Real-time Generation**: Instant cover letter creation with copy-to-clipboard functionality
+
+#### Resume Builder
+- **Harvard-Style Templates**: Professional, ATS-friendly resume layouts
+- **AI Coaching System**: Two-phase intelligent coaching for optimal results
+  - **Styling Agent**: Customizes font sizes, bold/italic usage, and layout preferences
+  - **Content Agent**: Enhances specific projects/experiences with targeted questions
+- **Smart Content Enhancement**: 
+  - Format options: Concise (50% shorter), Preserve (current length), Enhance (50% expanded)
+  - Personalized modifications: Technical focus, leadership emphasis, metrics addition, ATS optimization
+- **Dynamic PDF Generation**: Real-time preview with professional formatting
+- **Multi-page Support**: Automatic pagination for comprehensive resumes
 
 ### 🎨 User Experience
 - **Modern Design**: Beautiful, responsive UI with gradient backgrounds and smooth animations
 - **Dark/Light Mode**: Toggle between themes with persistent preferences
 - **Professional Styling**: Clean, modern interface that builds trust and credibility
-- **Mobile Responsive**: Optimized for all device sizes
+- **Mobile Responsive**: Optimized for all device sizes with hamburger navigation
+- **Interactive Elements**: Hover effects, progress indicators, and real-time feedback
 
 ### 🔧 Technical Features
 - **TypeScript**: Full type safety and better development experience
@@ -46,7 +90,11 @@ A modern, professional web application that uses AI to generate personalized cov
 - **Tailwind CSS**: Utility-first styling with custom design system
 - **MongoDB**: Scalable database for user profiles and data storage
 - **JWT Authentication**: Secure user authentication and session management
-- **Google Gemini**: Advanced LLM for intelligent content generation, integrated with RAG, CoT and summarise-enhancer techniques.
+- **Google Gemini AI**: Advanced LLM integration with multiple specialized agents:
+  - **Gemini 2.5 Flash**: For content enhancement and markdown beautification
+  - **Gemini 2.5 Flash Lite**: For style parsing and content summarization
+- **PDF Generation**: Professional PDF creation using pdf-lib
+- **OCR Integration**: Resume parsing and information extraction
 
 ## 🚀 Quick Start
 
@@ -103,15 +151,25 @@ cv-assistant/
 │   │   ├── api/               # API routes
 │   │   │   ├── auth/         # Authentication endpoints
 │   │   │   ├── generate/     # Cover letter generation
+│   │   │   ├── enhance/      # Content enhancement
 │   │   │   ├── ocr/          # OCR functionality
-│   │   │   └── profile/      # Profile management
+│   │   │   ├── profile/      # Profile management
+│   │   │   └── resume/       # Resume building endpoints
+│   │   │       ├── harvard/  # Harvard-style PDF generation
+│   │   │       ├── coach/    # AI coaching system
+│   │   │       ├── enhance-targeted/ # Targeted content enhancement
+│   │   │       ├── style-parser/ # Style preference parsing
+│   │   │       ├── beautify/ # Markdown beautification
+│   │   │       ├── summarize/ # Content summarization
+│   │   │       └── enhance/  # Content expansion
 │   │   ├── generate/         # Cover letter generation page
+│   │   ├── resume/           # Resume builder page
 │   │   ├── login/            # Authentication pages
 │   │   ├── profile/          # Profile management page
 │   │   ├── globals.css       # Global styles
 │   │   └── layout.tsx        # Root layout
 │   ├── components/           # Reusable components
-│   │   └── Navbar.tsx        # Navigation component
+│   │   └── Navbar.tsx        # Navigation component with mobile support
 │   ├── contexts/             # React contexts
 │   │   └── ThemeContext.tsx  # Dark/light mode context
 │   └── lib/                  # Utility libraries
@@ -121,6 +179,9 @@ cv-assistant/
 │       └── models/           # Database models
 ├── public/                   # Static assets
 ├── imgsrc/                   # Application screenshots
+│   ├── resume/              # Resume builder screenshots
+│   ├── cv/                  # Cover letter screenshots
+│   └── profile/             # Profile management screenshots
 ├── tailwind.config.ts        # Tailwind configuration
 ├── next.config.ts           # Next.js configuration
 └── package.json             # Dependencies and scripts
@@ -136,7 +197,20 @@ The project uses a custom design system with CSS variables for consistent themin
   --primary: 221.2 83.2% 53.3%;
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
-  /* ... more variables */
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+  --radius: 0.5rem;
 }
 ```
 
@@ -144,8 +218,8 @@ The project uses a custom design system with CSS variables for consistent themin
 The application uses MongoDB with the following main collections:
 
 - **Users**: Authentication and profile information
-- **Experiences**: Professional experience entries
-- **Projects**: Project portfolio items
+- **Experiences**: Professional experience entries with enhanced descriptions
+- **Projects**: Project portfolio items with AI-enhanced content
 - **Skills**: User skills and competencies
 
 ## 🎯 Usage Guide
@@ -153,7 +227,7 @@ The application uses MongoDB with the following main collections:
 ### 1. Getting Started
 1. **Register/Login**: Create an account or sign in using the authentication interface
 2. **Complete Profile**: Add your professional experience, skills, and projects
-3. **Generate Cover Letters**: Use the AI-powered generator
+3. **Choose Service**: Use either cover letter generation or resume building
 
 ### 2. Creating a Cover Letter
 1. Navigate to the **Generate** page
@@ -163,11 +237,37 @@ The application uses MongoDB with the following main collections:
 5. Click **Generate Cover Letter**
 6. Copy or customize the result
 
-### 3. Profile Management
+### 3. Building a Resume
+
+#### Step 1: Basic Setup
+1. Navigate to the **Resume** page
+2. Select up to 7 projects and experiences from your profile
+3. Add your skills and expertise
+4. Choose AI enhancement options
+
+#### Step 2: AI Coaching (Optional)
+1. **Styling Customization**:
+   - Font size preferences (10pt, 11pt, 12pt)
+   - Bold/italic usage for emphasis
+   - Layout and color preferences
+   
+2. **Content Enhancement**:
+   - Select up to 3 specific items to enhance
+   - Choose content format (concise/preserve/enhance)
+   - Specify modification preferences
+   - AI processes each item individually
+
+#### Step 3: Generate PDF
+1. Click **Generate PDF** button
+2. Preview the generated resume
+3. Download or retry if needed
+
+### 4. Profile Management
 - **Add Experience**: Include job titles, companies, and descriptions
 - **Add Projects**: Showcase your portfolio with detailed descriptions
 - **Manage Skills**: List your technical and soft skills
 - **Update Information**: Keep your profile current
+- **AI Enhancement**: Use AI to improve existing descriptions
 
 ## 🔧 Development
 
@@ -271,9 +371,22 @@ CMD ["npm", "start"]
 - `GET /api/profile` - Get user profile
 - `POST /api/profile` - Update user profile
 
-### Generation Endpoints
+### Cover Letter Generation
 - `POST /api/generate/cover-letter` - Generate cover letter
 - `POST /api/generate/select` - Select relevant items
+
+### Resume Building
+- `POST /api/resume/harvard` - Generate Harvard-style PDF resume
+- `POST /api/resume/coach` - AI coaching system
+- `POST /api/resume/enhance-targeted` - Targeted content enhancement
+- `POST /api/resume/style-parser` - Parse styling preferences
+- `POST /api/resume/beautify` - Markdown beautification
+- `POST /api/resume/summarize` - Content summarization
+- `POST /api/resume/enhance` - Content expansion
+
+### Content Enhancement
+- `POST /api/enhance` - General content enhancement
+- `POST /api/ocr` - Resume parsing and OCR
 
 ## 🐛 Troubleshooting
 
@@ -294,16 +407,34 @@ CMD ["npm", "start"]
 - Check API quota limits
 - Review request format
 
+**PDF Generation Issues**
+- Check if selected items have content
+- Verify styling preferences are set
+- Ensure proper content enhancement completion
+
 ### Performance Optimization
 - Enable Next.js caching
 - Optimize images and assets
 - Use CDN for static files
 - Implement database indexing
 
+## 🔮 Future Features
+
+### Planned Enhancements
+- **Multiple Resume Templates**: Additional professional styles
+- **Advanced AI Coaching**: More sophisticated content enhancement
+- **Export Options**: Multiple format support (Word, LaTeX)
+- **Collaboration**: Team resume building and review
+- **Analytics**: Resume performance tracking and optimization
+
+### AI Improvements
+- **Multi-language Support**: Resume generation in multiple languages
+- **Industry-specific Optimization**: Tailored content for different sectors
+- **Real-time Feedback**: Live suggestions during content creation
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Lelekhoa1812/CVA/blob/main/LICENSE.txt) file for details.
-
 
 ## 📞 Support
 
@@ -313,4 +444,6 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 ---
 
-*Transform your job applications with AI-powered cover letters that stand out to employers.*
+*Transform your professional presence with AI-powered resume building and cover letter generation that stands out to employers.*
+
+**Built with ❤️ using Next.js, TypeScript, and Google Gemini AI**

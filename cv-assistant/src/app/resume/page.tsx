@@ -23,6 +23,7 @@ export default function ResumePage() {
   const [contentSelectedItems, setContentSelectedItems] = useState<Array<{ type: 'project' | 'experience', index: number, name: string }>>([]);
   const [currentContentItem, setCurrentContentItem] = useState<number>(0);
   const [contentEnhancementData, setContentEnhancementData] = useState<Record<string, any>>({});
+  const [contentEnhancementStarted, setContentEnhancementStarted] = useState<boolean>(false);
   const [stylePreferences, setStylePreferences] = useState<{
     fontSize?: string;
     useBold?: boolean;
@@ -208,8 +209,8 @@ export default function ResumePage() {
       // Styling is in progress if not all 3 questions are answered
       return stylingMessages.length < 3;
     } else if (currentAgent === 'content') {
-      // Content is in progress if items are selected but not all completed
-      if (contentSelectedItems.length === 0) return false;
+      // Content is in progress if items are selected, enhancement has started, but not all completed
+      if (contentSelectedItems.length === 0 || !contentEnhancementStarted) return false;
       return currentContentItem < contentSelectedItems.length;
     }
     
@@ -572,7 +573,14 @@ export default function ResumePage() {
                       ) : (
                         <div className="flex items-center justify-between">
                           <span>Content Progress:</span>
-                          <span>{contentSelectedItems.length > 0 ? `${currentContentItem + 1}/${contentSelectedItems.length} items enhanced` : 'Select items to enhance'}</span>
+                          <span>
+                            {contentSelectedItems.length === 0 
+                              ? 'Select items to enhance' 
+                              : !contentEnhancementStarted 
+                                ? `${contentSelectedItems.length} item(s) selected - Click Start to begin`
+                                : `${currentContentItem + 1}/${contentSelectedItems.length} items enhanced`
+                            }
+                          </span>
                         </div>
                       )}
                     </div>
@@ -693,6 +701,7 @@ export default function ResumePage() {
                             {contentSelectedItems.length > 0 && (
                               <button
                                 onClick={() => {
+                                  setContentEnhancementStarted(true);
                                   setCurrentContentItem(0);
                                   setContentMessages([]);
                                 }}
@@ -704,8 +713,8 @@ export default function ResumePage() {
                           </div>
                         )}
                         
-                        {/* Content Enhancement Questions */}
-                        {contentSelectedItems.length > 0 && currentContentItem < contentSelectedItems.length && (
+                        {/* Content Enhancement Questions - Only show after Start Button is clicked */}
+                        {contentSelectedItems.length > 0 && contentEnhancementStarted && currentContentItem < contentSelectedItems.length && (
                           <div className="space-y-3">
                             <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
                               Enhancing: {contentSelectedItems[currentContentItem].name}
@@ -732,7 +741,7 @@ export default function ResumePage() {
                         )}
                         
                         {/* All Items Complete */}
-                        {contentSelectedItems.length > 0 && currentContentItem >= contentSelectedItems.length && (
+                        {contentSelectedItems.length > 0 && contentEnhancementStarted && currentContentItem >= contentSelectedItems.length && (
                           <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
                             🎉 All content enhancements complete! 
                             <div className="mt-2 text-sm">
@@ -749,7 +758,9 @@ export default function ResumePage() {
                         <div className="text-xs dark:text-gray-100 text-muted-foreground">
                           {currentAgent === 'styling' 
                             ? 'Answer the styling questions above to customize your resume appearance.' 
-                            : 'Answer the content questions above to enhance your resume content.'}
+                            : currentAgent === 'content' && !contentEnhancementStarted
+                              ? 'Select items to enhance and click Start to begin the enhancement process.'
+                              : 'Answer the content questions above to enhance your resume content.'}
                         </div>
                       )}
                       {(currentAgent === 'styling' ? stylingMessages : contentMessages).map((m, idx) => (
@@ -762,7 +773,7 @@ export default function ResumePage() {
                     </div>
                     
                     {/* Answer input */}
-                    {(currentAgent === 'styling' ? stylingMessages.length < 3 : contentMessages.length < 2) && (
+                    {(currentAgent === 'styling' ? stylingMessages.length < 3 : (currentAgent === 'content' && contentEnhancementStarted && contentMessages.length < 2)) && (
                       <div className="mt-2 flex gap-2">
                         <textarea 
                           value={coachInput} 
@@ -802,6 +813,7 @@ export default function ResumePage() {
                           setContentSelectedItems([]);
                           setCurrentContentItem(0);
                           setContentEnhancementData({});
+                          setContentEnhancementStarted(false);
                         }}
                         className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-700"
                       >
