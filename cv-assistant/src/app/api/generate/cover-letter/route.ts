@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
-import { UserModel } from '@/lib/models/User';
+import { UserModel, type Profile as DbProfile } from '@/lib/models/User';
 import { getModel } from '@/lib/gemini';
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
-  const profile = user?.profile as any;
+  const profile = user?.profile as DbProfile | undefined;
   type Item = { type: 'project' | 'experience'; name: string; description: string; summary: string };
   const items: Item[] = [
     ...((profile?.projects || []).map((p: { name: string; description: string; summary: string }) => ({ type: 'project' as const, name: p.name, description: p.description, summary: p.summary })) ),
@@ -51,28 +51,29 @@ export async function POST(req: NextRequest) {
       - Avoid generic fluff, not markdown, no comments - be specific and results-oriented
       - Match the tone and style appropriate for the company and role`;
 
-  async function tryGenerate(modelName: string) {
-    const model = getModel(modelName as any);
+  type ModelName = 'gemini-2.5-pro' | 'gemini-2.5-flash';
+  async function tryGenerate(modelName: ModelName) {
+    const model = getModel(modelName);
     const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
     return res.response.text().trim();
   }
 
   try {
     // First attempt with pro model
-    let text = await tryGenerate('gemini-2.5-pro');
+    const text = await tryGenerate('gemini-2.5-pro');
     if (!text) throw new Error('Empty cover letter');
     return NextResponse.json({ coverLetter: text });
   } catch (e1) {
     // Retry once after brief delay
     try {
       await new Promise(r => setTimeout(r, 500));
-      let text = await tryGenerate('gemini-2.5-pro');
+      const text = await tryGenerate('gemini-2.5-pro');
       if (!text) throw new Error('Empty cover letter');
       return NextResponse.json({ coverLetter: text });
     } catch (e2) {
       // Fallback to flash model
       try {
-        let text = await tryGenerate('gemini-2.5-flash');
+        const text = await tryGenerate('gemini-2.5-flash');
         if (!text) throw new Error('Empty cover letter');
         return NextResponse.json({ coverLetter: text, fallback: 'flash' });
       } catch (e3) {
