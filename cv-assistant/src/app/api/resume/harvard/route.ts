@@ -3,7 +3,7 @@ import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/gemini';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -181,7 +181,14 @@ export async function POST(req: NextRequest) {
     if (y - required < bottom) newPage();
   }
 
-  function drawText(text: string, x: number, size = 11, bold = false) {
+  function getAccentColor(): RGB {
+    const color = stylePreferences?.accentColor || 'black';
+    if (color === 'dark-blue') return rgb(0.1, 0.2, 0.5);
+    if (color === 'dark-gray') return rgb(0.2, 0.2, 0.2);
+    return rgb(0, 0, 0);
+  }
+
+  function drawText(text: string, x: number, size = 11, bold = false, colorOverride?: RGB) {
     if (!text || !text.trim()) return;
     ensureSpace(size + 8);
     
@@ -205,90 +212,106 @@ export async function POST(req: NextRequest) {
     }
     
     const font = finalBold ? helvBold : helv;
-    page.drawText(text, { x, y, size: finalSize, font, color: rgb(0, 0, 0) });
+    const color: RGB = colorOverride || rgb(0, 0, 0);
+    page.drawText(text, { x, y, size: finalSize, font, color });
     y -= finalSize + 6;
   }
 
   function drawMarkdownText(text: string, x: number, size = 11) {
-    // Split text into markdown and regular parts
-    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/);
-    let currentX = x;
-    const maxWidth = right - left;
-    
     // Apply styling preferences
     let finalSize = size;
-    let useBold = true;
-    let useItalic = true;
-    
+    let allowBold = true;
+    let allowItalic = true;
     if (stylePreferences) {
       if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
         const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
-        if (sizeMatch) {
-          finalSize = parseInt(sizeMatch[1]);
-        }
+        if (sizeMatch) finalSize = parseInt(sizeMatch[1]);
       }
-      if (stylePreferences.useBold !== undefined) {
-        useBold = stylePreferences.useBold;
-      }
-      if (stylePreferences.useItalic !== undefined) {
-        useItalic = stylePreferences.useItalic;
-      }
+      if (stylePreferences.useBold !== undefined) allowBold = stylePreferences.useBold;
+      if (stylePreferences.useItalic !== undefined) allowItalic = stylePreferences.useItalic;
     }
-    
-    for (const part of parts) {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        // Bold text
-        const content = part.slice(2, -2);
-        const font = useBold ? helvBold : helv;
-        const width = font.widthOfTextAtSize(content, finalSize);
-        
-        // Check if we need to wrap to next line
-        if (currentX + width > right) {
-          currentX = x;
-          y -= finalSize + 4;
-          ensureSpace(finalSize + 4);
+
+    // Normalize line breaks into paragraphs
+    const paragraphs = (text || '').split(/\n+/).filter(Boolean);
+    for (const paragraph of paragraphs) {
+      // Tokenize paragraph by markdown markers into segments with flags
+      const segsRaw = paragraph.split(/(\*\*.*?\*\*|\*.*?\*)/);
+      type Seg = { text: string; bold: boolean };
+      const segments: Seg[] = [];
+      for (const s of segsRaw) {
+        if (!s) continue;
+        if (s.startsWith('**') && s.endsWith('**')) {
+          const content = s.slice(2, -2);
+          segments.push({ text: content, bold: allowBold });
+        } else if (s.startsWith('*') && s.endsWith('*')) {
+          const content = s.slice(1, -1);
+          // No italics font in pdf-lib default; keep regular weight
+          segments.push({ text: content, bold: false });
+        } else {
+          segments.push({ text: s, bold: false });
         }
-        
-        page.drawText(content, { x: currentX, y, size: finalSize, font, color: rgb(0, 0, 0) });
-        currentX += width;
-      } else if (part.startsWith('*') && part.endsWith('*')) {
-        // Italic text (rendered as regular since pdf-lib doesn't support italic)
-        const content = part.slice(1, -1);
-        const font = helv;
-        const width = font.widthOfTextAtSize(content, finalSize);
-        
-        // Check if we need to wrap to next line
-        if (currentX + width > right) {
-          currentX = x;
-          y -= finalSize + 4;
-          ensureSpace(finalSize + 4);
-        }
-        
-        page.drawText(content, { x: currentX, y, size: finalSize, font, color: rgb(0, 0, 0) });
-        currentX += width;
-      } else if (part.trim()) {
-        // Regular text - split into words and handle wrapping
-        const words = part.split(/\s+/);
-        for (const word of words) {
-          if (!word.trim()) continue;
-          
-          const wordWidth = helv.widthOfTextAtSize(word + ' ', finalSize);
-          
-          // Check if we need to wrap to next line
-          if (currentX + wordWidth > right) {
-            currentX = x;
-            y -= finalSize + 4;
-            ensureSpace(finalSize + 4);
+      }
+
+      // Split into word tokens preserving bold flag
+      type Token = { text: string; bold: boolean };
+      const tokens: Token[] = [];
+      for (const seg of segments) {
+        const words = seg.text.split(/(\s+)/).filter(w => w.length > 0);
+        for (const w of words) tokens.push({ text: w, bold: seg.bold });
+      }
+
+      // Build lines with wrapping
+      const maxWidth = right - left;
+      let line: Token[] = [];
+      let lineWidth = 0;
+      const spaceCache = { helv: new Map<number, number>(), helvBold: new Map<number, number>() };
+      const widthOf = (t: Token) => (t.bold ? helvBold : helv).widthOfTextAtSize(t.text, finalSize);
+      const isSpace = (t: Token) => /^\s+$/.test(t.text);
+
+      const flushLine = (justify: boolean) => {
+        if (line.length === 0) return;
+        ensureSpace(finalSize + 4);
+        if (!justify) {
+          // Left draw
+          let cx = x;
+          for (const tk of line) {
+            const f = tk.bold ? helvBold : helv;
+            page.drawText(tk.text, { x: cx, y, size: finalSize, font: f });
+            cx += widthOf(tk);
           }
-          
-          page.drawText(word + ' ', { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
-          currentX += wordWidth;
+        } else {
+          // Distribute extra space across space tokens
+          const naturalWidth = line.reduce((acc, tk) => acc + widthOf(tk), 0);
+          const spaces = line.filter(isSpace);
+          const extra = Math.max(0, maxWidth - (naturalWidth));
+          const extraPerSpace = spaces.length > 0 ? extra / spaces.length : 0;
+          let cx = x;
+          for (const tk of line) {
+            const f = tk.bold ? helvBold : helv;
+            page.drawText(tk.text, { x: cx, y, size: finalSize, font: f });
+            let add = widthOf(tk);
+            if (extraPerSpace && isSpace(tk)) add += extraPerSpace;
+            cx += add;
+          }
         }
+        y -= finalSize + 4;
+        line = [];
+        lineWidth = 0;
+      };
+
+      for (const tk of tokens) {
+        const w = widthOf(tk);
+        if (lineWidth + w > maxWidth && line.length > 0) {
+          // flush current line (justify except if only one word)
+          const justify = line.some(isSpace) && line.filter(t => !isSpace(t)).length > 1;
+          flushLine(justify);
+        }
+        line.push(tk);
+        lineWidth += w;
       }
+      // Last line not justified
+      flushLine(false);
     }
-    
-    // Move to next line after processing all parts
-    y -= finalSize + 4;
   }
 
   function drawSection(title: string) {
@@ -312,9 +335,9 @@ export async function POST(req: NextRequest) {
     }
     
     const font = useBold ? helvBold : helv;
-    page.drawText(title.toUpperCase(), { x: left, y, size: titleSize, font });
+    page.drawText(title.toUpperCase(), { x: left, y, size: titleSize, font, color: getAccentColor() });
     y -= titleSize + 6;
-    page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
+    page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 1, color: getAccentColor() });
     y -= 10;
   }
 
@@ -452,7 +475,7 @@ export async function POST(req: NextRequest) {
   
   const nameWidth = nameFont.widthOfTextAtSize(nameText, nameSize);
   const nameX = (width - nameWidth) / 2;
-  page.drawText(nameText, { x: nameX, y, size: nameSize, font: nameFont });
+  page.drawText(nameText, { x: nameX, y, size: nameSize, font: nameFont, color: getAccentColor() });
   y -= nameSize + 4;
   
   // Single-line centered contact; shrink font to fit one line
@@ -507,7 +530,7 @@ export async function POST(req: NextRequest) {
       const p = profile.projects[idx];
       if (!p) continue;
       console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
-      drawText(p.name || 'Untitled Project', left, fontSize, useBold);
+      drawText(p.name || 'Untitled Project', left, fontSize, useBold, getAccentColor());
       // Use original content + enhanced summary if available
       const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
       const enhancedContent = enhancedProjectSummaries[idx];
@@ -552,7 +575,7 @@ export async function POST(req: NextRequest) {
       }
       
       // Draw header (left-aligned)
-      drawText(headerText, left, headerFontSize, useBold);
+      drawText(headerText, left, headerFontSize, useBold, getAccentColor());
       
       // Draw dates (right-aligned)
       if (timeInfo && timeInfo !== ' - ') {

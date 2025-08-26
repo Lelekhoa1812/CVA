@@ -12,21 +12,22 @@ export async function POST(req: NextRequest) {
   }
 
   const model = getModel('gemini-2.5-flash');
-  const prompt = `Transform this ${contentType} content into beautiful, professional Markdown format. 
+  const prompt = `Rewrite the following ${contentType} content by PRESERVING all original facts and wording as much as possible and ONLY INSERTING Markdown emphasis markers:
+
+STRICT RULES:
+- Do NOT add new facts.
+- Do NOT remove existing facts.
+- Do NOT change names, dates, companies, metrics, or technologies.
+- Do NOT hallucinate.
+- Keep original bullet structure and order.
+- You may split long lines into multiple bullets if absolutely necessary, but keep wording.
+- Only add Markdown emphasis: use **bold** for key achievements, metrics, and impact; use *italic* for technologies/tools/methodologies.
+- Return ONLY the Markdown content, no commentary.
 
 Style preferences: ${JSON.stringify(stylePreferences)}
 
-Rules:
-- Use **bold** for key achievements, metrics, and important points
-- Use *italic* for technologies, tools, and methodologies
-- Keep bullet points concise and impactful
-- Maintain professional tone
-- Use Markdown syntax: **bold**, *italic*, and bullet points
-
 Original content:
-${content}
-
-Return only the Markdown formatted content, no explanations.`;
+${content}`;
 
   try {
     const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });

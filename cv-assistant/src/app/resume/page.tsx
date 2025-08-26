@@ -50,13 +50,20 @@ export default function ResumePage() {
     italicSections?: string[];
     contentDensity?: string;
     additionalNotes?: string;
+    accentColor?: 'black' | 'dark-blue' | 'dark-gray';
   } | null>(null);
+
+  // Local UI state for styling controls
+  const [uiFontSize, setUiFontSize] = useState<'8pt' | '10pt' | '12pt' | '14pt'>('11pt' as any);
+  const [uiUseBold, setUiUseBold] = useState<boolean>(false);
+  const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
+  const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
 
 
 
   // Function to start styling questions
   function startStylingQuestions() {
-    // No need to call AI - questions are hard-coded in the UI
+    // Switch to styling agent and show UI controls
     setStylingMessages([]);
   }
 
@@ -151,12 +158,37 @@ export default function ResumePage() {
           
           if (enhancementResponse.ok) {
             const enhancementData = await enhancementResponse.json();
-            
-            // Store enhanced content
+
+            // Optionally beautify with bold/italic touches if enabled in styling preferences
+            let finalEnhancedContent: string = enhancementData.enhancedContent;
+            const wantsEmphasis = !!(stylePreferences?.useBold || stylePreferences?.useItalic);
+            if (wantsEmphasis) {
+              try {
+                const beautifyRes = await fetch('/api/resume/beautify', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    content: enhancementData.enhancedContent,
+                    contentType: currentItem.type,
+                    stylePreferences
+                  })
+                });
+                if (beautifyRes.ok) {
+                  const beautified = await beautifyRes.json();
+                  if (beautified?.formattedContent) {
+                    finalEnhancedContent = beautified.formattedContent;
+                  }
+                }
+              } catch (e) {
+                console.warn('Beautify step failed, using raw enhanced content');
+              }
+            }
+
+            // Store enhanced (and possibly beautified) content
             const key = `${currentItem.type}-${currentItem.index}`;
             setContentEnhancementData(prev => ({
               ...prev,
-              [key]: enhancementData.enhancedContent
+              [key]: finalEnhancedContent
             }));
             
             // Remove processing message and show success
@@ -202,8 +234,8 @@ export default function ResumePage() {
     if (!currentAgent) return false;
     
     if (currentAgent === 'styling') {
-      // Styling is in progress if not all 3 questions are answered
-      return stylingMessages.length < 3;
+      // Styling is in progress if preferences not set yet
+      return stylingCustomization && !stylePreferences;
     } else if (currentAgent === 'content') {
       // Content is in progress if items are selected, enhancement has started, but not all completed
       if (contentSelectedItems.length === 0 || !contentEnhancementStarted) {
@@ -225,11 +257,7 @@ export default function ResumePage() {
     
     // Check styling agent
     if (stylingCustomization) {
-      if (currentAgent === 'styling') {
-        return stylingMessages.length >= 3;
-      }
-      // If styling is not the current agent but was enabled, check if it's complete
-      if (stylingMessages.length < 3) return false;
+      if (!stylePreferences) return false;
     }
     
     // Check content agent
@@ -577,7 +605,7 @@ export default function ResumePage() {
                       {currentAgent === 'styling' ? (
                         <div className="flex items-center justify-between">
                           <span>Styling Progress:</span>
-                          <span>{stylingMessages.length}/3 questions answered</span>
+                          <span>{stylePreferences ? 2 : 0}/2 tasks completed</span>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
@@ -596,28 +624,91 @@ export default function ResumePage() {
                     
                     {/* Display current question */}
                     {currentAgent === 'styling' && (
-                      <div className="mb-4">
-                        {stylingMessages.length === 0 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 1: What&apos;s your preferred font size - Recommended: small (10pt) for content, or large (12pt) for readability. Also, do you want any text to be bold or italic for emphasis?
+                      <div className="mb-4 space-y-3">
+                        <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
+                          Styling Preferences
+                        </div>
+
+                        {/* Font size dropdown */}
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm dark:text-gray-100 text-foreground w-40">Font size</label>
+                          <select
+                            className="border rounded px-2 py-1 bg-background text-foreground"
+                            value={uiFontSize as any}
+                            onChange={e => setUiFontSize(e.target.value as any)}
+                          >
+                            <option value="8pt">extra-small (8pt)</option>
+                            <option value="10pt">small (10pt)</option>
+                            <option value="12pt">large (12pt)</option>
+                            <option value="14pt">extra-large (14pt)</option>
+                          </select>
+                        </div>
+
+                        {/* Bold/Italic checkboxes */}
+                        <div className="flex items-center gap-6">
+                          <label className="text-sm dark:text-gray-100 text-foreground w-40">Emphasis</label>
+                          <label className="flex items-center gap-2 text-sm text-foreground dark:text-white">
+                            <input type="checkbox" className="w-4 h-4" checked={uiUseBold} onChange={e=>setUiUseBold(e.target.checked)} /> Bold
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-foreground dark:text-white">
+                            <input type="checkbox" className="w-4 h-4" checked={uiUseItalic} onChange={e=>setUiUseItalic(e.target.checked)} /> Italic
+                          </label>
+                        </div>
+
+                        {/* Accent color selection */}
+                        <div className="flex items-center gap-6">
+                          <label className="text-sm dark:text-gray-100 text-foreground w-40">Accent color</label>
+                          <div className="flex items-center gap-4 text-sm text-foreground dark:text-white">
+                            <label className="flex items-center gap-2">
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='black'} onChange={()=>setUiAccentColor('black')} /> Default (black)
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-blue'} onChange={()=>setUiAccentColor('dark-blue')} /> Dark blue
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-gray'} onChange={()=>setUiAccentColor('dark-gray')} /> Dark gray
+                            </label>
                           </div>
-                        )}
-                        {stylingMessages.length === 1 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 2: Do you prefer a traditional professional style or a more modern creative layout?
-                          </div>
-                        )}
-                        {stylingMessages.length === 2 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 3: Any specific color preferences or section emphasis you&apos;d like to highlight?
-                          </div>
-                        )}
-                        {stylingMessages.length >= 3 && (
-                          <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
-                            ✅ All styling questions answered! 
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-3 py-1 bg-primary text-primary-foreground rounded text-sm"
+                            onClick={() => {
+                              setStylePreferences({
+                                fontSize: uiFontSize,
+                                useBold: uiUseBold,
+                                useItalic: uiUseItalic,
+                                boldSections: [],
+                                italicSections: [],
+                                contentDensity: 'balanced',
+                                additionalNotes: 'Set via UI',
+                                accentColor: uiAccentColor
+                              });
+                              if (contentCustomization) {
+                                setTimeout(() => {
+                                  setCurrentAgent('content');
+                                  startContentQuestions();
+                                }, 500);
+                              }
+                            }}
+                          >
+                            Save Preferences
+                          </button>
+                        </div>
+
+                        {/* Completion banners */}
+                        {stylePreferences && !contentCustomization && (
+                          <div className="text-sm font-medium mt-3 bg-green-600 text-white p-3 rounded">
+                            🎉 All stylings enhancements complete!
                             <div className="mt-2 text-sm">
-                              {contentCustomization ? 'Transitioning to content enhancement...' : 'Styling preferences set successfully!'}
+                              ✅ You can now click the &quot;Generate PDF&quot; button to create your customized resume with enhanced stylings.
                             </div>
+                          </div>
+                        )}
+                        {stylePreferences && contentCustomization && (
+                          <div className="text-sm font-medium mt-3 bg-gray-700 text-gray-100 p-3 rounded">
+                            Styling preferences set successfully! ✅
                           </div>
                         )}
                       </div>
@@ -793,7 +884,7 @@ export default function ResumePage() {
                     </div>
                     
                     {/* Answer input */}
-                    {(currentAgent === 'styling' ? stylingMessages.length < 3 : (currentAgent === 'content' && contentEnhancementStarted && contentMessages.length < 2)) && (
+                    {(currentAgent === 'styling' ? false : (currentAgent === 'content' && contentEnhancementStarted && contentMessages.length < 2)) && (
                       <div className="mt-2 flex gap-2">
                         <textarea 
                           value={coachInput} 
