@@ -24,6 +24,7 @@ export default function ResumePage() {
   const [currentContentItem, setCurrentContentItem] = useState<number>(0);
   const [contentEnhancementData, setContentEnhancementData] = useState<Record<string, string>>({});
   const [contentEnhancementStarted, setContentEnhancementStarted] = useState<boolean>(false);
+  type FontSize = '8pt' | '10pt' | '11pt' | '12pt' | '14pt';
   
   // Debug agent changes
   useEffect(() => {
@@ -54,7 +55,7 @@ export default function ResumePage() {
   } | null>(null);
 
   // Local UI state for styling controls
-  const [uiFontSize, setUiFontSize] = useState<'8pt' | '10pt' | '12pt' | '14pt'>('11pt' as any);
+  const [uiFontSize, setUiFontSize] = useState<FontSize>('11pt');
   const [uiUseBold, setUiUseBold] = useState<boolean>(false);
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
   const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
@@ -634,8 +635,8 @@ export default function ResumePage() {
                           <label className="text-sm dark:text-gray-100 text-foreground w-40">Font size</label>
                           <select
                             className="border rounded px-2 py-1 bg-background text-foreground"
-                            value={uiFontSize as any}
-                            onChange={e => setUiFontSize(e.target.value as any)}
+                            value={uiFontSize}
+                            onChange={e => setUiFontSize(e.target.value as FontSize)}
                           >
                             <option value="8pt">extra-small (8pt)</option>
                             <option value="10pt">small (10pt)</option>
