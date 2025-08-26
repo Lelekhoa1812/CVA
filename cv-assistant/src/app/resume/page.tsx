@@ -20,6 +20,9 @@ export default function ResumePage() {
   const [contentMessages, setContentMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
   const [coachInput, setCoachInput] = useState<string>('');
   const [currentAgent, setCurrentAgent] = useState<'styling' | 'content' | null>(null);
+  const [contentSelectedItems, setContentSelectedItems] = useState<Array<{ type: 'project' | 'experience', index: number, name: string }>>([]);
+  const [currentContentItem, setCurrentContentItem] = useState<number>(0);
+  const [contentEnhancementData, setContentEnhancementData] = useState<Record<string, any>>({});
   const [stylePreferences, setStylePreferences] = useState<{
     fontSize?: string;
     useBold?: boolean;
@@ -70,8 +73,8 @@ export default function ResumePage() {
     setContentMessages([]);
   }
 
-  // Function to handle question submission
-  function handleQuestionSubmit() {
+    // Function to handle question submission
+  async function handleQuestionSubmit() {
     if (!coachInput.trim()) return;
     
     const currentMessages = currentAgent === 'styling' ? stylingMessages : contentMessages;
@@ -97,22 +100,123 @@ export default function ResumePage() {
           }, 1500); // Wait 1.5 seconds before transitioning
         }
       }
-    } else {
+    } else if (currentAgent === 'content') {
       setContentMessages(newMessages);
       
-      // Process content preferences when all 2 questions are answered
+      // Process content enhancement when both questions are answered for current item
       if (newMessages.length >= 2) {
-        // Parse content preferences manually
-        const preferences = parseContentPreferences(newMessages);
-        setStylePreferences(prev => ({ ...prev, ...preferences }));
-        
-        // Show completion message
-        setContentMessages(m => [...m, { role: 'assistant', content: 'Content preferences set successfully! ✅' }]);
+        try {
+          // Get current item details
+          const currentItem = contentSelectedItems[currentContentItem];
+          if (!currentItem) return;
+          
+          // Get the original content
+          let originalContent = '';
+          let itemName = '';
+          
+          if (currentItem.type === 'project') {
+            const p = profile?.projects?.[currentItem.index];
+            if (p) {
+              originalContent = (p as any).description || p.summary || '';
+              itemName = p.name || 'Untitled Project';
+            }
+          } else {
+            const ex = profile?.experiences?.[currentItem.index];
+            if (ex) {
+              originalContent = (ex as any).description || ex.summary || '';
+              itemName = `${ex.companyName || 'Company'} - ${ex.role || 'Role'}`;
+            }
+          }
+          
+          if (!originalContent) {
+            setContentMessages(m => [...m, { role: 'assistant', content: '⚠️ No content found for this item. Moving to next item...' }]);
+            moveToNextContentItem();
+            return;
+          }
+          
+          // Show processing message
+          setContentMessages(m => [...m, { role: 'assistant', content: 'Processing your enhancement request...' }]);
+          
+          // Send to LLM for enhancement
+          const enhancementResponse = await fetch('/api/resume/enhance-targeted', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              itemType: currentItem.type,
+              itemName,
+              originalContent,
+              userPreferences: {
+                format: newMessages[0].content, // First answer: concise/preserve/enhance
+                modifications: newMessages[1].content // Second answer: specific aspects
+              }
+            })
+          });
+          
+          if (enhancementResponse.ok) {
+            const enhancementData = await enhancementResponse.json();
+            
+            // Store enhanced content
+            const key = `${currentItem.type}-${currentItem.index}`;
+            setContentEnhancementData(prev => ({
+              ...prev,
+              [key]: enhancementData.enhancedContent
+            }));
+            
+            // Remove processing message and show success
+            setContentMessages(m => m.filter(msg => !msg.content.includes('Processing')));
+            setContentMessages(m => [...m, { role: 'assistant', content: `✅ Enhanced content for "${itemName}"!` }]);
+            
+            // Move to next item or complete
+            setTimeout(() => {
+              moveToNextContentItem();
+            }, 1000);
+          } else {
+            throw new Error('Failed to enhance content');
+          }
+        } catch (error) {
+          console.error('Content enhancement failed:', error);
+          setContentMessages(m => m.filter(msg => !msg.content.includes('Processing')));
+          setContentMessages(m => [...m, { role: 'assistant', content: '⚠️ Enhancement failed. Moving to next item...' }]);
+          setTimeout(() => {
+            moveToNextContentItem();
+          }, 1000);
+        }
       }
     }
     
     setCoachInput('');
   }
+
+  // Function to move to next content item
+  function moveToNextContentItem() {
+    if (currentContentItem + 1 < contentSelectedItems.length) {
+      setCurrentContentItem(currentContentItem + 1);
+      setContentMessages([]);
+    } else {
+      // All items completed
+      setCurrentContentItem(contentSelectedItems.length);
+      setContentMessages([]);
+    }
+  }
+
+  // Function to check if coaching is in progress
+  function isCoachingInProgress() {
+    // Check if any agent is active
+    if (!currentAgent) return false;
+    
+    if (currentAgent === 'styling') {
+      // Styling is in progress if not all 3 questions are answered
+      return stylingMessages.length < 3;
+    } else if (currentAgent === 'content') {
+      // Content is in progress if items are selected but not all completed
+      if (contentSelectedItems.length === 0) return false;
+      return currentContentItem < contentSelectedItems.length;
+    }
+    
+    return false;
+  }
+
+
 
   // Function to manually parse styling preferences
   function parseStylingPreferences(messages: Array<{ role: string; content: string }>) {
@@ -216,13 +320,22 @@ export default function ResumePage() {
       selectedExperiences,
       enhance,
       qa: [...stylingMessages, ...contentMessages],
-      stylePreferences
+      stylePreferences,
+      contentEnhancementData
     });
     
     const res = await fetch('/api/resume/harvard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: [...stylingMessages, ...contentMessages], stylePreferences })
+      body: JSON.stringify({ 
+        skills, 
+        selectedProjects, 
+        selectedExperiences, 
+        enhance, 
+        qa: [...stylingMessages, ...contentMessages], 
+        stylePreferences,
+        contentEnhancementData
+      })
     });
     
     if (!res.ok) {
@@ -339,10 +452,30 @@ export default function ResumePage() {
               )}
             </div>
 
+            {/* Coaching Status Indicator */}
+            {isCoachingInProgress() && (
+              <div className="mb-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm text-yellow-800 font-medium">
+                    AI Coaching in Progress
+                  </span>
+                </div>
+                <p className="text-xs text-yellow-700 mt-1">
+                  Please complete your coaching session or click Reset to cancel
+                </p>
+              </div>
+            )}
+
             <button
-              onClick={generate}
-              disabled={loading || limitReached}
-              className="w-full bg-primary text-primary-foreground rounded px-4 py-3 hover:bg-primary/90 disabled:opacity-50"
+              onClick={isCoachingInProgress() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : generate}
+              disabled={loading || limitReached || isCoachingInProgress()}
+              className={`w-full rounded px-4 py-3 transition-all duration-200 ${
+                isCoachingInProgress() 
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+              } ${loading ? 'opacity-75' : ''}`}
+              title={isCoachingInProgress() ? 'Please complete your AI coaching session first, or click Reset to cancel' : ''}
             >
               {loading ? 'Generating PDF...' : 'Generate PDF'}
             </button>
@@ -429,6 +562,21 @@ export default function ResumePage() {
                       )}
                     </div>
                     
+                    {/* Progress Indicator */}
+                    <div className="mb-3 p-2 bg-gray-700 rounded text-xs text-gray-300">
+                      {currentAgent === 'styling' ? (
+                        <div className="flex items-center justify-between">
+                          <span>Styling Progress:</span>
+                          <span>{stylingMessages.length}/3 questions answered</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span>Content Progress:</span>
+                          <span>{contentSelectedItems.length > 0 ? `${currentContentItem + 1}/${contentSelectedItems.length} items enhanced` : 'Select items to enhance'}</span>
+                        </div>
+                      )}
+                    </div>
+                    
                     {/* Display current question */}
                     {currentAgent === 'styling' && (
                       <div className="mb-4">
@@ -448,8 +596,11 @@ export default function ResumePage() {
                           </div>
                         )}
                         {stylingMessages.length >= 3 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-green-600">
-                            ✅ All styling questions answered! Processing preferences...
+                          <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
+                            ✅ All styling questions answered! 
+                            <div className="mt-2 text-sm">
+                              {contentCustomization ? 'Transitioning to content enhancement...' : 'Styling preferences set successfully!'}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -457,19 +608,136 @@ export default function ResumePage() {
                     
                     {currentAgent === 'content' && (
                       <div className="mb-4">
-                        {contentMessages.length === 0 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 1: How would you like your resume content formatted? Choose: 'concise' (shorter, focused bullets), 'balanced' (standard length), or 'detailed' (expanded with more context and achievements)?
+                        {/* Content Item Selection */}
+                        {contentSelectedItems.length === 0 && (
+                          <div className="space-y-3">
+                            <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
+                              Select up to 3 projects or experiences to enhance (maximum 3):
+                            </div>
+                            
+                            {/* Projects */}
+                            {profile.projects && selectedProjects.length > 0 && (
+                              <div className="space-y-2">
+                                <div className="text-xs font-medium text-gray-300">Projects:</div>
+                                {selectedProjects.map((idx) => {
+                                  const p = profile.projects[idx];
+                                  if (!p) return null;
+                                  const itemKey = `project-${idx}`;
+                                  const isSelected = contentSelectedItems.some(item => item.type === 'project' && item.index === idx);
+                                  
+                                  return (
+                                    <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            if (contentSelectedItems.length < 3) {
+                                              setContentSelectedItems(prev => [...prev, { type: 'project', index: idx, name: p.name || 'Untitled Project' }]);
+                                            }
+                                          } else {
+                                            setContentSelectedItems(prev => prev.filter(item => !(item.type === 'project' && item.index === idx)));
+                                          }
+                                        }}
+                                        disabled={!isSelected && contentSelectedItems.length >= 3}
+                                        className="w-4 h-4"
+                                      />
+                                      <div className="text-sm text-gray-100">
+                                        <div className="font-medium">{p.name || 'Untitled Project'}</div>
+                                        {/* <div className="text-xs text-gray-400 truncate">{p.summary || (p as any).description || 'No description'}</div> */}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            
+                            {/* Experiences */}
+                            {profile.experiences && selectedExperiences.length > 0 && (
+                              <div className="space-y-2">
+                                <div className="text-xs font-medium text-gray-300">Experiences:</div>
+                                {selectedExperiences.map((idx) => {
+                                  const ex = profile.experiences[idx];
+                                  if (!ex) return null;
+                                  const itemKey = `experience-${idx}`;
+                                  const isSelected = contentSelectedItems.some(item => item.type === 'experience' && item.index === idx);
+                                  
+                                  return (
+                                    <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            if (contentSelectedItems.length < 3) {
+                                              setContentSelectedItems(prev => [...prev, { type: 'experience', index: idx, name: `${ex.companyName || 'Company'} - ${ex.role || 'Role'}` }]);
+                                            }
+                                          } else {
+                                            setContentSelectedItems(prev => prev.filter(item => !(item.type === 'experience' && item.index === idx)));
+                                          }
+                                        }}
+                                        disabled={!isSelected && contentSelectedItems.length >= 3}
+                                        className="w-4 h-4"
+                                      />
+                                      <div className="text-sm text-gray-100">
+                                        <div className="font-medium">{ex.companyName || 'Company'} - {ex.role || 'Role'}</div>
+                                        {/* <div className="text-xs text-gray-400 truncate">{ex.summary || (ex as any).description || 'No description'}</div> */}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            
+                            {/* Start Button */}
+                            {contentSelectedItems.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  setCurrentContentItem(0);
+                                  setContentMessages([]);
+                                }}
+                                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                              >
+                                Start Enhancing {contentSelectedItems.length} Item{contentSelectedItems.length > 1 ? 's' : ''}
+                              </button>
+                            )}
                           </div>
                         )}
-                        {contentMessages.length === 1 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
-                            Question 2: For your projects and experiences, what are your most impressive quantified achievements? (e.g., 'Increased sales by 25%', 'Led team of 8 developers', 'Reduced costs by $50K'). If you don't want to enhance any, reply 'None'.
+                        
+                        {/* Content Enhancement Questions */}
+                        {contentSelectedItems.length > 0 && currentContentItem < contentSelectedItems.length && (
+                          <div className="space-y-3">
+                            <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
+                              Enhancing: {contentSelectedItems[currentContentItem].name}
+                            </div>
+                            
+                            {contentMessages.length === 0 && (
+                              <div className="text-sm font-medium mb-2 bg-gray-600 text-gray-100 p-3 rounded">
+                                Question 1: How would you like this content formatted? Choose: 'concise' (shorter, focused bullets), 'preserve' (keep current length), or 'enhance' (expand with more context and achievements)?
+                              </div>
+                            )}
+                            
+                            {contentMessages.length === 1 && (
+                              <div className="text-sm font-medium mb-2 bg-gray-600 text-gray-100 p-3 rounded">
+                                Question 2: What specific aspects would you like to emphasize or modify? (e.g., "Focus on technical skills", "Highlight leadership", "Add metrics", "Make it more ATS-friendly")
+                              </div>
+                            )}
+                            
+                            {contentMessages.length >= 2 && (
+                              <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
+                                ✅ Content enhancement complete! {currentContentItem + 1 < contentSelectedItems.length ? 'Moving to next item...' : 'All items enhanced!'}
+                              </div>
+                            )}
                           </div>
                         )}
-                        {contentMessages.length >= 2 && (
-                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-green-600">
-                            ✅ All content questions answered! Processing preferences...
+                        
+                        {/* All Items Complete */}
+                        {contentSelectedItems.length > 0 && currentContentItem >= contentSelectedItems.length && (
+                          <div className="text-sm font-medium mb-2 bg-green-600 text-white p-3 rounded">
+                            🎉 All content enhancements complete! 
+                            <div className="mt-2 text-sm">
+                              ✅ You can now click the "Generate PDF" button to create your customized resume with enhanced content.
+                            </div>
                           </div>
                         )}
                       </div>
@@ -531,6 +799,9 @@ export default function ResumePage() {
                           setContentCustomization(false);
                           setStylingMessages([]);
                           setContentMessages([]);
+                          setContentSelectedItems([]);
+                          setCurrentContentItem(0);
+                          setContentEnhancementData({});
                         }}
                         className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-700"
                       >

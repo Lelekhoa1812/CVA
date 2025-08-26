@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { skills, selectedProjects, selectedExperiences, enhance, qa, stylePreferences } = await req.json();
+  const { skills, selectedProjects, selectedExperiences, enhance, qa, stylePreferences, contentEnhancementData } = await req.json();
   
   // Debug logging
   console.log('PDF generation request:', {
@@ -210,7 +210,8 @@ export async function POST(req: NextRequest) {
   }
 
   function drawMarkdownText(text: string, x: number, size = 11) {
-    const words = text.split(/(\*\*.*?\*\*|\*.*?\*)/);
+    // Split text into markdown and regular parts
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/);
     let currentX = x;
     const maxWidth = right - left;
     
@@ -234,44 +235,59 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    for (const word of words) {
-      if (word.startsWith('**') && word.endsWith('**') && useBold) {
+    for (const part of parts) {
+      if (part.startsWith('**') && part.endsWith('**')) {
         // Bold text
-        const content = word.slice(2, -2);
-        const width = helvBold.widthOfTextAtSize(content, finalSize);
+        const content = part.slice(2, -2);
+        const font = useBold ? helvBold : helv;
+        const width = font.widthOfTextAtSize(content, finalSize);
+        
+        // Check if we need to wrap to next line
         if (currentX + width > right) {
           currentX = x;
           y -= finalSize + 4;
           ensureSpace(finalSize + 4);
         }
-        page.drawText(content, { x: currentX, y, size: finalSize, font: helvBold, color: rgb(0, 0, 0) });
+        
+        page.drawText(content, { x: currentX, y, size: finalSize, font, color: rgb(0, 0, 0) });
         currentX += width;
-      } else if (word.startsWith('*') && word.endsWith('*') && useItalic) {
-        // Italic text
-        const content = word.slice(1, -1);
-        const width = helv.widthOfTextAtSize(content, finalSize);
+      } else if (part.startsWith('*') && part.endsWith('*')) {
+        // Italic text (rendered as regular since pdf-lib doesn't support italic)
+        const content = part.slice(1, -1);
+        const font = helv;
+        const width = font.widthOfTextAtSize(content, finalSize);
+        
+        // Check if we need to wrap to next line
         if (currentX + width > right) {
           currentX = x;
           y -= finalSize + 4;
           ensureSpace(finalSize + 4);
         }
-        page.drawText(content, { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
+        
+        page.drawText(content, { x: currentX, y, size: finalSize, font, color: rgb(0, 0, 0) });
         currentX += width;
-      } else if (word.trim()) {
-        // Regular text
-        const words = word.split(/\s+/);
-        for (const w of words) {
-          const width = helv.widthOfTextAtSize(w + ' ', finalSize);
-          if (currentX + width > right) {
+      } else if (part.trim()) {
+        // Regular text - split into words and handle wrapping
+        const words = part.split(/\s+/);
+        for (const word of words) {
+          if (!word.trim()) continue;
+          
+          const wordWidth = helv.widthOfTextAtSize(word + ' ', finalSize);
+          
+          // Check if we need to wrap to next line
+          if (currentX + wordWidth > right) {
             currentX = x;
             y -= finalSize + 4;
             ensureSpace(finalSize + 4);
           }
-          page.drawText(w + ' ', { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
-          currentX += width;
+          
+          page.drawText(word + ' ', { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
+          currentX += wordWidth;
         }
       }
     }
+    
+    // Move to next line after processing all parts
     y -= finalSize + 4;
   }
 
@@ -394,13 +410,23 @@ export async function POST(req: NextRequest) {
     // Preserve multiple bullets if present
     const lines = (text || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
     const looksLikeBullets = lines.some(l => /^[•\-\*\u2013\u2014]/.test(l));
+    
     if (looksLikeBullets) {
+      // Process each bullet point separately to maintain line breaks
       for (const line of lines) {
         const stripped = line.replace(/^[•\-\*\u2013\u2014]\s*/, '');
-        drawOneBullet(stripped);
+        if (stripped.trim()) {
+          drawOneBullet(stripped);
+        }
       }
     } else {
-      drawOneBullet(text || '');
+      // If no bullet markers, treat as regular text with potential line breaks
+      const paragraphs = text.split(/\n+/).filter(p => p.trim());
+      for (const paragraph of paragraphs) {
+        if (paragraph.trim()) {
+          drawOneBullet(paragraph.trim());
+        }
+      }
     }
   }
 
@@ -483,9 +509,10 @@ export async function POST(req: NextRequest) {
       console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
       drawText(p.name || 'Untitled Project', left, fontSize, useBold);
       // Use original content + enhanced summary if available
-      const originalContent = p.description || p.summary || '';
+      const originalContent = (p as any).description || p.summary || '';
       const enhancedContent = enhancedProjectSummaries[idx];
-      const finalContent = enhancedContent || originalContent;
+      const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
+      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
       
       if (finalContent) {
         if (finalContent.includes('**') || finalContent.includes('*')) {
@@ -534,9 +561,10 @@ export async function POST(req: NextRequest) {
       }
       
       // Use original content + enhanced summary if available
-      const originalContent = ex.description || ex.summary || '';
+      const originalContent = (ex as any).description || ex.summary || '';
       const enhancedContent = enhancedExperienceSummaries[idx];
-      const finalContent = enhancedContent || originalContent;
+      const targetedEnhancedContent = contentEnhancementData?.[`experience-${idx}`];
+      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
       
       if (finalContent) {
         if (finalContent.includes('**') || finalContent.includes('*')) {
