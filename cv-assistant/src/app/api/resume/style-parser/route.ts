@@ -15,14 +15,23 @@ export async function POST(req: NextRequest) {
   const prompt = `Parse this user response about resume styling preferences and return a JSON object with these exact keys:
 
 {
-  "fontSize": "10pt", "12pt" or "xxpt,
+  "fontSize": "10pt", "12pt" or "xxpt",
   "useBold": true or false,
   "useItalic": true or false,
-  "boldSections": ["array of section names to make bold"],
-  "italicSections": ["array of section names to make italic"],
+  "boldSections": ["array of section names to apply bold, use two ** for italic"],
+  "italicSections": ["array of section names to apply italic, use one * for italic"],
   "contentDensity": "concise" or "balanced" or "detailed",
   "additionalNotes": "any other styling preferences mentioned"
 }
+
+IMPORTANT: If the user says "None", "none", "No", "no", or similar, use default values:
+- fontSize: "11pt"
+- useBold: false
+- useItalic: false
+- boldSections: []
+- italicSections: []
+- contentDensity: "balanced"
+- additionalNotes: "Using default preferences"
 
 User response: "${userResponse}"
 
@@ -49,6 +58,17 @@ Return only the JSON object, no other text.`;
       additionalNotes: parsed.additionalNotes || ''
     });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to parse style preferences' }, { status: 500 });
+    console.error('Style parser Gemini API error:', error);
+    
+    // Fallback to default style preferences
+    return NextResponse.json({ 
+      fontSize: '11pt',
+      useBold: false,
+      useItalic: false,
+      boldSections: [],
+      italicSections: [],
+      contentDensity: 'balanced',
+      additionalNotes: 'Using default preferences due to API error'
+    });
   }
 }

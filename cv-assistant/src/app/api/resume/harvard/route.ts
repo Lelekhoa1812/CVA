@@ -10,11 +10,27 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { skills, selectedProjects, selectedExperiences, enhance, qa, stylePreferences } = await req.json();
+  
+  // Debug logging
+  console.log('PDF generation request:', {
+    skills: skills?.substring(0, 100) + '...',
+    selectedProjects: selectedProjects?.length,
+    selectedExperiences: selectedExperiences?.length,
+    enhance,
+    hasQa: !!qa,
+    hasStylePreferences: !!stylePreferences
+  });
+  
   if (!Array.isArray(selectedProjects) || !Array.isArray(selectedExperiences)) {
     return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   }
   if (selectedProjects.length + selectedExperiences.length > 7) {
     return NextResponse.json({ error: 'Too many items selected' }, { status: 400 });
+  }
+  
+  // Validate that at least some content is selected
+  if (selectedProjects.length === 0 && selectedExperiences.length === 0) {
+    return NextResponse.json({ error: 'Please select at least one project or experience' }, { status: 400 });
   }
 
   await connectToDatabase();
@@ -32,6 +48,14 @@ export async function POST(req: NextRequest) {
   let useBold = false;
   let useItalic = false;
   let contentDensity = 'balanced';
+  
+  // Always parse style preferences if available, regardless of enhance flag
+  if (stylePreferences) {
+    fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
+    useBold = stylePreferences.useBold || false;
+    useItalic = stylePreferences.useItalic || false;
+    contentDensity = stylePreferences.contentDensity || 'balanced';
+  }
   
   if (enhance && stylePreferences) {
     try {
@@ -158,9 +182,31 @@ export async function POST(req: NextRequest) {
   }
 
   function drawText(text: string, x: number, size = 11, bold = false) {
+    if (!text || !text.trim()) return;
     ensureSpace(size + 8);
-    page.drawText(text, { x, y, size, font: bold ? helvBold : helv, color: rgb(0, 0, 0) });
-    y -= size + 6;
+    
+    // Apply styling preferences
+    let finalSize = size;
+    let finalBold = bold;
+    
+    if (stylePreferences) {
+      // Apply font size preference if specified
+      if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+        const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+        if (sizeMatch) {
+          finalSize = parseInt(sizeMatch[1]);
+        }
+      }
+      
+      // Apply bold preference if specified
+      if (stylePreferences.useBold !== undefined) {
+        finalBold = stylePreferences.useBold && bold; // Only bold if both user wants bold AND function parameter is true
+      }
+    }
+    
+    const font = finalBold ? helvBold : helv;
+    page.drawText(text, { x, y, size: finalSize, font, color: rgb(0, 0, 0) });
+    y -= finalSize + 6;
   }
 
   function drawMarkdownText(text: string, x: number, size = 11) {
@@ -168,52 +214,90 @@ export async function POST(req: NextRequest) {
     let currentX = x;
     const maxWidth = right - left;
     
+    // Apply styling preferences
+    let finalSize = size;
+    let useBold = true;
+    let useItalic = true;
+    
+    if (stylePreferences) {
+      if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+        const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+        if (sizeMatch) {
+          finalSize = parseInt(sizeMatch[1]);
+        }
+      }
+      if (stylePreferences.useBold !== undefined) {
+        useBold = stylePreferences.useBold;
+      }
+      if (stylePreferences.useItalic !== undefined) {
+        useItalic = stylePreferences.useItalic;
+      }
+    }
+    
     for (const word of words) {
-      if (word.startsWith('**') && word.endsWith('**')) {
+      if (word.startsWith('**') && word.endsWith('**') && useBold) {
         // Bold text
         const content = word.slice(2, -2);
-        const width = helvBold.widthOfTextAtSize(content, size);
+        const width = helvBold.widthOfTextAtSize(content, finalSize);
         if (currentX + width > right) {
           currentX = x;
-          y -= size + 4;
-          ensureSpace(size + 4);
+          y -= finalSize + 4;
+          ensureSpace(finalSize + 4);
         }
-        page.drawText(content, { x: currentX, y, size, font: helvBold, color: rgb(0, 0, 0) });
+        page.drawText(content, { x: currentX, y, size: finalSize, font: helvBold, color: rgb(0, 0, 0) });
         currentX += width;
-      } else if (word.startsWith('*') && word.endsWith('*')) {
+      } else if (word.startsWith('*') && word.endsWith('*') && useItalic) {
         // Italic text
         const content = word.slice(1, -1);
-        const width = helv.widthOfTextAtSize(content, size);
+        const width = helv.widthOfTextAtSize(content, finalSize);
         if (currentX + width > right) {
           currentX = x;
-          y -= size + 4;
-          ensureSpace(size + 4);
+          y -= finalSize + 4;
+          ensureSpace(finalSize + 4);
         }
-        page.drawText(content, { x: currentX, y, size, font: helv, color: rgb(0, 0, 0) });
+        page.drawText(content, { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
         currentX += width;
       } else if (word.trim()) {
         // Regular text
         const words = word.split(/\s+/);
         for (const w of words) {
-          const width = helv.widthOfTextAtSize(w + ' ', size);
+          const width = helv.widthOfTextAtSize(w + ' ', finalSize);
           if (currentX + width > right) {
             currentX = x;
-            y -= size + 4;
-            ensureSpace(size + 4);
+            y -= finalSize + 4;
+            ensureSpace(finalSize + 4);
           }
-          page.drawText(w + ' ', { x: currentX, y, size, font: helv, color: rgb(0, 0, 0) });
+          page.drawText(w + ' ', { x: currentX, y, size: finalSize, font: helv, color: rgb(0, 0, 0) });
           currentX += width;
         }
       }
     }
-    y -= size + 4;
+    y -= finalSize + 4;
   }
 
   function drawSection(title: string) {
     ensureSpace(36);
     y -= 8;
-    page.drawText(title.toUpperCase(), { x: left, y, size: 12, font: helvBold });
-    y -= 14;
+    
+    // Apply styling preferences to section titles
+    let titleSize = 12;
+    let useBold = true;
+    
+    if (stylePreferences) {
+      if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+        const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+        if (sizeMatch) {
+          titleSize = Math.max(parseInt(sizeMatch[1]) + 1, 10); // Section titles slightly larger
+        }
+      }
+      if (stylePreferences.useBold !== undefined) {
+        useBold = stylePreferences.useBold;
+      }
+    }
+    
+    const font = useBold ? helvBold : helv;
+    page.drawText(title.toUpperCase(), { x: left, y, size: titleSize, font });
+    y -= titleSize + 6;
     page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
     y -= 10;
   }
@@ -261,7 +345,16 @@ export async function POST(req: NextRequest) {
   }
 
   function drawBulletBlock(text: string) {
-    const size = 10;
+    let size = 10;
+    
+    // Apply styling preferences
+    if (stylePreferences && stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+      const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+      if (sizeMatch) {
+        size = parseInt(sizeMatch[1]);
+      }
+    }
+    
     const bulletChar = '•';
     const bulletIndent = helv.widthOfTextAtSize(bulletChar + '  ', size);
     const maxWidth = right - left - bulletIndent;
@@ -315,14 +408,39 @@ export async function POST(req: NextRequest) {
   // Centered name
   ensureSpace(28);
   const nameText = profile.name || 'Your Name';
-  const nameSize = 18;
-  const nameWidth = helvBold.widthOfTextAtSize(nameText, nameSize);
+  let nameSize = 18;
+  let nameFont = helvBold;
+  
+  // Apply styling preferences to name
+  if (stylePreferences) {
+    if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+      const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+      if (sizeMatch) {
+        nameSize = Math.max(parseInt(sizeMatch[1]) + 7, 14); // Name larger than body text
+      }
+    }
+    if (stylePreferences.useBold !== undefined) {
+      nameFont = stylePreferences.useBold ? helvBold : helv;
+    }
+  }
+  
+  const nameWidth = nameFont.widthOfTextAtSize(nameText, nameSize);
   const nameX = (width - nameWidth) / 2;
-  page.drawText(nameText, { x: nameX, y, size: nameSize, font: helvBold });
-  y -= 22;
+  page.drawText(nameText, { x: nameX, y, size: nameSize, font: nameFont });
+  y -= nameSize + 4;
+  
   // Single-line centered contact; shrink font to fit one line
   const contactFull = [profile.email, profile.phone, profile.website, profile.linkedin].filter(Boolean).join(' • ');
   let contactSize = 10;
+  
+  // Apply styling preferences to contact
+  if (stylePreferences && stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
+    const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
+    if (sizeMatch) {
+      contactSize = Math.max(parseInt(sizeMatch[1]) - 1, 8); // Contact slightly smaller than body
+    }
+  }
+  
   const maxContactWidth = right - left;
   let contactWidth = helv.widthOfTextAtSize(contactFull, contactSize);
   while (contactWidth > maxContactWidth && contactSize > 7) {
@@ -335,12 +453,20 @@ export async function POST(req: NextRequest) {
 
   // Education
   drawSection('Education');
-  drawText(`${profile.school || ''}`, left, fontSize, useBold);
-  drawText(`${profile.major || ''}`, left, fontSize - 1, false);
+  const school = profile.school || 'No school specified';
+  const major = profile.major || 'No major specified';
+  drawText(school, left, fontSize, useBold);
+  drawText(major, left, fontSize - 1, false);
 
   // Skills
   drawSection('Skills');
-  const skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  
+  // Fallback if no skills provided
+  if (!skillsText) {
+    skillsText = 'No skills specified';
+  }
+  
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
@@ -350,9 +476,11 @@ export async function POST(req: NextRequest) {
   // Projects
   if (Array.isArray(profile.projects) && selectedProjects.length) {
     drawSection('Projects');
+    console.log('Drawing projects:', selectedProjects.length, 'projects');
     for (const idx of selectedProjects) {
       const p = profile.projects[idx];
       if (!p) continue;
+      console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
       drawText(p.name || 'Untitled Project', left, fontSize, useBold);
       // Use original content + enhanced summary if available
       const originalContent = p.description || p.summary || '';
@@ -365,6 +493,8 @@ export async function POST(req: NextRequest) {
         } else {
           drawBulletBlock(finalContent);
         }
+      } else {
+        console.warn('No content for project:', p.name);
       }
       y -= 4;
     }
@@ -373,15 +503,34 @@ export async function POST(req: NextRequest) {
   // Experience
   if (Array.isArray(profile.experiences) && selectedExperiences.length) {
     drawSection('Experience');
+    console.log('Drawing experiences:', selectedExperiences.length, 'experiences');
     for (const idx of selectedExperiences) {
       const ex = profile.experiences[idx];
       if (!ex) continue;
-      // Include dates in the header
-      const timeInfo = `${ex.timeFrom || ''} - ${ex.timeTo || ''}`.trim();
+      console.log('Experience:', ex.companyName, ex.role, 'Content length:', (ex.description || ex.summary || '').length);
+      
+      // Company and role on left, dates on right
       const headerText = `${ex.companyName || ''} — ${ex.role || ''}`.trim();
-      drawText(headerText, left, fontSize, useBold);
+      const timeInfo = `${ex.timeFrom || ''} - ${ex.timeTo || ''}`.trim();
+      
+      // Calculate positions for proper alignment
+      const headerWidth = helvBold.widthOfTextAtSize(headerText, fontSize);
+      const timeWidth = helv.widthOfTextAtSize(timeInfo, fontSize - 1);
+      const maxHeaderWidth = right - left - timeWidth - 20; // 20pt spacing
+      
+      // Scale header font if too long
+      let headerFontSize = fontSize;
+      if (headerWidth > maxHeaderWidth) {
+        headerFontSize = Math.max(fontSize - 2, 8); // Don't go below 8pt
+      }
+      
+      // Draw header (left-aligned)
+      drawText(headerText, left, headerFontSize, useBold);
+      
+      // Draw dates (right-aligned)
       if (timeInfo && timeInfo !== ' - ') {
-        drawText(timeInfo, left, fontSize - 1, false);
+        const timeX = right - timeWidth;
+        page.drawText(timeInfo, { x: timeX, y: y + headerFontSize + 6, size: fontSize - 1, font: helv, color: rgb(0, 0, 0) });
       }
       
       // Use original content + enhanced summary if available
@@ -396,11 +545,26 @@ export async function POST(req: NextRequest) {
           drawBulletBlock(finalContent);
         }
       }
-      y -= 4;
+      y -= 4; // Same spacing as projects
     }
   }
 
+  // Validate that we have content before generating PDF
+  if (y < 50) {
+    console.error('PDF generation failed: insufficient content, y position too low:', y);
+    return NextResponse.json({ error: 'Failed to generate PDF: insufficient content' }, { status: 500 });
+  }
+  
   const bytes = await pdf.save();
+  
+  // Validate PDF size
+  if (bytes.length < 1000) {
+    console.error('Generated PDF is too small:', bytes.length, 'bytes');
+    return NextResponse.json({ error: 'Generated PDF is too small, please check your content' }, { status: 500 });
+  }
+  
+  console.log('PDF generated successfully:', bytes.length, 'bytes, final y position:', y);
+  
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: {

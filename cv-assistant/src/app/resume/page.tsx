@@ -14,10 +14,173 @@ export default function ResumePage() {
   const [loading, setLoading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [enhance, setEnhance] = useState<boolean>(false);
-  const [messages, setMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
+  const [stylingCustomization, setStylingCustomization] = useState<boolean>(false);
+  const [contentCustomization, setContentCustomization] = useState<boolean>(false);
+  const [stylingMessages, setStylingMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
+  const [contentMessages, setContentMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
   const [coachInput, setCoachInput] = useState<string>('');
-  const [coaching, setCoaching] = useState<boolean>(false);
-  const [stylePreferences, setStylePreferences] = useState<any>(null);
+  const [currentAgent, setCurrentAgent] = useState<'styling' | 'content' | null>(null);
+  const [stylePreferences, setStylePreferences] = useState<{
+    fontSize?: string;
+    useBold?: boolean;
+    useItalic?: boolean;
+    boldSections?: string[];
+    italicSections?: string[];
+    contentDensity?: string;
+    additionalNotes?: string;
+  } | null>(null);
+
+  // Function to enhance specific targeted projects/experiences
+  async function enhanceTargetedItems(userResponse: string) {
+    if (!userResponse || userResponse.toLowerCase().includes('none')) {
+      return; // Fallback to original settings
+    }
+
+    try {
+      // Parse user response to identify which items to enhance
+      const enhanceRes = await fetch('/api/resume/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          content: userResponse, 
+          contentType: 'targeted_enhancement',
+          qaContext: [...stylingMessages, ...contentMessages].map(m => `${m.role}: ${m.content}`).join('\n')
+        })
+      });
+      
+      if (enhanceRes.ok) {
+        const enhanceData = await enhanceRes.json();
+        // The enhanced content will be used when generating the PDF
+        console.log('Enhanced targeted items:', enhanceData);
+      }
+    } catch (error) {
+      console.error('Failed to enhance targeted items:', error);
+    }
+  }
+
+  // Function to start styling questions
+  function startStylingQuestions() {
+    // No need to call AI - questions are hard-coded in the UI
+    setStylingMessages([]);
+  }
+
+  // Function to start content questions
+  function startContentQuestions() {
+    // No need to call AI - questions are hard-coded in the UI
+    setContentMessages([]);
+  }
+
+  // Function to handle question submission
+  function handleQuestionSubmit() {
+    if (!coachInput.trim()) return;
+    
+    const currentMessages = currentAgent === 'styling' ? stylingMessages : contentMessages;
+    const newMessages = [...currentMessages, { role: 'user' as const, content: coachInput.trim() }];
+    
+    if (currentAgent === 'styling') {
+      setStylingMessages(newMessages);
+      
+      // Process styling preferences when all 3 questions are answered
+      if (newMessages.length >= 3) {
+        // Parse styling preferences manually
+        const preferences = parseStylingPreferences(newMessages);
+        setStylePreferences(preferences);
+        
+        // Show completion message
+        setStylingMessages(m => [...m, { role: 'assistant', content: 'Styling preferences set successfully! ✅' }]);
+        
+        // If content customization is also enabled, transition to content agent
+        if (contentCustomization) {
+          setTimeout(() => {
+            setCurrentAgent('content');
+            startContentQuestions();
+          }, 1500); // Wait 1.5 seconds before transitioning
+        }
+      }
+    } else {
+      setContentMessages(newMessages);
+      
+      // Process content preferences when all 2 questions are answered
+      if (newMessages.length >= 2) {
+        // Parse content preferences manually
+        const preferences = parseContentPreferences(newMessages);
+        setStylePreferences(prev => ({ ...prev, ...preferences }));
+        
+        // Show completion message
+        setContentMessages(m => [...m, { role: 'assistant', content: 'Content preferences set successfully! ✅' }]);
+      }
+    }
+    
+    setCoachInput('');
+  }
+
+  // Function to manually parse styling preferences
+  function parseStylingPreferences(messages: Array<{ role: string; content: string }>) {
+    const userAnswers = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase());
+    
+    let fontSize = '11pt';
+    let useBold = false;
+    let useItalic = false;
+    let contentDensity = 'balanced';
+    
+    // Parse font size from first answer
+    if (userAnswers[0]) {
+      if (userAnswers[0].includes('10pt') || userAnswers[0].includes('smaller')) {
+        fontSize = '10pt';
+      } else if (userAnswers[0].includes('12pt') || userAnswers[0].includes('larger')) {
+        fontSize = '12pt';
+      }
+      
+      // Parse bold/italic preferences
+      if (userAnswers[0].includes('bold')) {
+        useBold = true;
+      }
+      if (userAnswers[0].includes('italic')) {
+        useItalic = true;
+      }
+    }
+    
+    // Parse layout style from second answer
+    // This could be used for future layout customization
+    
+    // Parse color preferences from third answer
+    // This could be used for future color customization
+    
+    return {
+      fontSize,
+      useBold,
+      useItalic,
+      boldSections: [],
+      italicSections: [],
+      contentDensity,
+      additionalNotes: 'Manually parsed preferences'
+    };
+  }
+
+  // Function to manually parse content preferences
+  function parseContentPreferences(messages: Array<{ role: string; content: string }>) {
+    const userAnswers = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase());
+    
+    let contentDensity = 'balanced';
+    
+    // Parse content density from first answer
+    if (userAnswers[0]) {
+      if (userAnswers[0].includes('concise')) {
+        contentDensity = 'concise';
+      } else if (userAnswers[0].includes('detailed')) {
+        contentDensity = 'detailed';
+      }
+      // 'balanced' is default
+    }
+    
+    // Parse achievements from second answer
+    // Store for potential future use in content enhancement
+    
+    return {
+      contentDensity,
+      additionalNotes: 'Manually parsed content preferences'
+    };
+  }
 
   useEffect(() => {
     (async () => {
@@ -45,21 +208,47 @@ export default function ResumePage() {
     setLoading(true);
     setError(null);
     setPdfUrl(null);
+    
+    // Debug: Log what we're sending
+    console.log('Generating resume with:', {
+      skills,
+      selectedProjects,
+      selectedExperiences,
+      enhance,
+      qa: [...stylingMessages, ...contentMessages],
+      stylePreferences
+    });
+    
     const res = await fetch('/api/resume/harvard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: messages, stylePreferences })
+      body: JSON.stringify({ skills, selectedProjects, selectedExperiences, enhance, qa: [...stylingMessages, ...contentMessages], stylePreferences })
     });
+    
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
+      console.error('PDF generation failed:', d);
       setError(d.error || 'Failed to generate PDF');
       setLoading(false);
       return;
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    setPdfUrl(url);
-    setLoading(false);
+    
+    try {
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        console.error('PDF blob is empty');
+        setError('Generated PDF is empty. Please check your selections and try again.');
+        setLoading(false);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error processing PDF response:', error);
+      setError('Error processing generated PDF');
+      setLoading(false);
+    }
   }
 
   function reset() {
@@ -184,109 +373,172 @@ export default function ResumePage() {
             {enhance && (
               <div className="mt-3 border rounded-lg p-3">
                 <div className="text-sm dark:text-white text-foreground font-medium mb-2">AI Coaching</div>
-                <div className="max-h-48 overflow-auto space-y-2 bg-background/50 dark:bg-black p-2 rounded">
-                  {messages.length === 0 && (
-                    <div className="text-xs dark:text-gray-100 text-muted-foreground">The assistant will ask targeted questions to tailor your resume. Type your first message or click Ask to begin.</div>
-                  )}
-                  {messages.map((m, idx) => (
-                    <div key={idx} className={`${m.role==='assistant'?'text-foreground':'text-foreground'} dark:text-gray-100 text-sm`}>
-                      <span className="font-semibold mr-1">{m.role==='assistant'?'AI:':'You:'}</span>
-                      <span>{m.content}</span>
+                
+                {/* Initial Selection */}
+                {!currentAgent && (
+                  <div className="space-y-3 mb-4">
+                    <div className="flex items-center space-x-3">
+                      <input 
+                        type="checkbox" 
+                        id="styling" 
+                        checked={stylingCustomization} 
+                        onChange={e => setStylingCustomization(e.target.checked)} 
+                        className="w-4 h-4"
+                      />
+                      <label htmlFor="styling" className="text-sm dark:text-gray-100 text-foreground">Customize styling preferences</label>
                     </div>
-                  ))}
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <textarea 
-                    value={coachInput} 
-                    onChange={e=>setCoachInput(e.target.value)} 
-                    onKeyDown={e=>{
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (coachInput.trim() && messages.length>0) {
-                          const newMessages = [...messages, { role: 'user' as const, content: coachInput.trim() }];
-                          setMessages(newMessages);
-                          setCoachInput('');
-                          setCoaching(true);
-                          fetch('/api/resume/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages }) })
-                            .then(res => res.json())
-                            .then(data => setMessages(m=>[...m, { role: 'assistant', content: data.message }]))
-                            .finally(() => setCoaching(false));
+                    <div className="flex items-center space-x-3">
+                      <input 
+                        type="checkbox" 
+                        id="content" 
+                        checked={contentCustomization} 
+                        onChange={e => setContentCustomization(e.target.checked)} 
+                        className="w-4 h-4"
+                      />
+                      <label htmlFor="content" className="text-sm dark:text-gray-100 text-foreground">Enhance your content</label>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (stylingCustomization) {
+                          setCurrentAgent('styling');
+                          startStylingQuestions();
+                        } else if (contentCustomization) {
+                          setCurrentAgent('content');
+                          startContentQuestions();
                         }
-                      }
-                    }}
-                    className="flex-1 border rounded px-2 py-1 bg-background resize-none" 
-                    placeholder="Type your answer... (Enter to send, Shift+Enter for new line)" 
-                    rows={2}
-                  />
-                  <button
-                    onClick={async ()=>{
-                      if (!coachInput.trim() && messages.length>0) return;
-                      const newMessages = coachInput.trim()? [...messages, { role: 'user' as const, content: coachInput.trim() }]:[...messages];
-                      setMessages(newMessages);
-                      setCoachInput('');
-                      setCoaching(true);
-                      try {
-                        const res = await fetch('/api/resume/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages }) });
-                        const data = await res.json();
-                        setMessages(m=>[...m, { role: 'assistant', content: data.message }]);
-                        
-                        // Process each question asynchronously as it comes in
-                        const userMessages = newMessages.filter(m => m.role === 'user');
-                        if (userMessages.length === 1) {
-                          // First question - parse style preferences
-                          try {
-                            const styleRes = await fetch('/api/resume/style-parser', { 
-                              method: 'POST', 
-                              headers: { 'Content-Type': 'application/json' }, 
-                              body: JSON.stringify({ userResponse: userMessages[0].content }) 
-                            });
-                            const styleData = await styleRes.json();
-                            setStylePreferences(styleData);
-                          } catch (error) {
-                            console.error('Failed to parse style preferences:', error);
-                          }
-                        } else if (userMessages.length === 2) {
-                          // Second question - update content density preference
-                          try {
-                            const combinedResponse = `${userMessages[0].content}\n\nContent density preference: ${userMessages[1].content}`;
-                            const styleRes = await fetch('/api/resume/style-parser', { 
-                              method: 'POST', 
-                              headers: { 'Content-Type': 'application/json' }, 
-                              body: JSON.stringify({ userResponse: combinedResponse }) 
-                            });
-                            const styleData = await styleRes.json();
-                            setStylePreferences(styleData);
-                          } catch (error) {
-                            console.error('Failed to parse style preferences:', error);
-                          }
-                        }
-                        
-                        // Check if AI is ready and finalize preferences
-                        if (data.message.includes('<READY>')) {
-                          const userMessages = newMessages.filter(m => m.role === 'user');
-                          if (userMessages.length >= 4) {
-                            try {
-                              // Final parsing with all preferences
-                              const combinedResponse = `${userMessages[0].content}\n\nContent density preference: ${userMessages[1].content}\n\nAchievements: ${userMessages[2].content}\n\nTechnologies and challenges: ${userMessages[3].content}`;
-                              const styleRes = await fetch('/api/resume/style-parser', { 
-                                method: 'POST', 
-                                headers: { 'Content-Type': 'application/json' }, 
-                                body: JSON.stringify({ userResponse: combinedResponse }) 
-                              });
-                              const styleData = await styleRes.json();
-                              setStylePreferences(styleData);
-                            } catch (error) {
-                              console.error('Failed to parse final preferences:', error);
+                      }}
+                      disabled={!stylingCustomization && !contentCustomization}
+                      className="px-3 py-1 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50"
+                    >
+                      Start Questions
+                    </button>
+                  </div>
+                )}
+
+                {/* Question Interface */}
+                {currentAgent && (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-medium text-green-400">
+                        {currentAgent === 'styling' ? '🎨 Styling Questions' : '📝 Content Questions'}
+                      </div>
+                      {contentCustomization && stylingCustomization && currentAgent === 'styling' && (
+                        <div className="text-xs text-gray-300">
+                          Next: Content Questions
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Display current question */}
+                    {currentAgent === 'styling' && (
+                      <div className="mb-4">
+                        {stylingMessages.length === 0 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
+                            Question 1: What's your preferred font size - Reccomended: small (10pt) for content, or large (12pt) for readability. Also, do you want any text to be bold or italic for emphasis?
+                          </div>
+                        )}
+                        {stylingMessages.length === 1 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
+                            Question 2: Do you prefer a traditional professional style or a more modern creative layout?
+                          </div>
+                        )}
+                        {stylingMessages.length === 2 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
+                            Question 3: Any specific color preferences or section emphasis you'd like to highlight?
+                          </div>
+                        )}
+                        {stylingMessages.length >= 3 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-green-600">
+                            ✅ All styling questions answered! Processing preferences...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {currentAgent === 'content' && (
+                      <div className="mb-4">
+                        {contentMessages.length === 0 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
+                            Question 1: How would you like your resume content formatted? Choose: 'concise' (shorter, focused bullets), 'balanced' (standard length), or 'detailed' (expanded with more context and achievements)?
+                          </div>
+                        )}
+                        {contentMessages.length === 1 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground">
+                            Question 2: For your projects and experiences, what are your most impressive quantified achievements? (e.g., 'Increased sales by 25%', 'Led team of 8 developers', 'Reduced costs by $50K'). If you don't want to enhance any, reply 'None'.
+                          </div>
+                        )}
+                        {contentMessages.length >= 2 && (
+                          <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-green-600">
+                            ✅ All content questions answered! Processing preferences...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Display conversation history */}
+                    <div className="max-h-48 overflow-auto space-y-2 bg-background/50 dark:bg-black p-2 rounded mb-3">
+                      {(currentAgent === 'styling' ? stylingMessages : contentMessages).length === 0 && (
+                        <div className="text-xs dark:text-gray-100 text-muted-foreground">
+                          {currentAgent === 'styling' 
+                            ? 'Answer the styling questions above to customize your resume appearance.' 
+                            : 'Answer the content questions above to enhance your resume content.'}
+                        </div>
+                      )}
+                      {(currentAgent === 'styling' ? stylingMessages : contentMessages).map((m, idx) => (
+                        <div key={idx} className={`${m.role==='assistant'?'text-foreground':'text-foreground'} dark:text-gray-100 text-sm`}>
+                          <span className="font-semibold mr-1">{m.role==='assistant'?'System:':'You:'}</span>
+                          <span>{m.content}</span>
+                        </div>
+                      ))}
+
+                    </div>
+                    
+                    {/* Answer input */}
+                    {(currentAgent === 'styling' ? stylingMessages.length < 3 : contentMessages.length < 2) && (
+                      <div className="mt-2 flex gap-2">
+                        <textarea 
+                          value={coachInput} 
+                          onChange={e=>setCoachInput(e.target.value)} 
+                          onKeyDown={e=>{
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleQuestionSubmit();
                             }
-                          }
-                        }
-                      } finally { setCoaching(false); }
-                    }}
-                    className="px-3 py-1 bg-secondary rounded text-sm"
-                    disabled={coaching}
-                  >{coaching?'Asking...':'Ask'}</button>
-                </div>
-                <p className="text-xs dark:text-gray-100 text-muted-foreground mt-2">AI will continue asking until it responds with &quot;&lt;READY&gt;&quot; indicating it has enough context. Then click Generate.</p>
+                          }}
+                          className="flex-1 border rounded px-2 py-1 bg-background resize-none" 
+                          placeholder="Type your answer... (Enter to send, Shift+Enter for new line)" 
+                          rows={2}
+                      />
+                        <button
+                          onClick={handleQuestionSubmit}
+                          className="px-3 py-1 bg-secondary rounded text-sm"
+                        >
+                          Submit
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-between items-center mt-2">
+                      <p className="text-xs dark:text-gray-100 text-muted-foreground">
+                        {currentAgent === 'styling' 
+                          ? 'Answer all 3 styling questions to customize your resume appearance.'
+                          : 'Answer all 2 content questions to enhance your resume content.'}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setCurrentAgent(null);
+                          setStylingCustomization(false);
+                          setContentCustomization(false);
+                          setStylingMessages([]);
+                          setContentMessages([]);
+                        }}
+                        className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-700"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
