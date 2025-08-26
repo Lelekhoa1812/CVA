@@ -59,6 +59,7 @@ export default function ResumePage() {
   const [uiUseBold, setUiUseBold] = useState<boolean>(false);
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
   const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
+  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2'>('style1');
 
 
 
@@ -361,7 +362,7 @@ export default function ResumePage() {
       contentEnhancementData
     });
     
-    const res = await fetch('/api/resume/style1', {
+    const res = await fetch(`/api/resume/${selectedStyle}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -503,6 +504,19 @@ export default function ResumePage() {
                 </p>
               </div>
             )}
+
+            {/* Style Selection */}
+            <div className="mb-4">
+              <label className="block text-sm dark:text-gray-100 text-foreground mb-2">Resume Style</label>
+              <select
+                className="w-full border rounded px-3 py-2 bg-background text-foreground"
+                value={selectedStyle}
+                onChange={e => setSelectedStyle(e.target.value as 'style1' | 'style2')}
+              >
+                <option value="style1">Style 1 - Chronological Layout</option>
+                <option value="style2">Style 2 - Modernised Layout</option>
+              </select>
+            </div>
 
             <button
               onClick={!isAllCoachingComplete() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : generate}

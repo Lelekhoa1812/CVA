@@ -437,7 +437,7 @@ export default function ProfilePage() {
                   <span>Extracting text from document...</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+                  <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '1.5s' }}></div>
                   <span>Identifying projects and experiences...</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm text-muted-foreground">
@@ -450,7 +450,7 @@ export default function ProfilePage() {
           
           <input 
             type="file" 
-            accept=".pdf,.doc,.docx" 
+            accept=".pdf,.png,.jpg,.jpeg,.docx,.doc" 
             onChange={uploadResume} 
             disabled={ocrLoading}
             className={`block w-full text-sm text-black dark:text-gray-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 transition-colors duration-200 ${ocrLoading ? 'opacity-50 cursor-not-allowed' : ''}`} 

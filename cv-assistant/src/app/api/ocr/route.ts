@@ -23,10 +23,31 @@ export async function POST(req: NextRequest) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+  // Detect and validate MIME type: allow PDF, PNG, and JPG/JPEG
+  const uploadedType = (file.type || '').toLowerCase();
+  let mimeType: string;
+  if (uploadedType === 'application/pdf') {
+    mimeType = 'application/pdf';
+  } else if (uploadedType === 'image/png') {
+    mimeType = 'image/png';
+  } else if (uploadedType === 'image/jpeg' || uploadedType === 'image/jpg') {
+    mimeType = 'image/jpeg';
+  } else {
+    // Fallback: detect by filename extension if type missing
+    const name = (file as unknown as { name?: string }).name || '';
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.pdf')) mimeType = 'application/pdf';
+    else if (lower.endsWith('.png')) mimeType = 'image/png';
+    else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    else {
+      return NextResponse.json({ error: 'Unsupported file type. Please upload a PDF, PNG, or JPG/JPEG image.' }, { status: 400 });
+    }
+  }
+
   const filePart = {
     inlineData: {
       data: fileBuffer.toString('base64'),
-      mimeType: 'application/pdf',
+      mimeType,
     },
   } as { inlineData: { data: string; mimeType: string } };
 
