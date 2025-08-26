@@ -164,11 +164,11 @@ export async function POST(req: NextRequest) {
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
   const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  // Style2: Different margins - wider left margin, narrower right margin
-  const leftMargin = 85; // Wider left margin
-  const rightMargin = 60; // Narrower right margin
-  const topMargin = 65; // Smaller top margin
-  const bottomMargin = 65; // Smaller bottom margin
+  // Style2: Even margins on all sides for perfectly aligned text blocks
+  const leftMargin = 64;
+  const rightMargin = 64;
+  const topMargin = 64;
+  const bottomMargin = 64;
   
   const left = leftMargin;
   const right = width - rightMargin;
@@ -339,12 +339,14 @@ export async function POST(req: NextRequest) {
     }
     
     const font = useBold ? helvBold : helv;
-    page.drawText(title.toUpperCase(), { x: left, y, size: titleSize, font, color: getAccentColor() });
+    const titleUpper = title.toUpperCase();
+    const titleWidth = font.widthOfTextAtSize(titleUpper, titleSize);
+    const titleX = (width - titleWidth) / 2;
+    page.drawText(titleUpper, { x: titleX, y, size: titleSize, font, color: getAccentColor() });
     y -= titleSize + 8; // Style2: More space after title
     
-    // Style2: Different line style - shorter line with gap
-    const lineLength = 80; // Shorter line
-    page.drawLine({ start: { x: left, y }, end: { x: left + lineLength, y }, thickness: 1.5, color: getAccentColor() });
+    // Full-width underline between content margins
+    page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 1.2, color: getAccentColor() });
     y -= 12; // Style2: More space after line
   }
 
@@ -401,16 +403,19 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    const bulletChar = '▪'; // Style2: Different bullet character
-    const bulletIndent = helv.widthOfTextAtSize(bulletChar + '  ', size);
+    // Style2: Use a drawn square bullet to avoid WinAnsi encoding issues
+    const bulletBox = Math.max(size * 0.22, 2.5); // square size in points
+    const bulletGap = Math.max(size * 0.6, 5);    // gap between square and text
+    const bulletIndent = bulletBox + bulletGap;
     const maxWidth = right - left - bulletIndent;
 
     function drawOneBullet(content: string) {
       const words = (content || '').split(/\s+/).filter(Boolean);
       if (words.length === 0) return;
       ensureSpace(size + 6); // Style2: More space between bullets
-      // Draw bullet marker
-      page.drawText(bulletChar, { x: left, y, size, font: helv, color: getAccentColor() }); // Style2: Colored bullets
+      // Draw square bullet marker (filled)
+      const bulletY = y + (size - bulletBox) / 2 - 1; // vertically center roughly to text
+      page.drawRectangle({ x: left, y: bulletY, width: bulletBox, height: bulletBox, color: getAccentColor() });
       let lineWords: string[] = [];
       let lineWidth = 0;
       const spaceWidth = helv.widthOfTextAtSize(' ', size);
@@ -422,7 +427,8 @@ export async function POST(req: NextRequest) {
           drawJustifiedLine(lineWords, left + bulletIndent, size, true);
           y -= size + 6; // Style2: More space between lines
           ensureSpace(size + 6);
-          page.drawText(' ', { x: left, y, size, font: helv }); // maintain flow
+          // Maintain visual flow on wrapped bullet lines
+          // (no extra drawing needed besides line spacing)
           lineWords = [w];
           lineWidth = wWidth;
         } else {
@@ -521,44 +527,36 @@ export async function POST(req: NextRequest) {
     y -= 12; // Style2: Adjust spacing if no second line
   }
 
-  // Education section with different layout
-  drawSection('Education');
-  const school = profile.school || 'No school specified';
-  const major = profile.major || 'No major specified';
-  const studyPeriod = (profile as { studyPeriod?: string }).studyPeriod;
-  
-  // Style2: School and study period on same row with different spacing
-  if (studyPeriod && studyPeriod.trim()) {
-    // Calculate positions for proper alignment
-    const schoolWidth = helvBold.widthOfTextAtSize(school, fontSize);
-    const periodWidth = helv.widthOfTextAtSize(studyPeriod, fontSize);
-    const maxSchoolWidth = right - left - periodWidth - 30; // 30pt spacing
+  // Education section - moved to top for Style2
+  if (profile.school || profile.major) {
+    drawSection('Education');
+    const school = profile.school || 'No school specified';
+    const major = profile.major || 'No major specified';
+    const studyPeriod = (profile as { studyPeriod?: string }).studyPeriod;
     
-    // Scale school font if too long
-    let schoolFontSize = fontSize;
-    if (schoolWidth > maxSchoolWidth) {
-      schoolFontSize = Math.max(fontSize - 2, 8);
+    if (studyPeriod && studyPeriod.trim()) {
+      const schoolWidth = helvBold.widthOfTextAtSize(school, fontSize);
+      const periodWidth = helv.widthOfTextAtSize(studyPeriod, fontSize);
+      const maxSchoolWidth = right - left - periodWidth - 30;
+      let schoolFontSize = fontSize;
+      if (schoolWidth > maxSchoolWidth) {
+        schoolFontSize = Math.max(fontSize - 2, 8);
+      }
+      const schoolFont = useBold ? helvBold : helv;
+      page.drawText(school, { x: left, y, size: schoolFontSize, font: schoolFont });
+      const periodFont = useBold ? helvBold : helv;
+      const periodX = right - periodWidth;
+      page.drawText(studyPeriod, { x: periodX, y: y + schoolFontSize + 6, size: fontSize, font: periodFont });
+      y -= schoolFontSize + 8;
+    } else {
+      drawText(school, left, fontSize, useBold);
+      y -= 8;
     }
-    
-    // Draw school (left)
-    const schoolFont = useBold ? helvBold : helv;
-    page.drawText(school, { x: left, y, size: schoolFontSize, font: schoolFont });
-    
-    // Draw study period (right, aligned to right margin on the same baseline)
-    const periodFont = useBold ? helvBold : helv;
-    const periodX = right - periodWidth;
-    page.drawText(studyPeriod, { x: periodX, y: y + schoolFontSize + 6, size: fontSize, font: periodFont });
-    
-    y -= schoolFontSize + 8; // Style2: More space after education header
-  } else {
-    drawText(school, left, fontSize, useBold);
-    y -= 8; // Style2: Adjust spacing
+    drawText(major, left, fontSize - 1, false);
+    y -= 8;
   }
-  
-  drawText(major, left, fontSize - 1, false);
-  y -= 8; // Style2: More space after major
 
-  // Skills section
+  // Skills section - follows Education in Style2
   drawSection('Skills');
   let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
   
@@ -575,39 +573,7 @@ export async function POST(req: NextRequest) {
   
   y -= 8; // Style2: More space after skills
 
-  // Projects section with different spacing
-  if (Array.isArray(profile.projects) && selectedProjects.length) {
-    drawSection('Projects');
-    console.log('Drawing projects:', selectedProjects.length, 'projects');
-    for (const idx of selectedProjects) {
-      const p = profile.projects[idx];
-      if (!p) continue;
-      console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
-      
-      // Style2: Project name with different styling
-      drawText(p.name || 'Untitled Project', left, fontSize, useBold, getAccentColor());
-      y -= 4; // Style2: Less space after project name
-      
-      // Use original content + enhanced summary if available
-      const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
-      const enhancedContent = enhancedProjectSummaries[idx];
-      const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
-      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
-      
-      if (finalContent) {
-        if (finalContent.includes('**') || finalContent.includes('*')) {
-          drawMarkdownText(finalContent, left, fontSize - 1);
-        } else {
-          drawBulletBlock(finalContent);
-        }
-      } else {
-        console.warn('No content for project:', p.name);
-      }
-      y -= 8; // Style2: More space between projects
-    }
-  }
-
-  // Experience section with different layout
+  // Experience section - placed before Projects to differentiate Style2
   if (Array.isArray(profile.experiences) && selectedExperiences.length) {
     drawSection('Experience');
     console.log('Drawing experiences:', selectedExperiences.length, 'experiences');
@@ -659,6 +625,40 @@ export async function POST(req: NextRequest) {
       y -= 8; // Style2: More space between experiences
     }
   }
+
+  // Projects section with different spacing - appears after Experience in Style2
+  if (Array.isArray(profile.projects) && selectedProjects.length) {
+    drawSection('Projects');
+    console.log('Drawing projects:', selectedProjects.length, 'projects');
+    for (const idx of selectedProjects) {
+      const p = profile.projects[idx];
+      if (!p) continue;
+      console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
+      
+      // Style2: Project name with different styling
+      drawText(p.name || 'Untitled Project', left, fontSize, useBold, getAccentColor());
+      y -= 4; // Style2: Less space after project name
+      
+      // Use original content + enhanced summary if available
+      const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
+      const enhancedContent = enhancedProjectSummaries[idx];
+      const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
+      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
+      
+      if (finalContent) {
+        if (finalContent.includes('**') || finalContent.includes('*')) {
+          drawMarkdownText(finalContent, left, fontSize - 1);
+        } else {
+          drawBulletBlock(finalContent);
+        }
+      } else {
+        console.warn('No content for project:', p.name);
+      }
+      y -= 8; // Style2: More space between projects
+    }
+  }
+
+  // (Education already rendered at the top)
 
   // Validate that we have content before generating PDF
   if (y < 50) {

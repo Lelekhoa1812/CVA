@@ -60,6 +60,8 @@ export default function ResumePage() {
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
   const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
   const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2'>('style1');
+  const [isStyleModalOpen, setIsStyleModalOpen] = useState<boolean>(false);
+  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | null>(null);
 
 
 
@@ -415,6 +417,71 @@ export default function ResumePage() {
           <h1 className="text-2xl font-semibold dark:text-white text-foreground">Resume</h1>
         </div>
 
+        {isStyleModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="bg-card border rounded-xl w-full max-w-5xl p-4 relative shadow-2xl">
+              <button
+                aria-label="Close"
+                onClick={() => { setIsStyleModalOpen(false); setModalSelectedStyle(null); }}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-500 text-gray-100 flex items-center justify-center hover:bg-red-700 hover:text-white"
+              >
+                ×
+              </button>
+              <div className="mb-3">
+                <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
+                <p className="text-sm text-muted-foreground dark:text-gray-800">Preview both styles and select your preferred layout.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div
+                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style1' ? 'ring-2 ring-primary' : 'ring-0'}`}
+                  onClick={() => setModalSelectedStyle('style1')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="px-3 py-2 border-b flex items-center justify-between">
+                    <span className="text-sm font-medium">Style 1 - Chronological</span>
+                    {modalSelectedStyle==='style1' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
+                  </div>
+                  <iframe src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0" className="w-full h-[520px]" />
+                </div>
+                <div
+                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style2' ? 'ring-2 ring-primary' : 'ring-0'}`}
+                  onClick={() => setModalSelectedStyle('style2')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="px-3 py-2 border-b flex items-center justify-between">
+                    <span className="text-sm font-medium">Style 2 - Modernised</span>
+                    {modalSelectedStyle==='style2' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
+                  </div>
+                  <iframe src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0" className="w-full h-[520px]" />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end gap-3">
+                <button
+                  onClick={() => { setIsStyleModalOpen(false); setModalSelectedStyle(null); }}
+                  className="px-4 py-2 border rounded bg-muted text-foreground hover:bg-muted/80"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!modalSelectedStyle}
+                  onClick={async () => {
+                    if (!modalSelectedStyle) return;
+                    setSelectedStyle(modalSelectedStyle);
+                    setIsStyleModalOpen(false);
+                    setModalSelectedStyle(null);
+                    await generate();
+                  }}
+                  className={`px-4 py-2 rounded ${!modalSelectedStyle ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
+                >
+                  Generate
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-destructive">{error}</div>
         )}
@@ -505,21 +572,8 @@ export default function ResumePage() {
               </div>
             )}
 
-            {/* Style Selection */}
-            <div className="mb-4">
-              <label className="block text-sm dark:text-gray-100 text-foreground mb-2">Resume Style</label>
-              <select
-                className="w-full border rounded px-3 py-2 bg-background text-foreground"
-                value={selectedStyle}
-                onChange={e => setSelectedStyle(e.target.value as 'style1' | 'style2')}
-              >
-                <option value="style1">Style 1 - Chronological Layout</option>
-                <option value="style2">Style 2 - Modernised Layout</option>
-              </select>
-            </div>
-
             <button
-              onClick={!isAllCoachingComplete() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : generate}
+              onClick={!isAllCoachingComplete() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : () => setIsStyleModalOpen(true)}
               disabled={loading || limitReached || !isAllCoachingComplete()}
               className={`w-full rounded px-4 py-3 transition-all duration-200 ${
                 !isAllCoachingComplete() 
