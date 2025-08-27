@@ -535,19 +535,17 @@ export async function POST(req: NextRequest) {
     const studyPeriod = (profile as { studyPeriod?: string }).studyPeriod;
     
     if (studyPeriod && studyPeriod.trim()) {
-      const schoolWidth = helvBold.widthOfTextAtSize(school, fontSize);
-      const periodWidth = helv.widthOfTextAtSize(studyPeriod, fontSize);
-      const maxSchoolWidth = right - left - periodWidth - 30;
-      let schoolFontSize = fontSize;
-      if (schoolWidth > maxSchoolWidth) {
-        schoolFontSize = Math.max(fontSize - 2, 8);
-      }
+      // Draw school and study period on same row
       const schoolFont = useBold ? helvBold : helv;
-      page.drawText(school, { x: left, y, size: schoolFontSize, font: schoolFont });
-      const periodFont = useBold ? helvBold : helv;
+      const periodFont = helv;
+      const periodWidth = periodFont.widthOfTextAtSize(studyPeriod, fontSize);
       const periodX = right - periodWidth;
-      page.drawText(studyPeriod, { x: periodX, y: y + schoolFontSize + 6, size: fontSize, font: periodFont });
-      y -= schoolFontSize + 8;
+      
+      // Draw school (left)
+      page.drawText(school, { x: left, y, size: fontSize, font: schoolFont });
+      // Draw study period (right, same baseline)
+      page.drawText(studyPeriod, { x: periodX, y, size: fontSize, font: periodFont });
+      y -= fontSize + 8;
     } else {
       drawText(school, left, fontSize, useBold);
       y -= 8;
@@ -565,10 +563,12 @@ export async function POST(req: NextRequest) {
     skillsText = 'No skills specified';
   }
   
+  // Handle skills with proper wrapping to prevent overlap
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
-    drawText(skillsText, left, fontSize - 1, false);
+    // Use drawWrappedText for skills to ensure proper wrapping
+    drawWrappedText(skillsText, fontSize - 1);
   }
   
   y -= 8; // Style2: More space after skills
@@ -586,28 +586,19 @@ export async function POST(req: NextRequest) {
       const headerText = `${ex.companyName || ''} — ${ex.role || ''}`.trim();
       const timeInfo = `${ex.timeFrom || ''} - ${ex.timeTo || ''}`.trim();
       
-      // Calculate positions for proper alignment
-      const headerWidth = helvBold.widthOfTextAtSize(headerText, fontSize);
-      const timeWidth = helv.widthOfTextAtSize(timeInfo, fontSize - 1);
-      const maxHeaderWidth = right - left - timeWidth - 25; // 25pt spacing
-      
-      // Scale header font if too long
-      let headerFontSize = fontSize;
-      if (headerWidth > maxHeaderWidth) {
-        headerFontSize = Math.max(fontSize - 2, 8);
-      }
+      // Draw company/role and dates on same row
+      const headerFont = useBold ? helvBold : helv;
+      const timeWidth = helv.widthOfTextAtSize(timeInfo, fontSize);
+      const timeX = right - timeWidth;
       
       // Draw header (left-aligned)
-      const headerFont = useBold ? helvBold : helv;
-      page.drawText(headerText, { x: left, y, size: headerFontSize, font: headerFont, color: getAccentColor() });
-      
-      // Draw dates (right-aligned)
+      page.drawText(headerText, { x: left, y, size: fontSize, font: headerFont, color: getAccentColor() });
+      // Draw dates (right-aligned, same baseline)
       if (timeInfo && timeInfo !== ' - ') {
-        const timeX = right - timeWidth;
-        page.drawText(timeInfo, { x: timeX, y: y + headerFontSize + 6, size: fontSize - 1, font: helv, color: rgb(0, 0, 0) });
+        page.drawText(timeInfo, { x: timeX, y, size: fontSize, font: helv, color: rgb(0, 0, 0) });
       }
       
-      y -= headerFontSize + 6; // Style2: Less space after experience header
+      y -= fontSize + 6; // Style2: Less space after experience header
       
       // Use original content + enhanced summary if available
       const originalContent = (ex as { description?: string; summary?: string }).description || ex.summary || '';

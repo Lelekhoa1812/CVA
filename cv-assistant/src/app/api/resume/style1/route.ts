@@ -537,10 +537,12 @@ export async function POST(req: NextRequest) {
     skillsText = 'No skills specified';
   }
   
+  // Handle skills with proper wrapping to prevent overlap
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
-    drawText(skillsText, left, fontSize - 1, false);
+    // Use drawWrappedText for skills to ensure proper wrapping
+    drawWrappedText(skillsText, fontSize - 1);
   }
 
   // Projects
