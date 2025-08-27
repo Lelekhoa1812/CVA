@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
   let useBoldPref = false;
   let useItalicPref = false;
   let contentDensity = 'balanced';
-  const accentPref = (stylePreferences?.accentColor as string) || 'crimson'; // default crimson for Harvard look
+  const accentPref = (stylePreferences?.accentColor as string) || 'black';
 
   if (stylePreferences) {
     fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
@@ -207,6 +207,7 @@ export async function POST(req: NextRequest) {
     if (color === 'crimson') return rgb(165 / 255, 28 / 255, 48 / 255);
     if (color === 'dark-blue') return rgb(0.1, 0.2, 0.5);
     if (color === 'dark-gray') return rgb(0.2, 0.2, 0.2);
+    if (color === 'dark-green') return rgb(0.1, 0.4, 0.2);
     return rgb(0, 0, 0);
   }
   const accent = getAccentColor();
@@ -244,7 +245,7 @@ export async function POST(req: NextRequest) {
     yRight -= 10;
   }
 
-  function measure(fontObj: any, text: string, size: number) {
+  function measure(fontObj: { widthOfTextAtSize: (text: string, size: number) => number }, text: string, size: number) {
     return fontObj.widthOfTextAtSize(text, size);
   }
 
@@ -276,7 +277,7 @@ export async function POST(req: NextRequest) {
     const words = (text || '').split(/\s+/).filter(Boolean);
     if (words.length === 0) return;
     let line = '';
-    const spaceW = font.widthOfTextAtSize(' ', size);
+
 
     for (const w of words) {
       const next = line ? line + ' ' + w : w;
@@ -298,7 +299,7 @@ export async function POST(req: NextRequest) {
 
   function drawRightBullets(text: string) {
     // En-dash bullets (distinct from style1/2)
-    let size = Math.max(fontSize - 1, 9);
+    const size = Math.max(fontSize - 1, 9);
     const bulletChar = '–';
     const bulletIndent = measure(times, `${bulletChar}  `, size);
     const maxWidth = rightMaxX - rightX - bulletIndent;
@@ -423,7 +424,7 @@ export async function POST(req: NextRequest) {
   let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
   if (!skillsText) skillsText = '—';
   // Keep it compact in sidebar: split by comma/newline and draw as short lines
-  const skillTokens = skillsText.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  const skillTokens = skillsText.split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean);
   for (const s of skillTokens) drawSidebarLine(`• ${s}`, Math.max(fontSize - 2, 8));
 
   yLeft -= 6;
@@ -433,7 +434,7 @@ export async function POST(req: NextRequest) {
   // Languages (optional separate field if user also wants it here)
   if (profile.languages && profile.languages.trim() && profile.languages !== skillsText) {
     drawSidebarLabel('Languages');
-    for (const lang of profile.languages.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean)) {
+    for (const lang of profile.languages.split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean)) {
       drawSidebarLine(`• ${lang}`, Math.max(fontSize - 2, 8));
     }
     yLeft -= 6;

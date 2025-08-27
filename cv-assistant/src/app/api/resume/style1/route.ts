@@ -185,6 +185,8 @@ export async function POST(req: NextRequest) {
     const color = stylePreferences?.accentColor || 'black';
     if (color === 'dark-blue') return rgb(0.1, 0.2, 0.5);
     if (color === 'dark-gray') return rgb(0.2, 0.2, 0.2);
+    if (color === 'crimson') return rgb(0.6, 0.1, 0.1);
+    if (color === 'dark-green') return rgb(0.1, 0.4, 0.2);
     return rgb(0, 0, 0);
   }
 

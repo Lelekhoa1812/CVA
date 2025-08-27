@@ -51,17 +51,17 @@ export default function ResumePage() {
     italicSections?: string[];
     contentDensity?: string;
     additionalNotes?: string;
-    accentColor?: 'black' | 'dark-blue' | 'dark-gray';
+    accentColor?: 'black' | 'dark-blue' | 'dark-gray' | 'crimson' | 'dark-green';
   } | null>(null);
 
   // Local UI state for styling controls
   const [uiFontSize, setUiFontSize] = useState<FontSize>('11pt');
   const [uiUseBold, setUiUseBold] = useState<boolean>(false);
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
-  const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
-  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2' | 'style3'>('style1');
+  const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray' | 'crimson' | 'dark-green'>('black');
+  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4'>('style1');
   const [isStyleModalOpen, setIsStyleModalOpen] = useState<boolean>(false);
-  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | 'style3' | null>(null);
+  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4' | null>(null);
 
 
 
@@ -439,9 +439,9 @@ export default function ResumePage() {
               </button>
               <div className="mb-3">
                 <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
-                <p className="text-sm text-muted-foreground dark:text-gray-800">Preview all three styles and select your preferred layout.</p>
+                  <p className="text-sm text-muted-foreground dark:text-gray-800">Preview all four styles and select your preferred layout.</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div
                   className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style1' ? 'ring-2 ring-primary' : 'ring-0'}`}
                   onClick={() => setModalSelectedStyle('style1')}
@@ -452,7 +452,7 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 1 - Harvard</span>
                     {modalSelectedStyle==='style1' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
                     <iframe 
                       src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
                       className="w-full h-full border-0"
@@ -475,7 +475,7 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 2 - Chronological</span>
                     {modalSelectedStyle==='style2' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
                     <iframe 
                       src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
                       className="w-full h-full border-0"
@@ -498,12 +498,35 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 3 - Modernised</span>
                     {modalSelectedStyle==='style3' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
                     <iframe 
                       src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
                       className="w-full h-full border-0"
                       title="Style 3 Preview"
                       onError={(e) => console.error('Style 3 PDF failed to load:', e)}
+                      style={{ 
+                        width: '100%',
+                        height: '100%'
+                      }}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style4' ? 'ring-2 ring-primary' : 'ring-0'}`}
+                  onClick={() => setModalSelectedStyle('style4')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="px-3 py-2 border-b flex items-center justify-between">
+                    <span className="text-sm font-medium">Style 4 - Creative</span>
+                    {modalSelectedStyle==='style4' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
+                  </div>
+                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                    <iframe 
+                      src="/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                      className="w-full h-full border-0"
+                      title="Style 4 Preview"
+                      onError={(e) => console.error('Style 4 PDF failed to load:', e)}
                       style={{ 
                         width: '100%',
                         height: '100%'
@@ -826,13 +849,19 @@ export default function ResumePage() {
                           <label className="text-sm dark:text-gray-100 text-foreground w-40">Accent color</label>
                           <div className="flex items-center gap-4 text-sm text-foreground dark:text-white">
                             <label className="flex items-center gap-2">
-                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='black'} onChange={()=>setUiAccentColor('black')} /> Default (black)
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='black'} onChange={()=>setUiAccentColor('black')} /> Default
                             </label>
                             <label className="flex items-center gap-2">
-                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-blue'} onChange={()=>setUiAccentColor('dark-blue')} /> Dark blue
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-blue'} onChange={()=>setUiAccentColor('dark-blue')} /> Blue
                             </label>
                             <label className="flex items-center gap-2">
-                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-gray'} onChange={()=>setUiAccentColor('dark-gray')} /> Dark gray
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-gray'} onChange={()=>setUiAccentColor('dark-gray')} /> Gray
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='dark-green'} onChange={()=>setUiAccentColor('dark-green')} /> Green
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="radio" name="accent" className="w-4 h-4" checked={uiAccentColor==='crimson'} onChange={()=>setUiAccentColor('crimson')} /> Crimson
                             </label>
                           </div>
                         </div>

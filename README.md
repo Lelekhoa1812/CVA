@@ -71,6 +71,7 @@ Have a look at our resume samples:
 [Harvard Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style1.pdf)  
 [Chronological Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style2.pdf)  
 [Modernised Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style3.pdf)  
+[Creative Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style4.pdf)  
 *Give us feedback if you have any thought on improvements*
 
 ## ✨ Features
