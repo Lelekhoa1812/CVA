@@ -568,8 +568,13 @@ export async function POST(req: NextRequest) {
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
-    // Use drawWrappedText for skills to ensure proper wrapping
-    drawWrappedText(skillsText, fontSize - 1);
+    // Preserve original line breaks from user input
+    const skillLines = skillsText.split('\n').filter((line: string) => line.trim());
+    for (const line of skillLines) {
+      if (line.trim()) {
+        drawText(line.trim(), left, fontSize - 1, false);
+      }
+    }
   }
   
   y -= 8; // Style2: More space after skills

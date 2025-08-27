@@ -162,7 +162,7 @@ export default function ResumePage() {
           
           if (enhancementResponse.ok) {
             const enhancementData = await enhancementResponse.json();
-
+            
             // Optionally beautify with bold/italic touches if enabled in styling preferences
             let finalEnhancedContent: string = enhancementData.enhancedContent;
             const wantsEmphasis = !!(stylePreferences?.useBold || stylePreferences?.useItalic);
@@ -478,10 +478,52 @@ export default function ResumePage() {
                   disabled={!modalSelectedStyle}
                   onClick={async () => {
                     if (!modalSelectedStyle) return;
-                    setSelectedStyle(modalSelectedStyle);
+                    setLoading(true);
+                    setError(null);
+                    setPdfUrl(null);
+                    const chosenStyle = modalSelectedStyle; // Store the selected style
+                    setSelectedStyle(chosenStyle);
                     setIsStyleModalOpen(false);
                     setModalSelectedStyle(null);
-                    await generate();
+                    // Use the stored value directly instead of relying on state update
+                    const res = await fetch(`/api/resume/${chosenStyle}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                        skills, 
+                        selectedProjects, 
+                        selectedExperiences, 
+                        enhance, 
+                        qa: [...stylingMessages, ...contentMessages], 
+                        stylePreferences,
+                        contentEnhancementData
+                      })
+                    });
+                    
+                    if (!res.ok) {
+                      const d = await res.json().catch(() => ({}));
+                      console.error('PDF generation failed:', d);
+                      setError(d.error || 'Failed to generate PDF');
+                      setLoading(false);
+                      return;
+                    }
+                    
+                    try {
+                      const blob = await res.blob();
+                      if (blob.size === 0) {
+                        console.error('PDF blob is empty');
+                        setError('Generated PDF is empty. Please check your selections and try again.');
+                        setLoading(false);
+                        return;
+                      }
+                      const url = URL.createObjectURL(blob);
+                      setPdfUrl(url);
+                      setLoading(false);
+                    } catch (error) {
+                      console.error('Error processing PDF response:', error);
+                      setError('Error processing generated PDF');
+                      setLoading(false);
+                    }
                   }}
                   className={`px-4 py-2 rounded ${!modalSelectedStyle ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
                 >
@@ -706,7 +748,7 @@ export default function ResumePage() {
                       <div className="mb-4 space-y-3">
                         <div className="text-sm font-medium mb-2 bg-gray-700 text-gray-100 text-foreground p-3 rounded">
                           Styling Preferences
-                        </div>
+                          </div>
 
                         {/* Font size dropdown */}
                         <div className="flex items-center gap-3">
@@ -721,7 +763,7 @@ export default function ResumePage() {
                             <option value="12pt">large (12pt)</option>
                             <option value="14pt">extra-large (14pt)</option>
                           </select>
-                        </div>
+                          </div>
 
                         {/* Bold/Italic checkboxes */}
                         <div className="flex items-center gap-6">
@@ -732,7 +774,7 @@ export default function ResumePage() {
                           <label className="flex items-center gap-2 text-sm text-foreground dark:text-white">
                             <input type="checkbox" className="w-4 h-4" checked={uiUseItalic} onChange={e=>setUiUseItalic(e.target.checked)} /> Italic
                           </label>
-                        </div>
+                          </div>
 
                         {/* Accent color selection */}
                         <div className="flex items-center gap-6">
