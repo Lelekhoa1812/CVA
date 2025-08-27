@@ -452,12 +452,18 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 1 - Harvard</span>
                     {modalSelectedStyle==='style1' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <iframe 
-                    src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0" 
-                    className="w-full h-[520px] border-0"
-                    title="Style 1 Preview"
-                    onError={(e) => console.error('Style 1 PDF failed to load:', e)}
-                  />
+                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                    <iframe 
+                      src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                      className="w-full h-full border-0"
+                      title="Style 1 Preview"
+                      onError={(e) => console.error('Style 1 PDF failed to load:', e)}
+                      style={{ 
+                        width: '100%',
+                        height: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
                 <div
                   className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style2' ? 'ring-2 ring-primary' : 'ring-0'}`}
@@ -469,12 +475,18 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 2 - Chronological</span>
                     {modalSelectedStyle==='style2' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <iframe 
-                    src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0" 
-                    className="w-full h-[520px] border-0"
-                    title="Style 2 Preview"
-                    onError={(e) => console.error('Style 2 PDF failed to load:', e)}
-                  />
+                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                    <iframe 
+                      src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                      className="w-full h-full border-0"
+                      title="Style 2 Preview"
+                      onError={(e) => console.error('Style 2 PDF failed to load:', e)}
+                      style={{ 
+                        width: '100%',
+                        height: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
                 <div
                   className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style3' ? 'ring-2 ring-primary' : 'ring-0'}`}
@@ -486,12 +498,18 @@ export default function ResumePage() {
                     <span className="text-sm font-medium">Style 3 - Modernised</span>
                     {modalSelectedStyle==='style3' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <iframe 
-                    src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0" 
-                    className="w-full h-[520px] border-0"
-                    title="Style 3 Preview"
-                    onError={(e) => console.error('Style 3 PDF failed to load:', e)}
-                  />
+                  <div className="relative w-full h-[500px] bg-white border border-gray-200 rounded overflow-hidden">
+                    <iframe 
+                      src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                      className="w-full h-full border-0"
+                      title="Style 3 Preview"
+                      onError={(e) => console.error('Style 3 PDF failed to load:', e)}
+                      style={{ 
+                        width: '100%',
+                        height: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="mt-4 flex justify-end gap-3">
