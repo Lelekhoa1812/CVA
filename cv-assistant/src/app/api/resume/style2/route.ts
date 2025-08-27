@@ -341,7 +341,8 @@ export async function POST(req: NextRequest) {
     const font = useBold ? helvBold : helv;
     const titleUpper = title.toUpperCase();
     const titleWidth = font.widthOfTextAtSize(titleUpper, titleSize);
-    const titleX = (width - titleWidth) / 2;
+    // Center the title within the content area (between left and right margins)
+    const titleX = left + (right - left - titleWidth) / 2;
     page.drawText(titleUpper, { x: titleX, y, size: titleSize, font, color: getAccentColor() });
     y -= titleSize + 8; // Style2: More space after title
     

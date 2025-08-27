@@ -7,6 +7,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function LoginPage() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error || 'Failed');
+      setSuggestions(data.suggestions || []);
       setLoading(false);
       return;
     }
@@ -63,12 +65,29 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-red-600 dark:text-red-400 text-sm flex items-center">
+                <p className="text-red-600 dark:text-red-400 text-sm flex items-center mb-2">
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   {error}
                 </p>
+                {suggestions.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Try one of these alternatives:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestions.map((suggestion, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setUsername(suggestion)}
+                          className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -80,7 +99,13 @@ export default function LoginPage() {
                 </svg>
                 <input 
                   value={username} 
-                  onChange={(e) => setUsername(e.target.value)} 
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (error) {
+                      setError(null);
+                      setSuggestions([]);
+                    }
+                  }} 
                   className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
                   placeholder="Enter your username"
                   required 
@@ -144,7 +169,11 @@ export default function LoginPage() {
             <div className="text-center">
               <button 
                 type="button" 
-                onClick={() => setIsRegister(v => !v)} 
+                onClick={() => {
+                  setIsRegister(v => !v);
+                  setError(null);
+                  setSuggestions([]);
+                }} 
                 className="text-sm text-primary hover:text-primary/80 transition-colors duration-200"
               >
                 {isRegister ? 'Already have an account? Sign in' : "Don't have an account? Create one"}

@@ -15,9 +15,40 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     console.log('Database connected');
     
+    // Check if username already exists
     const existing = await UserModel.findOne({ username });
     if (existing) {
-      return NextResponse.json({ error: 'Username already exists' }, { status: 409 });
+      // Generate some alternative username suggestions
+      const suggestions = [
+        `${username}123`,
+        `${username}_${Math.floor(Math.random() * 1000)}`,
+        `${username}${new Date().getFullYear().toString().slice(-2)}`,
+        `${username}${Math.random().toString(36).substring(2, 5)}`
+      ];
+      
+      return NextResponse.json({ 
+        error: `Username "${username}" is already taken. Please choose a different username.`,
+        suggestions: suggestions
+      }, { status: 409 });
+    }
+    
+    // Additional validation
+    if (username.length < 3) {
+      return NextResponse.json({ 
+        error: 'Username must be at least 3 characters long' 
+      }, { status: 400 });
+    }
+    
+    if (username.length > 20) {
+      return NextResponse.json({ 
+        error: 'Username must be no more than 20 characters long' 
+      }, { status: 400 });
+    }
+    
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return NextResponse.json({ 
+        error: 'Username can only contain letters, numbers, hyphens, and underscores' 
+      }, { status: 400 });
     }
     
     console.log('Hashing password...');
