@@ -541,13 +541,40 @@ export async function POST(req: NextRequest) {
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
-    // Preserve original line breaks from user input
+    // Preserve original line breaks from user input, but wrap long lines
     const skillLines = skillsText.split('\n').filter((line: string) => line.trim());
     for (const line of skillLines) {
       if (line.trim()) {
-        drawText(line.trim(), left, fontSize - 1, false);
+        // Check if line exceeds margin width
+        const lineWidth = helv.widthOfTextAtSize(line.trim(), fontSize - 1);
+        const maxWidth = right - left;
+        
+        if (lineWidth > maxWidth) {
+          // Line is too long, use word wrapping
+          drawWrappedText(line.trim(), fontSize - 1);
+        } else {
+          // Line fits, draw normally
+          drawText(line.trim(), left, fontSize - 1, false);
+        }
       }
     }
+  }
+  
+  // Add Languages section if user has language data
+  if (profile.languages && profile.languages.trim()) {
+    const languagesText = `Language: ${profile.languages.trim()}`;
+    // Draw "Language:" in bold, then the languages in regular font
+    const labelPart = 'Language: ';
+    const languagesPart = profile.languages.trim();
+    
+    // Calculate positions for proper alignment
+    const labelWidth = helvBold.widthOfTextAtSize(labelPart, fontSize - 1);
+    
+    // Draw "Language:" label in bold
+    page.drawText(labelPart, { x: left, y, size: fontSize - 1, font: helvBold });
+    // Draw languages in regular font
+    page.drawText(languagesPart, { x: left + labelWidth, y, size: fontSize - 1, font: helv });
+    y -= fontSize - 1 + 6; // Adjust y position for next section
   }
 
   // Projects

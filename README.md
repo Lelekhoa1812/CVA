@@ -68,8 +68,9 @@ CV Assistant is a full-featured professional development platform that combines 
 
 #### Preview
 Have a look at our resume samples:  
-[Traditional Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style1.pdf)  
-[Modernised Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style2.pdf)  
+[Harvard Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style1.pdf)  
+[Chronological Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style2.pdf)  
+[Modernised Style](https://github.com/Lelekhoa1812/CVA/blob/main/cv-assistant/public/style3.pdf)  
 *Give us feedback if you have any thought on improvements*
 
 ## ✨ Features

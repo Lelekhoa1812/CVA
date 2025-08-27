@@ -59,9 +59,9 @@ export default function ResumePage() {
   const [uiUseBold, setUiUseBold] = useState<boolean>(false);
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
   const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray'>('black');
-  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2'>('style1');
+  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2' | 'style3'>('style1');
   const [isStyleModalOpen, setIsStyleModalOpen] = useState<boolean>(false);
-  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | null>(null);
+  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | 'style3' | null>(null);
 
 
 
@@ -439,9 +439,9 @@ export default function ResumePage() {
               </button>
               <div className="mb-3">
                 <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
-                <p className="text-sm text-muted-foreground dark:text-gray-800">Preview both styles and select your preferred layout.</p>
+                <p className="text-sm text-muted-foreground dark:text-gray-800">Preview all three styles and select your preferred layout.</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div
                   className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style1' ? 'ring-2 ring-primary' : 'ring-0'}`}
                   onClick={() => setModalSelectedStyle('style1')}
@@ -449,10 +449,15 @@ export default function ResumePage() {
                   tabIndex={0}
                 >
                   <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 1 - Chronological</span>
+                    <span className="text-sm font-medium">Style 1 - Harvard</span>
                     {modalSelectedStyle==='style1' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <iframe src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0" className="w-full h-[520px]" />
+                  <iframe 
+                    src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0" 
+                    className="w-full h-[520px] border-0"
+                    title="Style 1 Preview"
+                    onError={(e) => console.error('Style 1 PDF failed to load:', e)}
+                  />
                 </div>
                 <div
                   className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style2' ? 'ring-2 ring-primary' : 'ring-0'}`}
@@ -461,10 +466,32 @@ export default function ResumePage() {
                   tabIndex={0}
                 >
                   <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 2 - Modernised</span>
+                    <span className="text-sm font-medium">Style 2 - Chronological</span>
                     {modalSelectedStyle==='style2' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
                   </div>
-                  <iframe src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0" className="w-full h-[520px]" />
+                  <iframe 
+                    src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0" 
+                    className="w-full h-[520px] border-0"
+                    title="Style 2 Preview"
+                    onError={(e) => console.error('Style 2 PDF failed to load:', e)}
+                  />
+                </div>
+                <div
+                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style3' ? 'ring-2 ring-primary' : 'ring-0'}`}
+                  onClick={() => setModalSelectedStyle('style3')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="px-3 py-2 border-b flex items-center justify-between">
+                    <span className="text-sm font-medium">Style 3 - Modernised</span>
+                    {modalSelectedStyle==='style3' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
+                  </div>
+                  <iframe 
+                    src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0" 
+                    className="w-full h-[520px] border-0"
+                    title="Style 3 Preview"
+                    onError={(e) => console.error('Style 3 PDF failed to load:', e)}
+                  />
                 </div>
               </div>
               <div className="mt-4 flex justify-end gap-3">
