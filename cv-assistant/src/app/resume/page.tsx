@@ -62,8 +62,71 @@ export default function ResumePage() {
   const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4'>('style1');
   const [isStyleModalOpen, setIsStyleModalOpen] = useState<boolean>(false);
   const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4' | null>(null);
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState<number>(0);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
 
+  // Check if device is mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 700); // md breakpoint
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
+  // Reset preview index when modal opens
+  useEffect(() => {
+    if (isStyleModalOpen) {
+      setCurrentPreviewIndex(0);
+      setModalSelectedStyle(null);
+    }
+  }, [isStyleModalOpen]);
+
+  // Function to navigate to next preview
+  const nextPreview = () => {
+    setCurrentPreviewIndex((prev) => (prev + 1) % 4);
+  };
+
+  // Function to navigate to previous preview
+  const prevPreview = () => {
+    setCurrentPreviewIndex((prev) => (prev - 1 + 4) % 4);
+  };
+
+  // Function to go to specific preview
+  const goToPreview = (index: number) => {
+    setCurrentPreviewIndex(index);
+  };
+
+  // Touch/swipe support for mobile
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) {
+      nextPreview();
+    }
+    if (isRightSwipe) {
+      prevPreview();
+    }
+  };
 
   // Function to start styling questions
   function startStylingQuestions() {
@@ -439,102 +502,238 @@ export default function ResumePage() {
               </button>
               <div className="mb-3">
                 <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
-                  <p className="text-sm text-muted-foreground dark:text-gray-800">Preview all four styles and select your preferred layout.</p>
+                <p className="text-sm text-muted-foreground dark:text-gray-800">
+                  {isMobile ? 'Swipe through styles to preview and select your preferred layout.' : 'Preview all four styles and select your preferred layout.'}
+                </p>
               </div>
+
+              {/* Mobile Layout - Single Preview with Navigation */}
+              {isMobile ? (
+                <div className="space-y-4">
+                  {/* Preview Display */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 border-b flex items-center justify-between bg-gray-50 dark:bg-gray-800">
+                      <span className="text-sm font-medium dark:text-white">
+                        {['Style 1 - Harvard', 'Style 2 - Chronological', 'Style 3 - Modernised', 'Style 4 - Creative'][currentPreviewIndex]}
+                      </span>
+                      {modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex] && (
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                      )}
+                    </div>
+                    <div 
+                      className="relative w-full h-[400px] bg-white border border-gray-200 rounded overflow-hidden"
+                      onTouchStart={onTouchStart}
+                      onTouchMove={onTouchMove}
+                      onTouchEnd={onTouchEnd}
+                    >
+                      <iframe 
+                        src={`/${['style1', 'style2', 'style3', 'style4'][currentPreviewIndex]}.pdf#toolbar=0&navpanes=0&scrollbar=0&view=Fit&zoom=1.0`}
+                        className="border-0"
+                        title={`${['Style 1 - Harvard', 'Style 2 - Chronological', 'Style 3 - Modernised', 'Style 4 - Creative'][currentPreviewIndex]} Preview`}
+                        onError={(e) => console.error(`${['Style 1', 'Style 2', 'Style 3', 'Style 4'][currentPreviewIndex]} PDF failed to load:`, e)}
+                        style={{ 
+                          width: '100%',
+                          height: '100%',
+                          display: 'block',
+                          margin: '0',
+                          padding: '0',
+                          border: 'none',
+                          outline: 'none',
+                          transform: 'scale(1.1)',
+                          transformOrigin: 'center center'
+                        }}
+                      />
+                      {/* Swipe hint overlay for mobile */}
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4 opacity-0 hover:opacity-100 transition-opacity">
+                        <div className="text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
+                          ← Swipe left for next
+                        </div>
+                        <div className="text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
+                          Swipe right for previous →
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={prevPreview}
+                      className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      aria-label="Previous style"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Previous
+                    </button>
+
+                    {/* Preview Indicators with Style Names */}
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex gap-2">
+                        {[0, 1, 2, 3].map((index) => (
+                          <button
+                            key={index}
+                            onClick={() => goToPreview(index)}
+                            className={`w-3 h-3 rounded-full transition-all ${
+                              index === currentPreviewIndex
+                                ? 'bg-primary scale-110'
+                                : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'
+                            }`}
+                            aria-label={`Go to style ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="text-xs text-gray-500 text-center">
+                        {currentPreviewIndex + 1} of 4
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={nextPreview}
+                      className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      aria-label="Next style"
+                    >
+                      Next
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+
+                  {/* Style Selection Button */}
+                  <div className="text-center">
+                    <button
+                      onClick={() => {
+                        const styleMap = ['style1', 'style2', 'style3', 'style4'] as const;
+                        setModalSelectedStyle(styleMap[currentPreviewIndex]);
+                      }}
+                      className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                        modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex]
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex] ? 'Selected' : 'Select This Style'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Desktop Layout - Grid of All Previews */
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div
-                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style1' ? 'ring-2 ring-primary' : 'ring-0'}`}
-                  onClick={() => setModalSelectedStyle('style1')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 1 - Harvard</span>
-                    {modalSelectedStyle==='style1' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
+                  <div
+                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
+                      modalSelectedStyle === 'style1' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
+                    }`}
+                    onClick={() => setModalSelectedStyle('style1')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <span className="text-sm font-medium">Style 1 - Harvard</span>
+                      {modalSelectedStyle === 'style1' && (
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                      )}
+                    </div>
+                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                      <iframe 
+                        src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                        className="w-full h-full border-0"
+                        title="Style 1 Preview"
+                        onError={(e) => console.error('Style 1 PDF failed to load:', e)}
+                        style={{ 
+                          width: '100%',
+                          height: '100%'
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                    <iframe 
-                      src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                      className="w-full h-full border-0"
-                      title="Style 1 Preview"
-                      onError={(e) => console.error('Style 1 PDF failed to load:', e)}
-                      style={{ 
-                        width: '100%',
-                        height: '100%'
-                      }}
-                    />
+
+                  <div
+                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
+                      modalSelectedStyle === 'style2' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
+                    }`}
+                    onClick={() => setModalSelectedStyle('style2')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <span className="text-sm font-medium">Style 2 - Chronological</span>
+                      {modalSelectedStyle === 'style2' && (
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                      )}
+                    </div>
+                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                      <iframe 
+                        src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.0" 
+                        className="w-full h-full border-0"
+                        title="Style 2 Preview"
+                        onError={(e) => console.error('Style 2 PDF failed to load:', e)}
+                        style={{ 
+                          width: '100%',
+                          height: '100%'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
+                      modalSelectedStyle === 'style3' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
+                    }`}
+                    onClick={() => setModalSelectedStyle('style3')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <span className="text-sm font-medium">Style 3 - Modernised</span>
+                      {modalSelectedStyle === 'style3' && (
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                      )}
+                    </div>
+                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                      <iframe 
+                        src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                        className="w-full h-full border-0"
+                        title="Style 3 Preview"
+                        onError={(e) => console.error('Style 3 PDF failed to load:', e)}
+                        style={{ 
+                          width: '100%',
+                          height: '100%'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
+                      modalSelectedStyle === 'style4' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
+                    }`}
+                    onClick={() => setModalSelectedStyle('style4')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <span className="text-sm font-medium">Style 4 - Creative</span>
+                      {modalSelectedStyle === 'style4' && (
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                      )}
+                    </div>
+                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                      <iframe 
+                        src="/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
+                        className="w-full h-full border-0"
+                        title="Style 4 Preview"
+                        onError={(e) => console.error('Style 4 Preview', e)}
+                        style={{ 
+                          width: '100%',
+                          height: '100%'
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-                <div
-                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style2' ? 'ring-2 ring-primary' : 'ring-0'}`}
-                  onClick={() => setModalSelectedStyle('style2')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 2 - Chronological</span>
-                    {modalSelectedStyle==='style2' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
-                  </div>
-                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                    <iframe 
-                      src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                      className="w-full h-full border-0"
-                      title="Style 2 Preview"
-                      onError={(e) => console.error('Style 2 PDF failed to load:', e)}
-                      style={{ 
-                        width: '100%',
-                        height: '100%'
-                      }}
-                    />
-                  </div>
-                </div>
-                <div
-                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style3' ? 'ring-2 ring-primary' : 'ring-0'}`}
-                  onClick={() => setModalSelectedStyle('style3')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 3 - Modernised</span>
-                    {modalSelectedStyle==='style3' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
-                  </div>
-                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                    <iframe 
-                      src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                      className="w-full h-full border-0"
-                      title="Style 3 Preview"
-                      onError={(e) => console.error('Style 3 PDF failed to load:', e)}
-                      style={{ 
-                        width: '100%',
-                        height: '100%'
-                      }}
-                    />
-                  </div>
-                </div>
-                <div
-                  className={`border rounded-lg overflow-hidden hover:ring-2 ${modalSelectedStyle==='style4' ? 'ring-2 ring-primary' : 'ring-0'}`}
-                  onClick={() => setModalSelectedStyle('style4')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="px-3 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">Style 4 - Creative</span>
-                    {modalSelectedStyle==='style4' && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>}
-                  </div>
-                  <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                    <iframe 
-                      src="/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                      className="w-full h-full border-0"
-                      title="Style 4 Preview"
-                      onError={(e) => console.error('Style 4 PDF failed to load:', e)}
-                      style={{ 
-                        width: '100%',
-                        height: '100%'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
+              )}
               <div className="mt-4 flex justify-end gap-3">
                 <button
                   onClick={() => { setIsStyleModalOpen(false); setModalSelectedStyle(null); }}

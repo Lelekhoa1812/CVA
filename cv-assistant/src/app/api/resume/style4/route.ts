@@ -7,7 +7,7 @@ import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/gemini';
-import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -70,15 +70,11 @@ export async function POST(req: NextRequest) {
   const enhancedExperienceSummaries: Record<number, string> = {};
 
   let fontSize = 11;
-  let useBoldPref = false;
-  let useItalicPref = false;
   let contentDensity = 'balanced';
   const accentPref = (stylePreferences?.accentColor as string) || 'teal';
 
   if (stylePreferences) {
     fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
-    useBoldPref = !!stylePreferences.useBold;
-    useItalicPref = !!stylePreferences.useItalic;
     contentDensity = stylePreferences.contentDensity || 'balanced';
   }
 
@@ -233,7 +229,7 @@ export async function POST(req: NextRequest) {
   const contactSize = Math.max(fontSize - 1, 9);
 
   // Name (white, left)
-  let cursorY = top - bannerH + (bannerH - nameSize) / 2 + 10;
+  const cursorY = top - bannerH + (bannerH - nameSize) / 2 + 10;
   page.drawText(nameText, { x: contentLeft + 14, y: cursorY, size: nameSize, font: helvBold, color: rgb(1, 1, 1) });
   // Tagline (major • school)
   // const tagline = [profile.major, profile.school].filter(Boolean).join(' • ');
@@ -411,7 +407,6 @@ export async function POST(req: NextRequest) {
   function estimateCardHeight(title: string, metaRight: string, body: string, bodyIsBullets: boolean) {
     const pad = 10;
     const ttlSize = Math.max(fontSize + 1, 12);
-    const metaSize = Math.max(fontSize - 1, 9);
     const bodySize = Math.max(fontSize - 1, 10);
     const textW = colW - pad * 2;
 
@@ -431,7 +426,7 @@ export async function POST(req: NextRequest) {
     const metaSize = Math.max(titleSize - 1, 9);
     const metaWidth = metaRight ? helv.widthOfTextAtSize(metaRight, metaSize) + 12 : 0;
     const words = (title || '').split(/\s+/).filter(Boolean);
-    let lines: string[] = [];
+    const lines: string[] = [];
     let line = '';
     // Wrap: first line reserves space for date
     for (const w of words) {
@@ -470,9 +465,6 @@ export async function POST(req: NextRequest) {
     const bodySize = Math.max(fontSize - 1, 10);
     // each card’s available width = column width minus padding
     const w = colW;
-    const maxWidth = w - pad * 2;                 // <— define it here
-    const metaWidth = metaRight ? helv.widthOfTextAtSize(metaRight, metaSize) + 12 : 0;
-    const availableWidth = maxWidth - metaWidth;  // leave space for datetime
 
     const needed = estimateCardHeight(title, metaRight, body, bodyIsBullets);
     const targetCol = ensureColumnSpace(col, needed) as 0 | 1;
@@ -488,7 +480,7 @@ export async function POST(req: NextRequest) {
     page.drawRectangle({ x, y: yTop - 3, width: w, height: 3, color: ACCENT });
 
     // Title + meta
-    let yRef = { v: yTop - pad - Math.max(ttlSize, metaSize) };
+    const yRef = { v: yTop - pad - Math.max(ttlSize, metaSize) };
     yRef.v = drawTitleWithWrap(title, metaRight, x + pad, yRef.v, w - pad * 2, ttlSize);
 
     // Body

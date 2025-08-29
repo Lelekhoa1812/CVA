@@ -141,20 +141,20 @@ export default function ProfilePage() {
     form.append('file', file);
     
     try {
-      const res = await fetch('/api/ocr', { method: 'POST', body: form });
-      if (!res.ok) {
-        setError('Failed to parse resume');
-        return;
-      }
+    const res = await fetch('/api/ocr', { method: 'POST', body: form });
+    if (!res.ok) {
+      setError('Failed to parse resume');
+      return;
+    }
       
-      const data: { data?: { projects?: Array<{ name?: string; description?: string }>; experiences?: Array<{ companyName?: string; role?: string; timeFrom?: string; timeTo?: string; description?: string }> } } = await res.json();
-      const o = data.data || {};
+    const data: { data?: { projects?: Array<{ name?: string; description?: string }>; experiences?: Array<{ companyName?: string; role?: string; timeFrom?: string; timeTo?: string; description?: string }> } } = await res.json();
+    const o = data.data || {};
       
-      setProfile(p => ({
-        ...p,
-        projects: [...(p.projects||[]), ...((o.projects||[]).map((x)=>({ name: x.name||'', description: x.description||'', _needsSummary: true })))],
-        experiences: [...(p.experiences||[]), ...((o.experiences||[]).map((x)=>({ companyName: x.companyName||'', role: x.role||'', timeFrom: x.timeFrom||'', timeTo: x.timeTo||'', description: x.description||'', _needsSummary: true })))],
-      }));
+    setProfile(p => ({
+      ...p,
+      projects: [...(p.projects||[]), ...((o.projects||[]).map((x)=>({ name: x.name||'', description: x.description||'', _needsSummary: true })))],
+      experiences: [...(p.experiences||[]), ...((o.experiences||[]).map((x)=>({ companyName: x.companyName||'', role: x.role||'', timeFrom: x.timeFrom||'', timeTo: x.timeTo||'', description: x.description||'', _needsSummary: true })))],
+    }));
     } catch {
       setError('Failed to parse resume. Please try again.');
     } finally {
@@ -176,15 +176,15 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-5xl mx-auto p-6 space-y-8">
-        <div className="flex items-center justify-between">
+    <div className="max-w-5xl mx-auto p-6 space-y-8">
+      <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold dark:text-white text-foreground">Profile</h1>
           <button onClick={save} className="bg-primary text-primary-foreground rounded px-4 py-2 hover:bg-primary/90 transition-colors duration-200" disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
-        </div>
+      </div>
         {error && <p className="text-destructive text-sm">{error}</p>}
 
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Name</label>
             <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.name} onChange={e=>up('name', e.target.value)} />
           </div>
@@ -207,8 +207,8 @@ export default function ProfilePage() {
           <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Work Email <span className="text-muted-foreground dark:text-white text-xs">(optional, preferred)</span></label>
             <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" placeholder="you@company.com" value={profile.workEmail || ''} onChange={e=>up('workEmail', e.target.value)} />
-          </div>
-          <div>
+        </div>
+        <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Website URL <span className="text-muted-foreground dark:text-white text-xs">(optional)</span></label>
             <input 
               className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
@@ -216,8 +216,8 @@ export default function ProfilePage() {
               value={profile.website || ''} 
               onChange={e=>up('website', e.target.value)} 
             />
-          </div>
-          <div>
+        </div>
+        <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">LinkedIn URL <span className="text-muted-foreground dark:text-white text-xs">(optional)</span></label>
             <input 
               className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
@@ -225,12 +225,12 @@ export default function ProfilePage() {
               value={profile.linkedin || ''} 
               onChange={e=>up('linkedin', e.target.value)} 
             />
-          </div>
-          <div>
+        </div>
+        <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Phone Number</label>
             <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.phone} onChange={e=>up('phone', e.target.value)} />
-          </div>
-          <div>
+        </div>
+        <div>
             <label className="block text-sm dark:text-white mb-1 text-foreground">Languages <span className="text-muted-foreground dark:text-white text-xs">(optional, separate by commas)</span></label>
             <input 
               className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
@@ -238,15 +238,15 @@ export default function ProfilePage() {
               value={profile.languages || ''} 
               onChange={e=>up('languages', e.target.value)} 
             />
-          </div>
-        </section>
+        </div>
+      </section>
 
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl dark:text-white font-semibold text-foreground">Projects</h2>
             <button onClick={addProject} className="bg-secondary text-secondary-foreground px-3 py-1 rounded text-sm hover:bg-secondary/80 transition-colors duration-200">Add Project</button>
           </div>
-          <div className="space-y-4">
+      <div className="space-y-4">
             {profile.projects.map((project, index) => (
               <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -305,18 +305,18 @@ export default function ProfilePage() {
                     Enhance your description
                     <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+        </div>
+            </div>
+          ))}
+        </div>
         </section>
 
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl dark:text-white font-semibold text-foreground">Experience</h2>
             <button onClick={addExperience} className="bg-secondary text-secondary-foreground px-3 py-1 rounded text-sm hover:bg-secondary/80 transition-colors duration-200">Add Experience</button>
-          </div>
-          <div className="space-y-4">
+      </div>
+      <div className="space-y-4">
             {profile.experiences.map((experience, index) => (
               <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -402,10 +402,10 @@ export default function ProfilePage() {
                     Enhance your description
                     <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+        </div>
+            </div>
+          ))}
+        </div>
         </section>
 
         <section>
@@ -428,8 +428,8 @@ export default function ProfilePage() {
               {/* Progress Bar */}
               <div className="mt-3 w-full bg-primary/20 rounded-full h-2 overflow-hidden">
                 <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }}></div>
-              </div>
-              
+      </div>
+
               {/* Processing Steps */}
               <div className="mt-3 space-y-2">
                 <div className="flex items-center space-x-2 text-sm text-muted-foreground">
