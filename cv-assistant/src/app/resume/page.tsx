@@ -534,13 +534,6 @@ export default function ResumePage() {
                         style={{ 
                           width: '100%',
                           height: '100%',
-                          display: 'block',
-                          margin: '0',
-                          padding: '0',
-                          border: 'none',
-                          outline: 'none',
-                          transform: 'scale(1.1)',
-                          transformOrigin: 'center center'
                         }}
                       />
                       {/* Swipe hint overlay for mobile */}
