@@ -401,8 +401,38 @@ export async function POST(req: NextRequest) {
 
   function drawSidebarLine(text: string, size = Math.max(fontSize - 1, 9)) {
     if (!text || !text.trim()) return;
-    page.drawText(text, { x: leftX, y: yLeft, size, font: times });
-    yLeft -= size + 4;
+    const maxWidth = sidebarWidth - 4; // Leave some padding
+    const textWidth = times.widthOfTextAtSize(text, size);
+    
+    // If text fits in sidebar, draw it normally
+    if (textWidth <= maxWidth) {
+      page.drawText(text, { x: leftX, y: yLeft, size, font: times });
+      yLeft -= size + 4;
+    } else {
+      // Wrap text to multiple lines
+      const words = text.split(/\s+/).filter(Boolean);
+      let currentLine = '';
+      
+      for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word;
+        const testWidth = times.widthOfTextAtSize(testLine, size);
+        
+        if (testWidth > maxWidth && currentLine) {
+          // Draw current line and start new line
+          page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
+          yLeft -= size + 4;
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      // Draw remaining line
+      if (currentLine) {
+        page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
+        yLeft -= size + 4;
+      }
+    }
   }
 
   // Contact & Links

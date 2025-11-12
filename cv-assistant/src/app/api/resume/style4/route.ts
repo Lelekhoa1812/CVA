@@ -225,21 +225,58 @@ export async function POST(req: NextRequest) {
     if (m) nameSize = Math.max(parseInt(m[1]) + 9, 18);
   }
   const preferredEmail = profile.workEmail?.trim() ? profile.workEmail : profile.email;
-  const contactRight = [preferredEmail, profile.phone, profile.website, profile.linkedin].filter(Boolean).join(' • ');
+  const contactItems = [preferredEmail, profile.phone, profile.website, profile.linkedin].filter(Boolean);
   const contactSize = Math.max(fontSize - 1, 9);
 
-  // Name (white, left)
-  const cursorY = top - bannerH + (bannerH - nameSize) / 2 + 10;
-  page.drawText(nameText, { x: contentLeft + 14, y: cursorY, size: nameSize, font: helvBold, color: rgb(1, 1, 1) });
-  // Tagline (major • school)
-  // const tagline = [profile.major, profile.school].filter(Boolean).join(' • ');
-  // if (tagline) {
-  //   page.drawText(tagline, { x: contentLeft + 14, y: cursorY - (nameSize + 4), size: Math.max(fontSize, 10), font: helv, color: rgb(1, 1, 1) });
-  // }
-  // Contact (white, right)
-  if (contactRight) {
-    const wC = helv.widthOfTextAtSize(contactRight, contactSize);
-    page.drawText(contactRight, { x: contentRight - wC - 14, y: cursorY + 2, size: contactSize, font: helv, color: rgb(1, 1, 1) });
+  // Calculate available space for contact info (right side of banner)
+  const nameWidth = helvBold.widthOfTextAtSize(nameText, nameSize);
+  const nameRightEdge = contentLeft + 14 + nameWidth + 20; // 20pt gap between name and contact
+  const contactMaxWidth = contentRight - nameRightEdge - 14; // Available width for contact
+
+  // Name (white, left) - vertically centered in banner
+  const nameY = top - bannerH + (bannerH - nameSize) / 2 + nameSize;
+  page.drawText(nameText, { x: contentLeft + 14, y: nameY, size: nameSize, font: helvBold, color: rgb(1, 1, 1) });
+
+  // Contact (white, right) - wrap if needed
+  if (contactItems.length > 0) {
+    const contactText = contactItems.join(' • ');
+    const contactWidth = helv.widthOfTextAtSize(contactText, contactSize);
+    
+    // If contact fits on one line, draw it normally
+    if (contactWidth <= contactMaxWidth) {
+      const contactX = contentRight - contactWidth - 14;
+      const contactY = nameY; // Align with name baseline
+      page.drawText(contactText, { x: contactX, y: contactY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
+    } else {
+      // Wrap contact info to multiple lines
+      // Split by bullet separator and wrap each segment
+      const segments = contactText.split(' • ');
+      let currentLine = '';
+      let lineY = nameY;
+      const lineHeight = contactSize + 2;
+      
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const testLine = currentLine ? currentLine + ' • ' + segment : segment;
+        const testWidth = helv.widthOfTextAtSize(testLine, contactSize);
+        
+        if (testWidth > contactMaxWidth && currentLine) {
+          // Draw current line and start new line
+          const lineX = contentRight - helv.widthOfTextAtSize(currentLine, contactSize) - 14;
+          page.drawText(currentLine, { x: lineX, y: lineY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
+          lineY -= lineHeight;
+          currentLine = segment;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      // Draw remaining line
+      if (currentLine) {
+        const lineX = contentRight - helv.widthOfTextAtSize(currentLine, contactSize) - 14;
+        page.drawText(currentLine, { x: lineX, y: lineY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
+      }
+    }
   }
 
   // Beautify markdown
@@ -317,11 +354,50 @@ export async function POST(req: NextRequest) {
       const h = 28;
       page.drawRectangle({ x: margin, y: height - margin - h, width: contentRight - contentLeft, height: h, color: ACCENT_DARK });
       const mini = `${profile.name || 'Your Name'} — ${profile.major || ''}`;
-      page.drawText(mini, { x: contentLeft + 12, y: height - margin - h + 8, size: Math.max(fontSize, 10), font: helvBold, color: rgb(1, 1, 1) });
-      if (contactRight) {
-        const wC = helv.widthOfTextAtSize(contactRight, Math.max(fontSize - 1, 9));
-        page.drawText(contactRight, { x: contentRight - wC - 12, y: height - margin - h + 8, size: Math.max(fontSize - 1, 9), font: helv, color: rgb(1, 1, 1) });
+      const miniSize = Math.max(fontSize, 10);
+      const miniY = height - margin - h + miniSize;
+      page.drawText(mini, { x: contentLeft + 12, y: miniY, size: miniSize, font: helvBold, color: rgb(1, 1, 1) });
+      
+      if (contactItems.length > 0) {
+        const contactText = contactItems.join(' • ');
+        const miniContactSize = Math.max(fontSize - 1, 9);
+        const miniNameWidth = helvBold.widthOfTextAtSize(mini, miniSize);
+        const miniNameRightEdge = contentLeft + 12 + miniNameWidth + 20;
+        const miniContactMaxWidth = contentRight - miniNameRightEdge - 12;
+        const miniContactWidth = helv.widthOfTextAtSize(contactText, miniContactSize);
+        
+        if (miniContactWidth <= miniContactMaxWidth) {
+          const miniContactX = contentRight - miniContactWidth - 12;
+          page.drawText(contactText, { x: miniContactX, y: miniY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
+        } else {
+          // Wrap contact info for subsequent pages too
+          const segments = contactText.split(' • ');
+          let currentLine = '';
+          let lineY = miniY;
+          const lineHeight = miniContactSize + 2;
+          
+          for (let i = 0; i < segments.length; i++) {
+            const segment = segments[i];
+            const testLine = currentLine ? currentLine + ' • ' + segment : segment;
+            const testWidth = helv.widthOfTextAtSize(testLine, miniContactSize);
+            
+            if (testWidth > miniContactMaxWidth && currentLine) {
+              const lineX = contentRight - helv.widthOfTextAtSize(currentLine, miniContactSize) - 12;
+              page.drawText(currentLine, { x: lineX, y: lineY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
+              lineY -= lineHeight;
+              currentLine = segment;
+            } else {
+              currentLine = testLine;
+            }
+          }
+          
+          if (currentLine) {
+            const lineX = contentRight - helv.widthOfTextAtSize(currentLine, miniContactSize) - 12;
+            page.drawText(currentLine, { x: lineX, y: lineY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
+          }
+        }
       }
+      
       colY = [height - margin - h - 20, height - margin - h - 20];
     } else {
       colY = [height - margin, height - margin];
