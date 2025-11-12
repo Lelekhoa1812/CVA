@@ -409,28 +409,57 @@ export async function POST(req: NextRequest) {
       page.drawText(text, { x: leftX, y: yLeft, size, font: times });
       yLeft -= size + 4;
     } else {
-      // Wrap text to multiple lines
-      const words = text.split(/\s+/).filter(Boolean);
-      let currentLine = '';
+      // Check if this looks like a URL (no spaces, contains common URL patterns)
+      const isUrl = /^https?:\/\//.test(text) || (!/\s/.test(text) && (text.includes('.') || text.includes('/')));
       
-      for (const word of words) {
-        const testLine = currentLine ? currentLine + ' ' + word : word;
-        const testWidth = times.widthOfTextAtSize(testLine, size);
+      if (isUrl) {
+        // For URLs, break at character boundaries
+        let currentLine = '';
         
-        if (testWidth > maxWidth && currentLine) {
-          // Draw current line and start new line
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const testLine = currentLine + char;
+          const testWidth = times.widthOfTextAtSize(testLine, size);
+          
+          if (testWidth > maxWidth && currentLine) {
+            // Draw current line and start new line
+            page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
+            yLeft -= size + 4;
+            currentLine = char;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        // Draw remaining line
+        if (currentLine) {
           page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
           yLeft -= size + 4;
-          currentLine = word;
-        } else {
-          currentLine = testLine;
         }
-      }
-      
-      // Draw remaining line
-      if (currentLine) {
-        page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
-        yLeft -= size + 4;
+      } else {
+        // For regular text, wrap at word boundaries
+        const words = text.split(/\s+/).filter(Boolean);
+        let currentLine = '';
+        
+        for (const word of words) {
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const testWidth = times.widthOfTextAtSize(testLine, size);
+          
+          if (testWidth > maxWidth && currentLine) {
+            // Draw current line and start new line
+            page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
+            yLeft -= size + 4;
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        // Draw remaining line
+        if (currentLine) {
+          page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
+          yLeft -= size + 4;
+        }
       }
     }
   }

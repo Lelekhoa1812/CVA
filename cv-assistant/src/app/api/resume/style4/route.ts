@@ -234,47 +234,57 @@ export async function POST(req: NextRequest) {
   const contactMaxWidth = contentRight - nameRightEdge - 14; // Available width for contact
 
   // Name (white, left) - vertically centered in banner
-  const nameY = top - bannerH + (bannerH - nameSize) / 2 + nameSize;
+  // Banner goes from (top - bannerH) to (top), center is at (top - bannerH/2)
+  // Text baseline should be at center minus half the font size for vertical centering
+  const nameY = top - bannerH / 2 - nameSize / 2;
   page.drawText(nameText, { x: contentLeft + 14, y: nameY, size: nameSize, font: helvBold, color: rgb(1, 1, 1) });
 
-  // Contact (white, right) - wrap if needed
+  // Contact (white, right) - wrap if needed, vertically centered
   if (contactItems.length > 0) {
     const contactText = contactItems.join(' • ');
     const contactWidth = helv.widthOfTextAtSize(contactText, contactSize);
     
+    // Calculate contact baseline for vertical centering (same as name)
+    const contactY = top - bannerH / 2 - contactSize / 2;
+    
     // If contact fits on one line, draw it normally
     if (contactWidth <= contactMaxWidth) {
       const contactX = contentRight - contactWidth - 14;
-      const contactY = nameY; // Align with name baseline
       page.drawText(contactText, { x: contactX, y: contactY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
     } else {
       // Wrap contact info to multiple lines
       // Split by bullet separator and wrap each segment
       const segments = contactText.split(' • ');
       let currentLine = '';
-      let lineY = nameY;
       const lineHeight = contactSize + 2;
       
+      // First, collect all lines
+      const lines: string[] = [];
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         const testLine = currentLine ? currentLine + ' • ' + segment : segment;
         const testWidth = helv.widthOfTextAtSize(testLine, contactSize);
         
         if (testWidth > contactMaxWidth && currentLine) {
-          // Draw current line and start new line
-          const lineX = contentRight - helv.widthOfTextAtSize(currentLine, contactSize) - 14;
-          page.drawText(currentLine, { x: lineX, y: lineY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
-          lineY -= lineHeight;
+          lines.push(currentLine);
           currentLine = segment;
         } else {
           currentLine = testLine;
         }
       }
+      if (currentLine) lines.push(currentLine);
       
-      // Draw remaining line
-      if (currentLine) {
-        const lineX = contentRight - helv.widthOfTextAtSize(currentLine, contactSize) - 14;
-        page.drawText(currentLine, { x: lineX, y: lineY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
+      // Draw lines, centered as a block
+      // Calculate total height of all lines
+      const totalHeight = (lines.length - 1) * lineHeight;
+      // Start from center minus half the total height
+      const startY = contactY + totalHeight / 2;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const lineX = contentRight - helv.widthOfTextAtSize(lines[i], contactSize) - 14;
+        // Draw from top to bottom, centered as a block
+        const drawY = startY - (i * lineHeight);
+        page.drawText(lines[i], { x: lineX, y: drawY, size: contactSize, font: helv, color: rgb(1, 1, 1) });
       }
     }
   }
@@ -339,69 +349,18 @@ export async function POST(req: NextRequest) {
   let colY: number[] = [y, y];
   // If the chips pushed below bottom margin, start a new page
   if (y < bottom + 60) {
-    newPageGrid(true);   // this sets colY internally
+    newPageGrid(false);   // this sets colY internally, no header on new pages
   } else {
     // only set colY here if we didn't break page
     colY = [y, y];
   }
 
-  function newPageGrid(repeatHeader = true) {
+  function newPageGrid(repeatHeader = false) {
     page = pdf.addPage([612, 792]);
     ({ width, height } = page.getSize());
 
-    // Compact header bar for subsequent pages
-    if (repeatHeader) {
-      const h = 28;
-      page.drawRectangle({ x: margin, y: height - margin - h, width: contentRight - contentLeft, height: h, color: ACCENT_DARK });
-      const mini = `${profile.name || 'Your Name'} — ${profile.major || ''}`;
-      const miniSize = Math.max(fontSize, 10);
-      const miniY = height - margin - h + miniSize;
-      page.drawText(mini, { x: contentLeft + 12, y: miniY, size: miniSize, font: helvBold, color: rgb(1, 1, 1) });
-      
-      if (contactItems.length > 0) {
-        const contactText = contactItems.join(' • ');
-        const miniContactSize = Math.max(fontSize - 1, 9);
-        const miniNameWidth = helvBold.widthOfTextAtSize(mini, miniSize);
-        const miniNameRightEdge = contentLeft + 12 + miniNameWidth + 20;
-        const miniContactMaxWidth = contentRight - miniNameRightEdge - 12;
-        const miniContactWidth = helv.widthOfTextAtSize(contactText, miniContactSize);
-        
-        if (miniContactWidth <= miniContactMaxWidth) {
-          const miniContactX = contentRight - miniContactWidth - 12;
-          page.drawText(contactText, { x: miniContactX, y: miniY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
-        } else {
-          // Wrap contact info for subsequent pages too
-          const segments = contactText.split(' • ');
-          let currentLine = '';
-          let lineY = miniY;
-          const lineHeight = miniContactSize + 2;
-          
-          for (let i = 0; i < segments.length; i++) {
-            const segment = segments[i];
-            const testLine = currentLine ? currentLine + ' • ' + segment : segment;
-            const testWidth = helv.widthOfTextAtSize(testLine, miniContactSize);
-            
-            if (testWidth > miniContactMaxWidth && currentLine) {
-              const lineX = contentRight - helv.widthOfTextAtSize(currentLine, miniContactSize) - 12;
-              page.drawText(currentLine, { x: lineX, y: lineY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
-              lineY -= lineHeight;
-              currentLine = segment;
-            } else {
-              currentLine = testLine;
-            }
-          }
-          
-          if (currentLine) {
-            const lineX = contentRight - helv.widthOfTextAtSize(currentLine, miniContactSize) - 12;
-            page.drawText(currentLine, { x: lineX, y: lineY, size: miniContactSize, font: helv, color: rgb(1, 1, 1) });
-          }
-        }
-      }
-      
-      colY = [height - margin - h - 20, height - margin - h - 20];
-    } else {
-      colY = [height - margin, height - margin];
-    }
+    // Don't show banner on subsequent pages - just start content from top
+    colY = [height - margin, height - margin];
   }
 
   function ensureColumnSpace(col: 0 | 1, needed: number) {
@@ -410,7 +369,7 @@ export async function POST(req: NextRequest) {
       const other: 0 | 1 = col === 0 ? 1 : 0;
       if (colY[other] - needed >= bottom) return other;
       // new page
-      newPageGrid(true);
+      newPageGrid(false);
       return 0;
     }
     return col;

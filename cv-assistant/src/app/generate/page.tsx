@@ -32,25 +32,20 @@ export default function GeneratePage() {
     setResult('');
     setError(null);
     
-    // Determine which indices to use: combine AI selection with manual selection if enabled
+    // Determine which indices to use: use manual selection if enabled, otherwise AI selection
     let finalIndices: number[] | null = null;
-    if (shouldSelect) {
-      const aiIndices = indices || [];
-      let combinedIndices = [...aiIndices];
-      
-      // Add manual selections if enabled
-      if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
-        // Convert manual selections to indices in the items array
-        const projectCount = profile?.projects?.length || 0;
-        const manualIndices: number[] = [
-          ...manualSelection.projects.map((idx: number) => idx),
-          ...manualSelection.experiences.map((idx: number) => idx + projectCount)
-        ];
-        // Combine AI and manual selections (union, no duplicates)
-        combinedIndices = [...new Set([...aiIndices, ...manualIndices])];
-      }
-      
-      finalIndices = combinedIndices.length > 0 ? combinedIndices : null;
+    
+    if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
+      // Use manual selections
+      const projectCount = profile?.projects?.length || 0;
+      const manualIndices: number[] = [
+        ...manualSelection.projects.map((idx: number) => idx),
+        ...manualSelection.experiences.map((idx: number) => idx + projectCount)
+      ];
+      finalIndices = manualIndices;
+    } else if (shouldSelect && indices && indices.length > 0) {
+      // Use AI selections
+      finalIndices = indices;
     }
     
     const res = await fetch('/api/generate/cover-letter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company, jobDescription, indices: finalIndices }) });
@@ -171,13 +166,7 @@ export default function GeneratePage() {
                       type="checkbox" 
                       id="shouldSelect"
                       checked={shouldSelect} 
-                      onChange={e => {
-                        setShouldSelect(e.target.checked);
-                        if (!e.target.checked) {
-                          setEnableManualSelection(false);
-                          setManualSelection({ projects: [], experiences: [] });
-                        }
-                      }}
+                      onChange={e => setShouldSelect(e.target.checked)}
                       className="w-5 h-5 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
                     />
                     <div className="flex-1">
@@ -190,88 +179,84 @@ export default function GeneratePage() {
                     </div>
                   </div>
 
-                  {shouldSelect && (
-                    <div className="ml-7 space-y-3">
-                      <div className="flex items-start space-x-3 p-3 bg-background rounded-lg border border-input">
-                        <input 
-                          type="checkbox" 
-                          id="enableManualSelection"
-                          checked={enableManualSelection} 
-                          onChange={e => {
-                            setEnableManualSelection(e.target.checked);
-                            if (!e.target.checked) {
-                              setManualSelection({ projects: [], experiences: [] });
-                            }
-                          }}
-                          className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <label htmlFor="enableManualSelection" className="text-sm font-medium text-foreground cursor-pointer block">
-                            Also manually select specific items
-                          </label>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Choose specific projects and experiences to include in addition to AI selection
-                          </p>
+                  <div className="flex items-start space-x-3 p-4 bg-gradient-to-r from-purple-50 to-purple-30 dark:from-purple-950/20 dark:to-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 shadow-sm">
+                    <input 
+                      type="checkbox" 
+                      id="enableManualSelection"
+                      checked={enableManualSelection} 
+                      onChange={e => {
+                        setEnableManualSelection(e.target.checked);
+                        if (!e.target.checked) {
+                          setManualSelection({ projects: [], experiences: [] });
+                        }
+                      }}
+                      className="w-5 h-5 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="enableManualSelection" className="text-sm font-semibold text-foreground cursor-pointer block">
+                        Manually select specific items
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Choose specific projects and experiences to include in your cover letter
+                      </p>
+                    </div>
+                  </div>
+
+                  {enableManualSelection && profile && (
+                    <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-input">
+                      {profile.projects && profile.projects.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-foreground mb-2">Projects</h4>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {profile.projects.map((project: Project, idx: number) => (
+                              <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={manualSelection.projects.includes(idx)}
+                                  onChange={() => toggleProject(idx)}
+                                  className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-foreground">{project.name || 'Untitled Project'}</div>
+                                  {project.summary && (
+                                    <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{project.summary}</div>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {enableManualSelection && profile && (
-                        <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-input">
-                          {profile.projects && profile.projects.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-foreground mb-2">Projects</h4>
-                              <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {profile.projects.map((project: Project, idx: number) => (
-                                  <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={manualSelection.projects.includes(idx)}
-                                      onChange={() => toggleProject(idx)}
-                                      className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-foreground">{project.name || 'Untitled Project'}</div>
-                                      {project.summary && (
-                                        <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{project.summary}</div>
-                                      )}
-                                    </div>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                      {profile.experiences && profile.experiences.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-foreground mb-2">Experiences</h4>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {profile.experiences.map((exp: Experience, idx: number) => (
+                              <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={manualSelection.experiences.includes(idx)}
+                                  onChange={() => toggleExperience(idx)}
+                                  className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-foreground">
+                                    {exp.companyName} - {exp.role}
+                                  </div>
+                                  {exp.summary && (
+                                    <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{exp.summary}</div>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                          {profile.experiences && profile.experiences.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold text-foreground mb-2">Experiences</h4>
-                              <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {profile.experiences.map((exp: Experience, idx: number) => (
-                                  <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={manualSelection.experiences.includes(idx)}
-                                      onChange={() => toggleExperience(idx)}
-                                      className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-foreground">
-                                        {exp.companyName} - {exp.role}
-                                      </div>
-                                      {exp.summary && (
-                                        <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{exp.summary}</div>
-                                      )}
-                                    </div>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {(!profile.projects || profile.projects.length === 0) && (!profile.experiences || profile.experiences.length === 0) && (
-                            <div className="text-sm text-muted-foreground text-center py-4">
-                              No projects or experiences available. Please add them in your profile first.
-                            </div>
-                          )}
+                      {(!profile.projects || profile.projects.length === 0) && (!profile.experiences || profile.experiences.length === 0) && (
+                        <div className="text-sm text-muted-foreground text-center py-4">
+                          No projects or experiences available. Please add them in your profile first.
                         </div>
                       )}
                     </div>
