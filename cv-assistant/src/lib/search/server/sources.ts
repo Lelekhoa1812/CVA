@@ -77,6 +77,30 @@ async function fetchHtml(url: string, signal?: AbortSignal): Promise<{ status: n
   };
 }
 
+// Root Cause vs Logic:
+// Root Cause: Some job boards briefly return block pages (e.g., HTTP 429) even though a retry succeeds.
+// Logic: Retry once immediately and only treat the source as blocked if the follow-up attempt is still blocked.
+async function fetchHtmlWithBlockedRetry(
+  source: SearchSource,
+  url: string,
+  signal?: AbortSignal,
+): Promise<{
+  response: { status: number; body: string };
+  blocked: ReturnType<typeof detectBlockedPage>;
+}> {
+  const maxRetries = 1;
+  let attempts = 0;
+
+  while (true) {
+    const response = await fetchHtml(url, signal);
+    const blocked = detectBlockedPage(source, response.status, response.body);
+    if (!blocked.blocked || attempts >= maxRetries) {
+      return { response, blocked };
+    }
+    attempts += 1;
+  }
+}
+
 function slugifyPathSegment(value: string) {
   const slug = cleanText(value)
     .toLowerCase()
@@ -423,8 +447,11 @@ export async function* crawlLinkedIn({
   for (let start = 0; start < request.maxResultsPerSource; start += 10) {
     signal?.throwIfAborted?.();
 
-    const response = await fetchHtml(buildLinkedInSearchUrl(request, start), signal);
-    const blocked = detectBlockedPage("linkedin", response.status, response.body);
+    const { response: searchResponse, blocked } = await fetchHtmlWithBlockedRetry(
+      "linkedin",
+      buildLinkedInSearchUrl(request, start),
+      signal,
+    );
     if (blocked.blocked) {
       emitProgress({
         type: "source-progress",
@@ -438,7 +465,7 @@ export async function* crawlLinkedIn({
       return;
     }
 
-    const cards = parseLinkedInSearchCards(response.body);
+    const cards = parseLinkedInSearchCards(searchResponse.body);
     if (!cards.length) break;
 
     pagesScanned += 1;
@@ -457,8 +484,11 @@ export async function* crawlLinkedIn({
 
       let detail: ReturnType<typeof parseLinkedInDetailPage> | null = null;
       try {
-        const detailResponse = await fetchHtml(card.listingUrl, signal);
-        const detailBlocked = detectBlockedPage("linkedin", detailResponse.status, detailResponse.body);
+        const { response: detailResponse, blocked: detailBlocked } = await fetchHtmlWithBlockedRetry(
+          "linkedin",
+          card.listingUrl,
+          signal,
+        );
         if (!detailBlocked.blocked) {
           detail = parseLinkedInDetailPage(detailResponse.body, card.listingUrl);
         }
@@ -560,8 +590,11 @@ async function crawlLandingPage(
       | ReturnType<typeof parseGenericDetailPage>
       | null = null;
     try {
-      const detailResponse = await fetchHtml(link.listingUrl, signal);
-      const detailBlocked = detectBlockedPage(source, detailResponse.status, detailResponse.body);
+      const { response: detailResponse, blocked: detailBlocked } = await fetchHtmlWithBlockedRetry(
+        source,
+        link.listingUrl,
+        signal,
+      );
       if (!detailBlocked.blocked) {
         detail = parseGenericDetailPage(source, detailResponse.body, link.listingUrl);
       }
@@ -626,8 +659,11 @@ export async function* crawlBlockProneSource({
 
   for (let page = 1; page <= maxPages; page += 1) {
     const directUrl = buildSourceSearchUrl(source, request, page);
-    const directResponse = await fetchHtml(directUrl, signal);
-    const directBlocked = detectBlockedPage(source, directResponse.status, directResponse.body);
+    const { response: directResponse, blocked: directBlocked } = await fetchHtmlWithBlockedRetry(
+      source,
+      directUrl,
+      signal,
+    );
     if (directBlocked.blocked) {
       directBlockedReason = directBlocked.blockedReason;
       break;
@@ -687,8 +723,11 @@ export async function* crawlBlockProneSource({
   }
 
   for (const fallbackUrl of fallbackUrls) {
-    const fallbackResponse = await fetchHtml(fallbackUrl, signal);
-    const fallbackBlocked = detectBlockedPage(source, fallbackResponse.status, fallbackResponse.body);
+    const { response: fallbackResponse, blocked: fallbackBlocked } = await fetchHtmlWithBlockedRetry(
+      source,
+      fallbackUrl,
+      signal,
+    );
     if (fallbackBlocked.blocked) {
       continue;
     }
