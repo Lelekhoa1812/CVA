@@ -3,6 +3,7 @@ import {
   EMPLOYMENT_TYPE_OPTIONS,
   MAX_RESULTS_OPTIONS,
   POSTED_WITHIN_OPTIONS,
+  SEARCH_SOURCES,
   WORKPLACE_MODE_OPTIONS,
   type SearchRequest,
 } from "@/lib/search/types";
@@ -26,6 +27,10 @@ export const searchRequestSchema = z.object({
     z.ZodLiteral<50>,
     z.ZodLiteral<100>,
   ]).default(50),
+  selectedSources: z
+    .array(z.enum(SEARCH_SOURCES))
+    .min(1, "Select at least one hiring platform.")
+    .default([...SEARCH_SOURCES]),
 });
 
 export const defaultSearchRequest: SearchRequest = {
@@ -37,4 +42,5 @@ export const defaultSearchRequest: SearchRequest = {
     employmentType: "any",
   },
   maxResultsPerSource: 50,
+  selectedSources: [...SEARCH_SOURCES],
 };

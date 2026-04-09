@@ -6,6 +6,7 @@ import ModuleShell from "@/components/ui/ModuleShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { defaultSearchRequest } from "@/lib/search/schema";
+import { buildApiUrl } from "@/lib/api";
 import {
   createInitialSourceProgress,
   EMPLOYMENT_TYPE_OPTIONS,
@@ -61,7 +62,7 @@ function statusClasses(status: SourceProgressState["status"]) {
   if (status === "blocked") return "border-amber-400/30 bg-amber-400/10 text-amber-700 dark:text-amber-100";
   if (status === "error") return "border-rose-400/30 bg-rose-400/10 text-rose-700 dark:text-rose-100";
   if (status === "running") return "border-sky-300/30 bg-sky-300/10 text-sky-700 dark:text-sky-100";
-  return "border-white/10 bg-white/5 text-muted-foreground";
+  return "border-border/80 bg-[hsl(var(--surface-1)/0.78)] text-muted-foreground";
 }
 
 export default function SearchPage() {
@@ -72,6 +73,7 @@ export default function SearchPage() {
   const [statusMessage, setStatusMessage] = useState("Ready to scan public job sources.");
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [runSources, setRunSources] = useState<SearchSource[]>([...SEARCH_SOURCES]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -145,6 +147,7 @@ export default function SearchPage() {
     setSummary(null);
     setSourceProgress(createInitialSourceProgress());
     setStatusMessage("Preparing the hybrid crawl.");
+    setRunSources(form.selectedSources);
 
     try {
       // Motivation vs Logic:
@@ -152,7 +155,7 @@ export default function SearchPage() {
       // fallbacks, and detail pages that can take noticeably longer than a normal form submit.
       // Logic: Stream NDJSON from the backend and fold each event into local UI state so the user sees per-source
       // progress, partial results, and cancellation feedback without waiting for the full crawl to complete.
-      const response = await fetch("/api/search/jobs/stream", {
+      const response = await fetch(buildApiUrl("/api/search/jobs/stream"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -213,6 +216,22 @@ export default function SearchPage() {
     abortRef.current?.abort();
   }
 
+  function toggleAllSources(checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      selectedSources: checked ? [...SEARCH_SOURCES] : [],
+    }));
+  }
+
+  function toggleSource(source: SearchSource, checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      selectedSources: checked
+        ? SEARCH_SOURCES.filter((item) => item === source || current.selectedSources.includes(item))
+        : current.selectedSources.filter((item) => item !== source),
+    }));
+  }
+
   function resetSearch() {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -224,13 +243,25 @@ export default function SearchPage() {
     setStatusMessage("Ready to scan public job sources.");
   }
 
-  const blockedCount = Object.values(sourceProgress).filter((item) => item.status === "blocked").length;
+  // Motivation vs Logic:
+  // Motivation: The user-facing filter includes an "All platforms" shortcut, but the backend contract should stay a
+  // plain list of concrete sources so the route and crawler do not need UI-specific translation rules.
+  // Logic: Store only selected source ids in form state, then derive the "all" view state and visible source cards
+  // from that array for both the pre-run brief and the live progress panel.
+  const selectedAllSources = form.selectedSources.length === SEARCH_SOURCES.length;
+  const visibleSources =
+    (isSearching || summary ? runSources : form.selectedSources).length > 0
+      ? isSearching || summary
+        ? runSources
+        : form.selectedSources
+      : SEARCH_SOURCES;
+  const blockedCount = visibleSources.filter((source) => sourceProgress[source].status === "blocked").length;
 
   return (
     <ModuleShell
       eyebrow="Search Module"
       title="Sweep public job boards for the best application URL."
-      description="Search by job title and location, then watch the crawler step through LinkedIn, SEEK, and Indeed with live progress, blocked-source fallbacks, and deduped results."
+      description="Search by job title and location, choose the hiring platforms you want, then watch the crawler step through LinkedIn, SEEK, Indeed, CareerOne, Adzuna, and Talent.com with live progress and deduped results."
       stats={[
         { label: "Run mode", value: isSearching ? "Live" : "Ready" },
         { label: "Results", value: `${results.length}` },
@@ -242,8 +273,8 @@ export default function SearchPage() {
             <p className="section-kicker">Hybrid Discovery</p>
             <h2 className="text-foreground font-display text-3xl">Best effort, source by source.</h2>
             <p className="text-muted-foreground text-sm leading-7">
-              LinkedIn is crawled directly, while SEEK and Indeed will fall back gracefully if a
-              public HTML crawl is blocked in this runtime.
+              LinkedIn is crawled directly, while the other boards use the same hybrid HTML-plus-fallback flow
+              so each source can degrade gracefully instead of taking the whole run down.
             </p>
           </div>
 
@@ -255,7 +286,7 @@ export default function SearchPage() {
             ].map((item) => (
               <div
                 key={item}
-                className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3"
               >
                 <span className="status-dot" />
                 <span className="text-foreground text-sm">{item}</span>
@@ -279,7 +310,7 @@ export default function SearchPage() {
             <SectionHeading
               eyebrow="Search Brief"
               title="Define the target before the crawl starts"
-              description="V1 supports title, location, and a focused filter set so the worker can stay reliable while still narrowing results meaningfully."
+              description="Pick the role, location, hiring platforms, and a focused filter set so the crawler can stay reliable while still narrowing results meaningfully."
             />
 
             <form className="mt-8 space-y-5" onSubmit={handleSearch}>
@@ -308,6 +339,35 @@ export default function SearchPage() {
                   />
                 </label>
               </div>
+
+              <fieldset className="space-y-3">
+                <legend className="text-foreground text-sm font-medium">Hiring platforms</legend>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <label className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedAllSources}
+                      onChange={(event) => toggleAllSources(event.target.checked)}
+                    />
+                    <span className="text-sm text-foreground">All platforms</span>
+                  </label>
+
+                  {SEARCH_SOURCES.map((source) => (
+                    <label
+                      key={source}
+                      className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.selectedSources.includes(source)}
+                        onChange={(event) => toggleSource(source, event.target.checked)}
+                      />
+                      <span className="text-sm text-foreground">{SOURCE_LABELS[source]}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label className="space-y-2">
@@ -403,7 +463,12 @@ export default function SearchPage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   className="button-primary"
-                  disabled={isSearching || !form.jobTitle.trim() || !form.location.trim()}
+                  disabled={
+                    isSearching ||
+                    !form.jobTitle.trim() ||
+                    !form.location.trim() ||
+                    form.selectedSources.length === 0
+                  }
                   type="submit"
                 >
                   {isSearching ? "Searching..." : "Start Search"}
@@ -433,7 +498,7 @@ export default function SearchPage() {
             />
 
             <div className="mt-6 space-y-4">
-              <div className="rounded-[1.35rem] border border-white/10 bg-white/5 p-4">
+              <div className="surface-subtle rounded-[1.35rem] p-4">
                 <div className="text-muted-foreground text-xs uppercase tracking-[0.22em]">Current state</div>
                 <div className="text-foreground mt-2 text-lg font-semibold">
                   {isSearching ? "Crawl in progress" : "Idle"}
@@ -442,7 +507,7 @@ export default function SearchPage() {
               </div>
 
               {summary ? (
-                <div className="text-muted-foreground rounded-[1.35rem] border border-white/10 bg-white/5 p-4 text-sm">
+                <div className="surface-subtle text-muted-foreground rounded-[1.35rem] p-4 text-sm">
                   Finished in <span className="text-foreground font-semibold">{formatElapsed(summary.elapsedMs)}</span>
                   {" with "}
                   <span className="text-foreground font-semibold">{summary.totalResults}</span> results.
@@ -462,7 +527,7 @@ export default function SearchPage() {
           />
 
           <StaggerGroup className="mt-8 grid gap-4 lg:grid-cols-3">
-            {SEARCH_SOURCES.map((source) => {
+            {visibleSources.map((source) => {
               const progress = sourceProgress[source];
               return (
                 <StaggerItem key={source}>
@@ -480,13 +545,13 @@ export default function SearchPage() {
                     </div>
 
                     <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+                      <div className="rounded-2xl border border-current/15 bg-current/5 px-4 py-3">
                         <div className="text-xs uppercase tracking-[0.18em] opacity-70">Pages</div>
                         <div className="mt-1 text-xl font-semibold text-current">
                           {progress.pagesScanned}
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+                      <div className="rounded-2xl border border-current/15 bg-current/5 px-4 py-3">
                         <div className="text-xs uppercase tracking-[0.18em] opacity-70">Matches</div>
                         <div className="mt-1 text-xl font-semibold text-current">
                           {progress.resultsFound}
@@ -527,7 +592,7 @@ export default function SearchPage() {
               {results.map((result) => (
                 <article
                   key={result.id}
-                  className="interactive-card rounded-[1.5rem] border border-white/10 p-6"
+                  className="interactive-card rounded-[1.5rem] p-6"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="metric-chip">{SOURCE_LABELS[result.source]}</span>
@@ -572,7 +637,7 @@ export default function SearchPage() {
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-8 text-sm leading-7">
+            <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-border/75 bg-[hsl(var(--surface-1)/0.5)] p-8 text-sm leading-7">
               {summary
                 ? "The crawl finished without any jobs that survived the source-level and post-normalization filters."
                 : "Start a search to stream application targets into this panel."}

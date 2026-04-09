@@ -5,6 +5,7 @@ import type {
   SearchSource,
   SourceProgressStatus,
 } from "@/lib/search/types";
+import { SOURCE_LABELS } from "@/lib/search/types";
 import { discoverFallbackUrls } from "@/lib/search/server/fallback";
 import {
   absoluteUrl,
@@ -16,8 +17,11 @@ import {
   computeSearchQueryMatch,
   detectBlockedPage,
   extractApplyLink,
+  stripHtmlTags,
   truncateText,
 } from "@/lib/search/server/utils";
+
+type GenericSource = Exclude<SearchSource, "linkedin">;
 
 type ProgressEmitter = (event: {
   type: "source-progress";
@@ -50,6 +54,12 @@ type GenericSearchLink = {
   context: string;
 };
 
+type GenericSourceConfig = {
+  buildSearchUrl: (request: SearchRequest, page: number) => string;
+  matchesListingUrl: (url: string) => boolean;
+  pageSize: number;
+};
+
 async function fetchHtml(url: string, signal?: AbortSignal): Promise<{ status: number; body: string }> {
   const response = await fetch(url, {
     headers: {
@@ -66,6 +76,91 @@ async function fetchHtml(url: string, signal?: AbortSignal): Promise<{ status: n
     body: await response.text(),
   };
 }
+
+function slugifyPathSegment(value: string) {
+  const slug = cleanText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "australia";
+}
+
+// Motivation vs Logic:
+// Motivation: We now support several public boards whose search URLs, pagination knobs, and job-link patterns all
+// differ, but the crawl lifecycle should still stay shared.
+// Logic: Keep those per-board details in one registry so the generic adapter can paginate, discover links, and fall
+// back consistently without growing a new branch of bespoke crawling code for each source.
+const GENERIC_SOURCE_CONFIGS: Record<GenericSource, GenericSourceConfig> = {
+  seek: {
+    buildSearchUrl(request, page) {
+      const params = new URLSearchParams({
+        keywords: request.jobTitle,
+        where: request.location,
+      });
+      if (page > 1) {
+        params.set("page", String(page));
+      }
+      return `https://www.seek.com.au/jobs?${params.toString()}`;
+    },
+    matchesListingUrl: (url) => url.includes("/job/"),
+    pageSize: 20,
+  },
+  indeed: {
+    buildSearchUrl(request, page) {
+      const params = new URLSearchParams({
+        q: request.jobTitle,
+        l: request.location,
+      });
+      if (page > 1) {
+        params.set("start", String((page - 1) * 10));
+      }
+      return `https://au.indeed.com/jobs?${params.toString()}`;
+    },
+    matchesListingUrl: (url) => url.includes("/viewjob") || url.includes("/rc/clk"),
+    pageSize: 10,
+  },
+  careerone: {
+    buildSearchUrl(request, page) {
+      const path = `https://www.careerone.com.au/jobs-in-${slugifyPathSegment(request.location)}/keyword-${slugifyPathSegment(request.jobTitle)}`;
+      if (page <= 1) {
+        return path;
+      }
+
+      return `${path}?${new URLSearchParams({ page: String(page) }).toString()}`;
+    },
+    matchesListingUrl: (url) => url.includes("/jobview/"),
+    pageSize: 20,
+  },
+  adzuna: {
+    buildSearchUrl(request, page) {
+      const params = new URLSearchParams({
+        what: request.jobTitle,
+        where: request.location,
+      });
+      if (page > 1) {
+        params.set("p", String(page));
+      }
+      return `https://www.adzuna.com.au/search?${params.toString()}`;
+    },
+    matchesListingUrl: (url) => url.includes("/land/ad/"),
+    pageSize: 10,
+  },
+  talent: {
+    buildSearchUrl(request, page) {
+      const params = new URLSearchParams({
+        k: request.jobTitle,
+        l: request.location,
+      });
+      if (page > 1) {
+        params.set("p", String(page));
+      }
+      return `https://au.talent.com/jobs?${params.toString()}`;
+    },
+    matchesListingUrl: (url) => url.includes("/view?id="),
+    pageSize: 20,
+  },
+};
 
 function buildLinkedInSearchUrl(request: SearchRequest, start: number) {
   const params = new URLSearchParams({
@@ -165,35 +260,29 @@ function parseLinkedInDetailPage(html: string, listingUrl: string) {
   };
 }
 
-function buildSourceSearchUrl(source: Exclude<SearchSource, "linkedin">, request: SearchRequest) {
-  if (source === "seek") {
-    return `https://www.seek.com.au/jobs?${new URLSearchParams({
-      keywords: request.jobTitle,
-      where: request.location,
-    }).toString()}`;
-  }
-
-  return `https://au.indeed.com/jobs?${new URLSearchParams({
-    q: request.jobTitle,
-    l: request.location,
-  }).toString()}`;
+function buildSourceSearchUrl(
+  source: GenericSource,
+  request: SearchRequest,
+  page = 1,
+) {
+  return GENERIC_SOURCE_CONFIGS[source].buildSearchUrl(request, page);
 }
 
 function parseSourceSearchLinks(
-  source: Exclude<SearchSource, "linkedin">,
+  source: GenericSource,
   html: string,
   baseUrl: string,
 ): GenericSearchLink[] {
   const $ = load(html);
   const links: GenericSearchLink[] = [];
   const seen = new Set<string>();
+  const sourceConfig = GENERIC_SOURCE_CONFIGS[source];
 
   $("a[href]").each((_, element) => {
     const href = absoluteUrl($(element).attr("href") || "", baseUrl);
-    const title = cleanText($(element).text());
+    const title = cleanText($(element).text()) || cleanText($(element).attr("title"));
     if (!title || !href) return;
-    if (source === "seek" && !href.includes("/job/")) return;
-    if (source === "indeed" && !href.includes("/viewjob") && !href.includes("/rc/clk")) return;
+    if (!sourceConfig.matchesListingUrl(href)) return;
 
     const canonical = canonicalizeUrl(href);
     if (seen.has(canonical)) return;
@@ -244,17 +333,20 @@ function extractJsonLdPayload($: CheerioAPI): Record<string, unknown> | null {
 }
 
 function parseGenericDetailPage(
-  source: Exclude<SearchSource, "linkedin">,
+  source: GenericSource,
   html: string,
   listingUrl: string,
 ) {
   const $ = load(html);
   const payload = extractJsonLdPayload($);
 
+  // Root Cause vs Logic:
+  // Root cause: JSON-LD descriptions occasionally include markup, which leaves tags in UI snippets.
+  // Logic: Strip those tags before we normalize/truncate so the rendered text stays readable.
   const description =
     payload && typeof payload.description === "string"
-      ? cleanText(payload.description)
-      : cleanText($("meta[name='description']").attr("content"));
+      ? stripHtmlTags(payload.description)
+      : stripHtmlTags($("meta[name='description']").attr("content"));
 
   const anchors = $("a[href]")
     .toArray()
@@ -424,24 +516,21 @@ export async function* crawlLinkedIn({
 }
 
 async function crawlLandingPage(
-  source: Exclude<SearchSource, "linkedin">,
+  source: GenericSource,
   request: SearchRequest,
   landingUrl: string,
+  landingHtml: string,
   signal: AbortSignal | undefined,
   emitProgress: ProgressEmitter,
   initialPagesScanned: number,
   initialResultsFound: number,
-): Promise<{ results: JobSearchResult[]; pagesScanned: number; resultsFound: number }> {
-  const response = await fetchHtml(landingUrl, signal);
-  const blocked = detectBlockedPage(source, response.status, response.body);
-  if (blocked.blocked) {
-    return {
-      results: [],
-      pagesScanned: initialPagesScanned,
-      resultsFound: initialResultsFound,
-    };
-  }
-
+  seenListings: Set<string>,
+): Promise<{
+  results: JobSearchResult[];
+  pagesScanned: number;
+  resultsFound: number;
+  discoveredLinks: number;
+}> {
   const pagesScanned = initialPagesScanned + 1;
   let resultsFound = initialResultsFound;
 
@@ -451,10 +540,16 @@ async function crawlLandingPage(
     status: "running",
     pagesScanned,
     resultsFound,
-    message: `Inspecting ${source.toUpperCase()} landing page.`,
+    message: `Inspecting ${SOURCE_LABELS[source]} search page ${pagesScanned}.`,
   });
 
-  const links = parseSourceSearchLinks(source, response.body, landingUrl);
+  const links = parseSourceSearchLinks(source, landingHtml, landingUrl).filter((link) => {
+    if (seenListings.has(link.listingUrl)) {
+      return false;
+    }
+    seenListings.add(link.listingUrl);
+    return true;
+  });
   const results: JobSearchResult[] = [];
 
   for (const link of links) {
@@ -499,12 +594,12 @@ async function crawlLandingPage(
       status: "running",
       pagesScanned,
       resultsFound,
-      message: `Streaming ${source.toUpperCase()} matches.`,
+      message: `Streaming ${SOURCE_LABELS[source]} matches.`,
     });
     results.push(result);
   }
 
-  return { results, pagesScanned, resultsFound };
+  return { results, pagesScanned, resultsFound, discoveredLinks: links.length };
 }
 
 export async function* crawlBlockProneSource({
@@ -512,10 +607,13 @@ export async function* crawlBlockProneSource({
   signal,
   emitProgress,
   source,
-}: SourceContext & { source: Exclude<SearchSource, "linkedin"> }): AsyncGenerator<JobSearchResult> {
+}: SourceContext & { source: GenericSource }): AsyncGenerator<JobSearchResult> {
   let resultsFound = 0;
   let pagesScanned = 0;
-  const directUrl = buildSourceSearchUrl(source, request);
+  const seenListings = new Set<string>();
+  const sourceConfig = GENERIC_SOURCE_CONFIGS[source];
+  const maxPages = Math.max(1, Math.ceil(request.maxResultsPerSource / sourceConfig.pageSize));
+  let directBlockedReason: string | undefined;
 
   emitProgress({
     type: "source-progress",
@@ -526,35 +624,47 @@ export async function* crawlBlockProneSource({
     message: "Attempting direct crawl.",
   });
 
-  const directResponse = await fetchHtml(directUrl, signal);
-  const directBlocked = detectBlockedPage(source, directResponse.status, directResponse.body);
+  for (let page = 1; page <= maxPages; page += 1) {
+    const directUrl = buildSourceSearchUrl(source, request, page);
+    const directResponse = await fetchHtml(directUrl, signal);
+    const directBlocked = detectBlockedPage(source, directResponse.status, directResponse.body);
+    if (directBlocked.blocked) {
+      directBlockedReason = directBlocked.blockedReason;
+      break;
+    }
 
-  if (!directBlocked.blocked) {
     const direct = await crawlLandingPage(
       source,
       request,
       directUrl,
+      directResponse.body,
       signal,
       emitProgress,
       pagesScanned,
       resultsFound,
+      seenListings,
     );
     pagesScanned = direct.pagesScanned;
     resultsFound = direct.resultsFound;
     for (const result of direct.results) {
       yield result;
     }
-    if (direct.results.length > 0) {
-      emitProgress({
-        type: "source-progress",
-        source,
-        status: "complete",
-        pagesScanned,
-        resultsFound,
-        message: `${source.toUpperCase()} scan finished.`,
-      });
-      return;
+
+    if (resultsFound >= request.maxResultsPerSource || direct.discoveredLinks === 0) {
+      break;
     }
+  }
+
+  if (resultsFound > 0) {
+    emitProgress({
+      type: "source-progress",
+      source,
+      status: "complete",
+      pagesScanned,
+      resultsFound,
+      message: `${SOURCE_LABELS[source]} scan finished.`,
+    });
+    return;
   }
 
   emitProgress({
@@ -563,8 +673,10 @@ export async function* crawlBlockProneSource({
     status: "running",
     pagesScanned,
     resultsFound,
-    message: "Direct access was blocked, trying discovery fallback.",
-    blockedReason: directBlocked.blockedReason,
+    message: directBlockedReason
+      ? "Direct access was blocked, trying discovery fallback."
+      : "Direct crawl came up short, trying discovery fallback.",
+    blockedReason: directBlockedReason,
   });
 
   let fallbackUrls: string[] = [];
@@ -575,14 +687,22 @@ export async function* crawlBlockProneSource({
   }
 
   for (const fallbackUrl of fallbackUrls) {
+    const fallbackResponse = await fetchHtml(fallbackUrl, signal);
+    const fallbackBlocked = detectBlockedPage(source, fallbackResponse.status, fallbackResponse.body);
+    if (fallbackBlocked.blocked) {
+      continue;
+    }
+
     const fallback = await crawlLandingPage(
       source,
       request,
       fallbackUrl,
+      fallbackResponse.body,
       signal,
       emitProgress,
       pagesScanned,
       resultsFound,
+      seenListings,
     );
     pagesScanned = fallback.pagesScanned;
     resultsFound = fallback.resultsFound;
@@ -600,8 +720,8 @@ export async function* crawlBlockProneSource({
     pagesScanned,
     resultsFound,
     message: completed
-      ? `${source.toUpperCase()} scan finished.`
-      : `${source.toUpperCase()} remained unavailable after fallback.`,
-    blockedReason: directBlocked.blockedReason,
+      ? `${SOURCE_LABELS[source]} scan finished.`
+      : `${SOURCE_LABELS[source]} remained unavailable after fallback.`,
+    blockedReason: directBlockedReason,
   });
 }

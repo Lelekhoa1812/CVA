@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import GlassPanel from "@/components/ui/GlassPanel";
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -45,35 +46,83 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900 p-4 animate-fade-in">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-indigo-400/20 to-pink-600/20 rounded-full blur-3xl"></div>
-      </div>
+    <div className="page-shell flex min-h-[calc(100vh-5rem)] items-center py-10 sm:py-14">
+      <div className="grid w-full gap-6 xl:grid-cols-[minmax(0,1.05fr)_440px]">
+        <GlassPanel strong className="hero-card hidden overflow-hidden p-8 xl:block xl:p-10">
+          {/* Motivation vs Logic:
+              Motivation: Authentication is the first impression of the product, so it should reinforce the same premium, theme-aware identity as the rest of the app instead of falling back to a generic form card.
+              Logic: pair a story-led editorial panel with the reusable glass system and theme tokens so dark mode feels orbital, light mode feels sunlit, and copy contrast stays correct without per-theme overrides scattered through the component. */}
+          <div className="halo-ring" />
+          <div className="relative flex h-full flex-col justify-between gap-10">
+            <div className="space-y-5">
+              <p className="section-kicker">{isRegister ? "Create Workspace Access" : "Welcome Back"}</p>
+              <div className="space-y-4">
+                <h1 className="hero-title font-display text-5xl leading-[0.96]">
+                  {isRegister ? "Start your career studio with a brighter workspace." : "Return to your application studio in one step."}
+                </h1>
+                <p className="hero-copy max-w-2xl text-base leading-8">
+                  CV Assistant pairs a sunlit editorial workspace in light mode with a deep-space
+                  control room in dark mode, so your profile, resume, and cover letter work always
+                  feels polished and easy to read.
+                </p>
+              </div>
+            </div>
 
-      <div className="relative z-10 w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-4 animate-bounce-in">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { label: "Theme system", value: "Solar / Orbit" },
+                { label: "Workspace", value: "Profile to PDF" },
+                { label: "Session", value: isRegister ? "New" : "Active" },
+              ].map((item) => (
+                <div key={item.label} className="surface-subtle rounded-[1.25rem] px-4 py-4">
+                  <div className="text-foreground text-lg font-semibold">{item.value}</div>
+                  <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.22em]">
+                    {item.label}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            CV Assistant
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            {isRegister ? 'Create your account to get started' : 'Welcome back! Sign in to continue'}
-          </p>
-        </div>
+        </GlassPanel>
 
-        {/* Form */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-xl p-8 animate-slide-up">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <GlassPanel className="mx-auto w-full max-w-md p-6 sm:p-8">
+          <div className="space-y-8">
+            <div className="space-y-5">
+              <div className="flex items-center gap-4">
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-[1.6rem] border border-border/80 bg-[hsl(var(--surface-2)/0.86)]">
+                  <div className="absolute inset-1 rounded-[1.25rem] bg-[linear-gradient(135deg,hsl(var(--accent)/0.85),hsl(var(--primary)/0.62),hsl(var(--warm)/0.72))] blur-sm" />
+                  <div className="bg-[hsl(var(--surface-1)/0.95)] text-foreground relative flex h-11 w-11 items-center justify-center rounded-[1.05rem]">
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="section-kicker">Secure Access</p>
+                  <h2 className="text-foreground font-display text-3xl">CV Assistant</h2>
+                  <p className="text-muted-foreground text-sm leading-6">
+                    {isRegister ? 'Create your account to start building tailored application materials.' : 'Sign in to continue shaping your profile, resume, and cover letter workflow.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:hidden">
+                {[
+                  "Theme-aware surfaces keep copy readable",
+                  "One workspace for profile, resume, and letter output",
+                ].map((item) => (
+                  <div key={item} className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
+                    <span className="status-dot" />
+                    <span className="text-foreground text-sm">{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-red-600 dark:text-red-400 text-sm flex items-center mb-2">
+              <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-4">
+                <p className="mb-2 flex items-center text-sm text-red-700 dark:text-red-200">
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -81,14 +130,14 @@ export default function LoginPage() {
                 </p>
                 {suggestions.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Try one of these alternatives:</p>
+                    <p className="text-muted-foreground mb-2 text-xs">Try one of these alternatives:</p>
                     <div className="flex flex-wrap gap-2">
                       {suggestions.map((suggestion, index) => (
                         <button
                           key={index}
                           type="button"
                           onClick={() => setUsername(suggestion)}
-                          className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                          className="rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.85)] px-3 py-1.5 text-xs text-foreground hover:border-primary/35 hover:text-primary"
                         >
                           {suggestion}
                         </button>
@@ -100,7 +149,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-900 dark:text-white">Username</label>
+              <label className="text-foreground text-sm font-medium">Username</label>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -114,7 +163,7 @@ export default function LoginPage() {
                       setSuggestions([]);
                     }
                   }} 
-                  className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
+                  className="input-premium pl-10 pr-4" 
                   placeholder="Enter your username"
                   required 
                 />
@@ -122,7 +171,7 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-900 dark:text-white">Password</label>
+              <label className="text-foreground text-sm font-medium">Password</label>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -131,7 +180,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
-                  className="w-full pl-10 pr-12 py-3 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
+                  className="input-premium pl-10 pr-12" 
                   placeholder="Enter your password"
                   required 
                 />
@@ -159,7 +208,7 @@ export default function LoginPage() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-3 rounded-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
                 <div className="flex items-center justify-center">
@@ -188,9 +237,9 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-        </div>
+          </div>
+        </GlassPanel>
       </div>
     </div>
   );
 }
-

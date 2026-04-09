@@ -3,7 +3,7 @@ export default function Style5Preview() {
     <div className="h-[34rem] w-full overflow-hidden bg-[#f7f8fb] text-slate-900">
       <div className="h-3 w-full bg-[linear-gradient(90deg,#18346b_0%,#355da7_48%,#d9e4fb_100%)]" />
       <div className="px-6 py-5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#24498c]">Resume dossier</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#24498c]">Resume ledger</div>
         <div className="mt-2 flex items-start justify-between gap-5">
           <div>
             <div className="font-display text-[2rem] font-semibold tracking-[-0.03em] text-[#14284f]">Alex Candidate</div>
@@ -83,7 +83,7 @@ export default function Style5Preview() {
               <div className="border-b border-slate-200 pb-4">
                 <div className="text-[13px] font-semibold text-slate-900">Narrative Resume Studio</div>
                 <div className="mt-2 text-[11px] leading-5 text-slate-600">
-                  A dossier-inspired resume system that balances premium presentation with stable PDF structure.
+                  A ledger-inspired resume system that balances premium presentation with stable PDF structure.
                 </div>
               </div>
             </div>

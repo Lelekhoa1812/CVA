@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AICoachingInput } from '@/components/resume/AICoachingInput';
 import Style5Preview from '@/components/resume/Style5Preview';
 import { MAX_RESUME_ITEMS, MIN_JOB_DESCRIPTION_WORDS } from '@/lib/resume/constants';
+import { buildApiUrl } from '@/lib/api';
 
 type Project = { name: string; summary?: string };
 type Experience = { companyName: string; role: string; summary?: string };
@@ -19,7 +20,7 @@ const STYLE_OPTIONS: Array<{
   { id: 'style2', label: 'Style 2 - Chronological', previewKind: 'pdf', previewSrc: '/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.05' },
   { id: 'style3', label: 'Style 3 - Modernised', previewKind: 'pdf', previewSrc: '/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
   { id: 'style4', label: 'Style 4 - Creative', previewKind: 'pdf', previewSrc: '/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
-  { id: 'style5', label: 'Style 5 - Dossier Ledger', previewKind: 'mock' },
+  { id: 'style5', label: 'Style 5 - Ledger', previewKind: 'mock' },
 ];
 
 export default function ResumePage() {
@@ -243,7 +244,7 @@ export default function ResumePage() {
           setContentMessages(m => [...m, { role: 'assistant', content: 'Processing your enhancement request...' }]);
           
           // Send to LLM for enhancement
-          const enhancementResponse = await fetch('/api/resume/enhance-targeted', {
+          const enhancementResponse = await fetch(buildApiUrl('/api/resume/enhance-targeted'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -265,7 +266,7 @@ export default function ResumePage() {
             const wantsEmphasis = !!(stylePreferences?.useBold || stylePreferences?.useItalic);
             if (wantsEmphasis) {
               try {
-                const beautifyRes = await fetch('/api/resume/beautify', {
+                const beautifyRes = await fetch(buildApiUrl('/api/resume/beautify'), {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -403,7 +404,7 @@ export default function ResumePage() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch('/api/profile');
+      const res = await fetch(buildApiUrl('/api/profile'));
       if (res.ok) {
         const data = await res.json();
         setProfile(data.profile || null);
@@ -433,10 +434,6 @@ export default function ResumePage() {
 
   async function requestResumePreview(chosenStyle: StyleId) {
     if (!profile) return;
-    if (chosenStyle === 'style5') {
-      setError('Style 5 preview is not available for PDF generation yet. Please choose styles 1-4.');
-      return;
-    }
     if (limitReached) {
       setError(`You can include at most ${MAX_RESUME_ITEMS} items across projects and experiences.`);
       return;
@@ -464,7 +461,7 @@ export default function ResumePage() {
       chosenStyle,
     });
 
-    const res = await fetch('/api/generate-resume', {
+    const res = await fetch(buildApiUrl('/api/generate-resume'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -512,22 +509,22 @@ export default function ResumePage() {
   }
 
   if (!profile) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="relative">
           <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
           <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-r-primary/50 rounded-full animate-[spin_1.2s_linear_infinite_reverse]"></div>
         </div>
-        <div className="text-sm text-foreground dark:text-gray-100 animate-pulse">Loading your profile...</div>
+        <div className="text-foreground animate-pulse text-sm">Loading your profile...</div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen">
       <div className="max-w-6xl mx-auto p-6 space-y-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold dark:text-white text-foreground">Resume</h1>
+          <h1 className="text-foreground text-2xl font-semibold">Resume</h1>
         </div>
 
         {isStyleModalOpen && (
@@ -541,8 +538,8 @@ export default function ResumePage() {
                 ×
               </button>
               <div className="mb-3">
-                <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
-                <p className="text-sm text-muted-foreground dark:text-gray-800">
+                <h2 className="text-foreground text-lg font-semibold">Choose a Resume Style</h2>
+                <p className="text-muted-foreground text-sm">
                   {isMobile ? 'Swipe through styles to preview and select your preferred layout.' : 'Preview all five styles and select your preferred layout.'}
                 </p>
               </div>
@@ -552,8 +549,8 @@ export default function ResumePage() {
                 <div className="space-y-4">
                   {/* Preview Display */}
                   <div className="border rounded-lg overflow-hidden">
-                    <div className="px-3 py-2 border-b flex items-center justify-between bg-gray-50 dark:bg-gray-800">
-                      <span className="text-sm font-medium dark:text-white">
+                    <div className="bg-[hsl(var(--surface-2)/0.72)] flex items-center justify-between border-b px-3 py-2">
+                      <span className="text-foreground text-sm font-medium">
                         {STYLE_OPTIONS[currentPreviewIndex]?.label}
                       </span>
                       {modalSelectedStyle === STYLE_OPTIONS[currentPreviewIndex]?.id && (
@@ -582,10 +579,10 @@ export default function ResumePage() {
                       )}
                       {/* Swipe hint overlay for mobile */}
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4 opacity-0 hover:opacity-100 transition-opacity">
-                        <div className="text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
+                        <div className="text-muted-foreground rounded bg-[hsl(var(--surface-1)/0.88)] px-2 py-1 text-xs">
                           ← Swipe left for next
                         </div>
-                        <div className="text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
+                        <div className="text-muted-foreground rounded bg-[hsl(var(--surface-1)/0.88)] px-2 py-1 text-xs">
                           Swipe right for previous →
                         </div>
                       </div>

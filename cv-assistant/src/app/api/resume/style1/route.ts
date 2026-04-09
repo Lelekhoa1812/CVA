@@ -3,6 +3,7 @@ import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
+import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(selectedProjects) || !Array.isArray(selectedExperiences)) {
     return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   }
-  if (selectedProjects.length + selectedExperiences.length > 7) {
+  if (selectedProjects.length + selectedExperiences.length > MAX_RESUME_ITEMS) {
     return NextResponse.json({ error: 'Too many items selected' }, { status: 400 });
   }
   

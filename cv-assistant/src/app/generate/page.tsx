@@ -5,6 +5,7 @@ import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+import { buildApiUrl } from "@/lib/api";
 
 type Project = { name: string; summary: string; description: string };
 type Experience = { companyName: string; role: string; summary: string; description: string };
@@ -36,7 +37,7 @@ export default function GeneratePage() {
 
   async function selectRelevant() {
     setError(null);
-    const res = await fetch("/api/generate/select", {
+    const res = await fetch(buildApiUrl("/api/generate/select"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jobDescription }),
@@ -67,7 +68,7 @@ export default function GeneratePage() {
       finalIndices = indices;
     }
 
-    const res = await fetch("/api/generate/cover-letter", {
+    const res = await fetch(buildApiUrl("/api/generate/cover-letter"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company, jobDescription, indices: finalIndices }),
@@ -96,7 +97,7 @@ export default function GeneratePage() {
       // rules in the browser or asking the user to reformat the generated text manually.
       // Logic: Keep the client focused on orchestration, then send the generated letter to the export route
       // that owns the "Modern Executive" template and returns a ready-to-download PDF blob.
-      const res = await fetch("/api/generate/cover-letter/pdf", {
+      const res = await fetch(buildApiUrl("/api/generate/cover-letter/pdf"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company, coverLetter: result }),
@@ -145,7 +146,7 @@ export default function GeneratePage() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/profile");
+      const res = await fetch(buildApiUrl("/api/profile"));
       if (res.ok) {
         const data = await res.json();
         setProfile(data.profile || null);
@@ -194,7 +195,7 @@ export default function GeneratePage() {
               "Select evidence that maps to role requirements",
               "End with confidence and momentum",
             ].map((item) => (
-              <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div key={item} className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
                 <span className="status-dot" />
                 <span className="text-foreground text-sm">{item}</span>
               </div>
@@ -306,7 +307,7 @@ export default function GeneratePage() {
                     <div className="space-y-2">
                       {profile.projects?.length ? (
                         profile.projects.map((project, idx) => (
-                          <label key={`${project.name}-${idx}`} className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3">
+                          <label key={`${project.name}-${idx}`} className="surface-subtle flex gap-3 rounded-2xl p-3">
                             <input
                               type="checkbox"
                               checked={manualSelection.projects.includes(idx)}
@@ -336,7 +337,7 @@ export default function GeneratePage() {
                         profile.experiences.map((experience, idx) => (
                           <label
                             key={`${experience.companyName}-${experience.role}-${idx}`}
-                            className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3"
+                            className="surface-subtle flex gap-3 rounded-2xl p-3"
                           >
                             <input
                               type="checkbox"
@@ -372,7 +373,7 @@ export default function GeneratePage() {
                     {rankings.map((item, index) => {
                       return (
                         <StaggerItem key={`${item.type}-${item.index}`}>
-                          <div className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3">
+                          <div className="surface-subtle flex items-start gap-3 rounded-2xl p-3">
                             <span className="status-dot mt-2" />
                             <div>
                               <div className="flex items-center gap-2">
@@ -415,10 +416,10 @@ export default function GeneratePage() {
                   {loading ? "Generating cover letter..." : "Generate Cover Letter"}
                 </button>
 
-                <div className="rounded-[1.4rem] border border-white/10 bg-slate-950/55 p-4">
+                <div className="result-well rounded-[1.4rem] p-4">
                   {result ? (
                     <div className="space-y-4">
-                      <div className="max-h-[34rem] overflow-auto whitespace-pre-wrap text-sm leading-8 text-slate-200">
+                      <div className="text-foreground max-h-[34rem] overflow-auto whitespace-pre-wrap text-sm leading-8">
                         {result}
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
@@ -442,8 +443,8 @@ export default function GeneratePage() {
                     </div>
                   ) : (
                     <div className="space-y-2 py-10 text-center">
-                      <p className="font-medium text-white">Your cover letter draft will appear here.</p>
-                      <p className="text-sm leading-7 text-slate-400">
+                      <p className="text-foreground font-medium">Your cover letter draft will appear here.</p>
+                      <p className="text-muted-foreground text-sm leading-7">
                         Add the role context, pick evidence, and generate when ready.
                       </p>
                     </div>
@@ -461,17 +462,17 @@ export default function GeneratePage() {
                 description="A quick visual summary of the material currently available to the letter generator."
               />
               <div className="mt-6 space-y-3">
-                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
                   <span className="text-muted-foreground text-sm">Mode</span>
                   <span className="text-foreground text-sm font-medium">
                     {enableManualSelection ? "Manual curation" : shouldSelect ? "AI Coaching" : "Open generation"}
                   </span>
                 </div>
-                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
                   <span className="text-muted-foreground text-sm">Evidence count</span>
                   <span className="text-foreground text-sm font-medium">{evidenceCount}</span>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                <div className="surface-subtle rounded-2xl px-4 py-4">
                   <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">Recommendation</p>
                   <p className="text-muted-foreground mt-2 text-sm leading-7">
                     Keep the letter anchored to two or three strong proof points. Specificity reads

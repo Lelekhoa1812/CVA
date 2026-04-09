@@ -46,7 +46,7 @@ export async function* streamSearchJobs(
   // and failure behavior in public HTML mode.
   // Logic: Centralize orchestration here so source adapters only fetch and normalize candidates while this stream
   // layer owns post-filtering, dedupe, blocked-source accounting, and the incremental event contract used by the page.
-  const sources: Array<SearchSource> = ["linkedin", "seek", "indeed"];
+  const sources = request.selectedSources;
   for (const source of sources) {
     options.signal?.throwIfAborted?.();
 

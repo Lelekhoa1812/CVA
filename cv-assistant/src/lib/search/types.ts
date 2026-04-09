@@ -1,4 +1,11 @@
-export const SEARCH_SOURCES = ["linkedin", "seek", "indeed"] as const;
+export const SEARCH_SOURCES = [
+  "linkedin",
+  "seek",
+  "indeed",
+  "careerone",
+  "adzuna",
+  "talent",
+] as const;
 export type SearchSource = (typeof SEARCH_SOURCES)[number];
 
 export const POSTED_WITHIN_OPTIONS = ["any", "24h", "3d", "7d", "14d", "30d"] as const;
@@ -30,6 +37,7 @@ export type SearchRequest = {
   location: string;
   filters: SearchFilters;
   maxResultsPerSource: MaxResultsPerSource;
+  selectedSources: SearchSource[];
 };
 
 export type ApplicationUrlType = "external" | "board-detail" | "listing";
@@ -99,30 +107,22 @@ export const SOURCE_LABELS: Record<SearchSource, string> = {
   linkedin: "LinkedIn",
   seek: "SEEK",
   indeed: "Indeed",
+  careerone: "CareerOne",
+  adzuna: "Adzuna",
+  talent: "Talent.com",
 };
 
 export function createInitialSourceProgress(): Record<SearchSource, SourceProgressState> {
-  return {
-    linkedin: {
-      source: "linkedin",
-      status: "pending",
-      pagesScanned: 0,
-      resultsFound: 0,
-      message: "Queued",
-    },
-    seek: {
-      source: "seek",
-      status: "pending",
-      pagesScanned: 0,
-      resultsFound: 0,
-      message: "Queued",
-    },
-    indeed: {
-      source: "indeed",
-      status: "pending",
-      pagesScanned: 0,
-      resultsFound: 0,
-      message: "Queued",
-    },
-  };
+  return Object.fromEntries(
+    SEARCH_SOURCES.map((source) => [
+      source,
+      {
+        source,
+        status: "pending",
+        pagesScanned: 0,
+        resultsFound: 0,
+        message: "Queued",
+      },
+    ]),
+  ) as Record<SearchSource, SourceProgressState>;
 }

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
+import { buildApiUrl } from "@/lib/api";
 
 const links = [
   { href: "/profile", label: "Your Profile", short: "Profile" },
@@ -21,16 +22,16 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch(buildApiUrl("/api/auth/logout"), { method: "POST" });
     router.push("/login");
   }
 
   return (
     <header className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/80 bg-[hsl(var(--surface-1)/0.82)] px-4 py-3 shadow-elevated backdrop-blur-2xl">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-1)/0.9),hsl(var(--surface-2)/0.76))] px-4 py-3 shadow-elevated backdrop-blur-2xl">
         <Link href="/" className="group flex items-center gap-3">
           <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-[hsl(var(--surface-2)/0.78)]">
-            <div className="absolute inset-1 rounded-xl bg-gradient-to-br from-sky-300/70 via-cyan-200/50 to-violet-300/60 blur-sm" />
+            <div className="absolute inset-1 rounded-xl bg-[linear-gradient(135deg,hsl(var(--accent)/0.92),hsl(var(--primary)/0.62),hsl(var(--warm)/0.74))] blur-sm" />
             <div className="bg-foreground text-background relative flex h-8 w-8 items-center justify-center rounded-xl">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -66,7 +67,7 @@ export default function Navbar() {
                 {active ? (
                   <motion.span
                     layoutId="active-nav-pill"
-                    className="absolute inset-0 rounded-full border border-sky-300/30 bg-[hsl(var(--surface-2)/0.92)]"
+                    className="absolute inset-0 rounded-full border border-primary/25 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.94),hsl(var(--surface-3)/0.78))]"
                     transition={{ type: "spring", stiffness: 320, damping: 28 }}
                   />
                 ) : null}
@@ -77,11 +78,18 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="hidden rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.7)] px-3 py-2 md:flex md:items-center md:gap-2">
+            <span className="status-dot" />
+            <span className="text-muted-foreground text-xs uppercase tracking-[0.22em]">
+              {theme === "dark" ? "Orbit Mode" : "Sunny Mode"}
+            </span>
+          </div>
+
           {/* Root Cause: the moon path sits close to the SVG bounds, so the stroke edge clipped inside the circular button.
               Logic: allow the icon to overflow its box slightly and keep the button styling theme-aware so the control remains intact in both modes. */}
           <button
             onClick={toggleTheme}
-            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.78)] hover:border-sky-300/35"
+            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.88),hsl(var(--surface-3)/0.66))] hover:border-primary/35"
             aria-label="Toggle theme"
           >
             {theme === "dark" ? (
@@ -114,7 +122,7 @@ export default function Navbar() {
 
           <button
             onClick={() => setMobileMenuOpen((value) => !value)}
-            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.78)] lg:hidden"
+            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.88),hsl(var(--surface-3)/0.66))] lg:hidden"
             aria-label="Toggle navigation"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

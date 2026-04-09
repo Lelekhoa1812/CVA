@@ -49,11 +49,19 @@ const SOURCE_DOMAINS: Record<SearchSource, string[]> = {
   linkedin: ["linkedin.com"],
   seek: ["seek.com.au"],
   indeed: ["indeed.com"],
+  careerone: ["careerone.com.au"],
+  adzuna: ["adzuna.com.au"],
+  talent: ["talent.com"],
 };
 
 export function cleanText(value: string | null | undefined): string {
   if (!value) return "";
   return value.replace(/\s+/g, " ").trim();
+}
+
+export function stripHtmlTags(value: string | null | undefined): string {
+  if (!value) return "";
+  return cleanText(value.replace(/<[^>]+>/g, " "));
 }
 
 export function truncateText(value: string, limit = 240): string {
@@ -282,6 +290,12 @@ export function detectBlockedPage(
   }
   if (source === "linkedin" && text.includes("unusual activity detected")) {
     return { blocked: true, blockedReason: "LinkedIn blocked guest access." };
+  }
+  if (source === "adzuna" && text.includes("access denied")) {
+    return { blocked: true, blockedReason: "Adzuna denied access to this page." };
+  }
+  if (source === "talent" && text.includes("access denied")) {
+    return { blocked: true, blockedReason: "Talent.com denied access to this page." };
   }
   return { blocked: false };
 }

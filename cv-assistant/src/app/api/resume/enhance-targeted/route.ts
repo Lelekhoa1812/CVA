@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { getModel } from '@/lib/ai';
+import { buildHighImpactRewritePrompt, normalizeHighImpactBulletOutput } from '@/lib/resume/high-impact-rewrite';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -14,33 +15,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const model = getModel('hard');
-    
-    // Create a targeted enhancement prompt
-    const prompt = `You are a professional resume writer. Enhance the following ${itemType} content based on the user's preferences:
-
-ITEM: ${itemName}
-ORIGINAL CONTENT: ${originalContent}
-
-USER PREFERENCES:
-- Format: ${userPreferences.format} (concise = shorter/focused, preserve = keep current length, enhance = expand with more context)
-- Modifications: ${userPreferences.modifications}
-
-INSTRUCTIONS:
-1. If format is "concise": Reduce content by ~50% while keeping key achievements and impact
-2. If format is "preserve": Keep similar length but improve clarity and impact
-3. If format is "enhance": Expand content by ~50% with more context, metrics, and achievements
-4. Apply the specific modifications requested by the user
-5. Use bullet points for better readability
-6. Make it ATS-friendly and professional
-7. Focus on quantifiable achievements when possible
-8. Use **bold** for key achievements, metrics, and important terms
-9. Use *italic* for emphasis on skills, technologies, and methodologies
-10. Return only the enhanced content, no explanations
-
-Enhanced content:`;
+    const prompt = buildHighImpactRewritePrompt({
+      itemType,
+      itemName,
+      originalContent,
+      requestedFormat: userPreferences.format,
+      userModifications: userPreferences.modifications,
+    });
 
     const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-    const enhancedContent = res.response.text().trim();
+    const enhancedContent = normalizeHighImpactBulletOutput(
+      res.response.text(),
+      originalContent,
+      userPreferences.format,
+    );
     
     return NextResponse.json({ 
       enhancedContent,

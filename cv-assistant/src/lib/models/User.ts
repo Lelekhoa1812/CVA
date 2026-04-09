@@ -4,6 +4,7 @@ const ProjectSchema = new Schema({
   name: { type: String, required: true },
   description: { type: String, default: '' },
   summary: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
 });
 
 const ExperienceSchema = new Schema({
@@ -13,6 +14,7 @@ const ExperienceSchema = new Schema({
   timeTo: { type: String, default: '' },
   description: { type: String, default: '' },
   summary: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
 });
 
 const ProfileSchema = new Schema({

@@ -1,5 +1,5 @@
 // app/api/resume/style5/route.ts
-// Premium "Dossier Ledger" resume:
+// Premium "Ledger" resume:
 // - Strong nameplate with a full-width capabilities band
 // - Main editorial ledger column for experience and projects
 // - Narrow profile rail for education, links, and languages
@@ -231,6 +231,21 @@ export async function POST(req: NextRequest) {
 
   function drawPageChrome(firstPage: boolean) {
     page.drawRectangle({ x: left, y: height - 18, width: right - left, height: 4, color: accent });
+    page.drawLine({
+      start: { x: railLeft - gutter / 2, y: top + 6 },
+      end: { x: railLeft - gutter / 2, y: bottom },
+      thickness: 0.8,
+      color: rule
+    });
+    page.drawRectangle({
+      x: railLeft,
+      y: bottom,
+      width: railWidthInner,
+      height: top - bottom + 6,
+      color: currentPage === 1 ? surface : rgb(0.992, 0.994, 0.998),
+      borderColor: rule,
+      borderWidth: 0.6
+    });
 
     if (firstPage) {
       const nameText = profile.name || 'Your Name';
@@ -239,7 +254,7 @@ export async function POST(req: NextRequest) {
       const labelSize = Math.max(fontSize - 2, 9);
       const schoolSize = Math.max(fontSize - 1, 10);
 
-      page.drawText('RESUME DOSSIER', { x: left, y: top, size: labelSize, font: helvBold, color: accent });
+      page.drawText('RESUME LEDGER', { x: left, y: top, size: labelSize, font: helvBold, color: accent });
       page.drawText(nameText, { x: left, y: top - 26, size: nameSize, font: helvBold, color: accentDark });
       page.drawText(schoolLine, { x: left, y: top - 46, size: schoolSize, font: helv, color: muted });
 
@@ -278,8 +293,8 @@ export async function POST(req: NextRequest) {
 
     const miniName = profile.name || 'Your Name';
     page.drawText(miniName, { x: left, y: top + 4, size: Math.max(fontSize - 1, 10), font: helvBold, color: accentDark });
-    page.drawText('Dossier ledger continued', {
-      x: right - helv.widthOfTextAtSize('Dossier ledger continued', Math.max(fontSize - 2, 9)),
+    page.drawText('Ledger continued', {
+      x: right - helv.widthOfTextAtSize('Ledger continued', Math.max(fontSize - 2, 9)),
       y: top + 4,
       size: Math.max(fontSize - 2, 9),
       font: helv,
@@ -287,6 +302,7 @@ export async function POST(req: NextRequest) {
     });
     contentStartY = top - 22;
     yMain = contentStartY;
+    yRail = contentStartY;
   }
 
   drawPageChrome(true);
@@ -313,20 +329,20 @@ export async function POST(req: NextRequest) {
     const panelBottom = panelTop - panelHeight;
 
     page.drawRectangle({
-      x: railLeft,
+      x: railLeft + 8,
       y: panelBottom,
-      width: railWidthInner,
+      width: railWidthInner - 16,
       height: panelHeight,
-      color: currentPage === 1 ? surface : rgb(1, 1, 1),
+      color: rgb(1, 1, 1),
       borderColor: rule,
       borderWidth: 0.8
     });
-    page.drawRectangle({ x: railLeft, y: panelTop - 4, width: railWidthInner, height: 4, color: accent });
-    page.drawText(title.toUpperCase(), { x: railLeft + 10, y: panelTop - 18, size: titleSize, font: helvBold, color: accentDark });
+    page.drawRectangle({ x: railLeft + 8, y: panelTop - 4, width: railWidthInner - 16, height: 4, color: accent });
+    page.drawText(title.toUpperCase(), { x: railLeft + 18, y: panelTop - 18, size: titleSize, font: helvBold, color: accentDark });
 
     let lineY = panelTop - 34;
     for (const line of wrappedLines) {
-      page.drawText(line, { x: railLeft + 10, y: lineY, size: bodySize, font: helv, color: ink });
+      page.drawText(line, { x: railLeft + 18, y: lineY, size: bodySize, font: helv, color: ink });
       lineY -= lineHeight;
     }
 
@@ -384,7 +400,15 @@ export async function POST(req: NextRequest) {
   function drawSection(title: string) {
     ensureMainSpace(32);
     const titleSize = Math.max(fontSize, 11);
-    page.drawText(title.toUpperCase(), { x: mainLeft, y: yMain, size: titleSize, font: helvBold, color: accentDark });
+    const markerWidth = helvBold.widthOfTextAtSize(`${String(currentPage).padStart(2, '0')}`, Math.max(fontSize - 2, 8));
+    page.drawText(`${String(currentPage).padStart(2, '0')}`, {
+      x: mainLeft,
+      y: yMain,
+      size: Math.max(fontSize - 2, 8),
+      font: helvBold,
+      color: muted
+    });
+    page.drawText(title.toUpperCase(), { x: mainLeft + markerWidth + 10, y: yMain, size: titleSize, font: helvBold, color: accentDark });
     yMain -= titleSize + 6;
     page.drawLine({ start: { x: mainLeft, y: yMain }, end: { x: mainRight, y: yMain }, thickness: 1, color: accent });
     yMain -= 12;

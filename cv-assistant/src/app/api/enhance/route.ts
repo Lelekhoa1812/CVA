@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { getModel } from '@/lib/ai';
+import { buildHighImpactRewritePrompt, normalizeHighImpactBulletOutput } from '@/lib/resume/high-impact-rewrite';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -12,31 +13,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const model = getModel('easy');
-    
-    const prompt = `Enhance and tailor the following ${type} description to be more professional, impactful for a CV. 
-
-${type === 'project' ? 'Project' : 'Experience'}: ${name}
-
-Current Description:
-${description}
-
-Instructions:
-- Use action verbs and quantifiable results when possible
-- Focus on achievements and outcomes
-- Keep it concise but comprehensive
-- Maintain the core information while improving clarity and impact
-- Return answer in text-only, no comments, not markdown
-
-Return only the enhanced description, no other text.
-
-Enhanced Description:`;
+    const model = getModel('hard');
+    const prompt = buildHighImpactRewritePrompt({
+      itemType: type,
+      itemName: name,
+      originalContent: description,
+    });
 
     const res = await model.generateContent({ 
       contents: [{ role: 'user', parts: [{ text: prompt }] }] 
     });
     
-    const enhancedDescription = res.response.text().trim();
+    const enhancedDescription = normalizeHighImpactBulletOutput(
+      res.response.text(),
+      description,
+    );
     
     return NextResponse.json({ 
       enhancedDescription,

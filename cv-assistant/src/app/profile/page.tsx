@@ -5,12 +5,15 @@ import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+import { buildApiUrl } from "@/lib/api";
 
 type Project = {
   name: string;
   description: string;
   summary?: string;
   _needsSummary?: boolean;
+  _clientId?: string;
+  createdAt?: string;
 };
 
 type Experience = {
@@ -21,6 +24,8 @@ type Experience = {
   description: string;
   summary?: string;
   _needsSummary?: boolean;
+  _clientId?: string;
+  createdAt?: string;
 };
 
 type Profile = {
@@ -52,6 +57,61 @@ const emptyProfile: Profile = {
   experiences: [],
   languages: "",
 };
+
+const createClientId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+};
+
+function ensureClientIds<T extends { _clientId?: string }>(items: T[] | undefined, fallback?: T[]) {
+  const list = items || [];
+  return list.map((item, index) => ({
+    ...item,
+    _clientId: item._clientId ?? fallback?.[index]?._clientId ?? createClientId(),
+  }));
+}
+
+const timestampFrom = (value?: string) => {
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+/* Motivation vs Logic:
+   Motivation: newly captured projects and experiences should stay visible at the top of the workspace even after a roundtrip to the API.
+   Logic: persist creation timestamps on each item and always rehydrate the list sorted by that timestamp so the freshest proof points float to the top. */
+function sortByCreatedAtDescending<T extends { createdAt?: string }>(items: T[]) {
+  return [...items].sort((a, b) => timestampFrom(b.createdAt) - timestampFrom(a.createdAt));
+}
+
+const hydrateList = <T extends { createdAt?: string; _clientId?: string }>(
+  items: T[] | undefined,
+  previous?: T[]
+) => sortByCreatedAtDescending(ensureClientIds(items, previous));
+
+/* Root Cause vs Logic:
+   Root Cause: using editable strings as React keys caused cards to unmount mid-edit when the key value changed.
+   Logic: persist per-card IDs on every project and experience so keyboard input updates the card without the key shifting. */
+function hydrateProfile(profile: Profile | null | undefined, previous?: Profile): Profile {
+  const base = profile || emptyProfile;
+  const projects = hydrateList(base.projects, previous?.projects);
+  const experiences = hydrateList(base.experiences, previous?.experiences);
+  return {
+    ...base,
+    projects,
+    experiences,
+  };
+}
+
+function stripClientIds(profile: Profile): Profile {
+  return {
+    ...profile,
+    projects: profile.projects.map(({ _clientId, ...rest }) => rest),
+    experiences: profile.experiences.map(({ _clientId, ...rest }) => rest),
+  };
+}
 
 type FieldProps = {
   label: string;
@@ -116,7 +176,7 @@ function TextareaField({
 }
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [profile, setProfile] = useState<Profile>(hydrateProfile(emptyProfile));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -128,10 +188,10 @@ export default function ProfilePage() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/profile");
+      const res = await fetch(buildApiUrl("/api/profile"));
       if (res.ok) {
         const data = await res.json();
-        setProfile(data.profile || emptyProfile);
+        setProfile((current) => hydrateProfile(data.profile || current, current));
       }
       setLoading(false);
     })();
@@ -144,7 +204,16 @@ export default function ProfilePage() {
   function addProject() {
     setProfile((current) => ({
       ...current,
-      projects: [{ name: "", description: "", _needsSummary: true }, ...current.projects],
+      projects: [
+        {
+          name: "",
+          description: "",
+          _needsSummary: true,
+          _clientId: createClientId(),
+          createdAt: new Date().toISOString(),
+        },
+        ...current.projects,
+      ],
     }));
   }
 
@@ -159,6 +228,8 @@ export default function ProfilePage() {
           timeTo: "",
           description: "",
           _needsSummary: true,
+          _clientId: createClientId(),
+          createdAt: new Date().toISOString(),
         },
         ...current.experiences,
       ],
@@ -251,7 +322,7 @@ export default function ProfilePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/enhance", {
+      const res = await fetch(buildApiUrl("/api/enhance"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -288,7 +359,7 @@ export default function ProfilePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/enhance", {
+      const res = await fetch(buildApiUrl("/api/enhance"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -318,10 +389,11 @@ export default function ProfilePage() {
     setSaving(true);
     setError(null);
 
-    const res = await fetch("/api/profile", {
+    const payload = stripClientIds(profile);
+    const res = await fetch(buildApiUrl("/api/profile"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -329,7 +401,7 @@ export default function ProfilePage() {
       setError(data.error || "Failed to save");
     } else {
       const data = await res.json();
-      setProfile(data.profile);
+      setProfile((current) => hydrateProfile(data.profile || current, current));
     }
 
     setSaving(false);
@@ -346,7 +418,7 @@ export default function ProfilePage() {
     form.append("file", file);
 
     try {
-      const res = await fetch("/api/ocr", { method: "POST", body: form });
+      const res = await fetch(buildApiUrl("/api/ocr"), { method: "POST", body: form });
       if (!res.ok) {
         setError("Failed to parse resume");
         return;
@@ -373,6 +445,8 @@ export default function ProfilePage() {
           ...((parsed.projects || []).map((item) => ({
             name: item.name || "",
             description: item.description || "",
+                createdAt: new Date().toISOString(),
+            _clientId: createClientId(),
             _needsSummary: true,
           })) as Project[]),
         ],
@@ -384,6 +458,8 @@ export default function ProfilePage() {
             timeFrom: item.timeFrom || "",
             timeTo: item.timeTo || "",
             description: item.description || "",
+                createdAt: new Date().toISOString(),
+            _clientId: createClientId(),
             _needsSummary: true,
           })) as Experience[]),
         ],
@@ -574,7 +650,12 @@ export default function ProfilePage() {
             ) : null}
 
             {profile.experiences.map((experience, index) => (
-              <StaggerItem key={`${experience.companyName}-${experience.role}-${index}`}>
+              <StaggerItem
+                key={
+                  experience._clientId ||
+                  `${experience.companyName}-${experience.role}-${index}`
+                }
+              >
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -694,7 +775,7 @@ export default function ProfilePage() {
             ) : null}
 
             {profile.projects.map((project, index) => (
-              <StaggerItem key={`${project.name}-${index}`}>
+              <StaggerItem key={project._clientId ?? `${project.name}-${index}`}>
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>

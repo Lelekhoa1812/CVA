@@ -36,10 +36,10 @@ export default function Home() {
             <div className="relative space-y-8">
               <div className="space-y-4">
                 <p className="section-kicker">Premium Career Workflow</p>
-                <h1 className="font-display text-balance text-5xl leading-[0.95] text-white sm:text-6xl xl:text-7xl">
+                <h1 className="hero-title font-display text-balance text-5xl leading-[0.95] sm:text-6xl xl:text-7xl">
                   Build a portfolio-quality application story.
                 </h1>
-                <p className="max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
+                <p className="hero-copy max-w-3xl text-base leading-8 sm:text-lg">
                   CV Assistant now feels less like a form filler and more like a high-end
                   career studio: profile strategy, premium resume direction, and cover letter
                   generation in one polished experience.
@@ -63,10 +63,10 @@ export default function Home() {
                 {stats.map((stat) => (
                   <div
                     key={stat.label}
-                    className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4"
+                    className="surface-subtle rounded-[1.25rem] px-4 py-4"
                   >
-                    <div className="text-2xl font-semibold text-white">{stat.value}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-400">
+                    <div className="text-foreground text-2xl font-semibold">{stat.value}</div>
+                    <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.22em]">
                       {stat.label}
                     </div>
                   </div>
@@ -81,8 +81,8 @@ export default function Home() {
             <div className="absolute inset-0 bg-grid-fade opacity-35" />
             <div className="relative space-y-5">
               <p className="section-kicker">What Changes</p>
-              <h2 className="font-display text-3xl text-white">A better first impression.</h2>
-              <div className="space-y-4 text-sm leading-7 text-slate-300">
+              <h2 className="hero-title font-display text-3xl">A better first impression.</h2>
+              <div className="hero-copy space-y-4 text-sm leading-7">
                 <p>
                   The redesign centers on dark editorial surfaces, stronger hierarchy, cleaner
                   selection flows, and previews that feel deliberate instead of utilitarian.
@@ -109,8 +109,8 @@ export default function Home() {
             <GlassPanel className="interactive-card h-full p-6">
               <div className="space-y-4">
                 <div className="metric-chip">{`0${index + 1}`}</div>
-                <h3 className="font-display text-2xl text-white">{pillar.title}</h3>
-                <p className="text-sm leading-7 text-slate-300">{pillar.body}</p>
+                <h3 className="text-foreground font-display text-2xl">{pillar.title}</h3>
+                <p className="text-muted-foreground text-sm leading-7">{pillar.body}</p>
               </div>
             </GlassPanel>
           </StaggerItem>
@@ -122,17 +122,17 @@ export default function Home() {
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
             <div className="space-y-4">
               <p className="section-kicker">Conversion Sequence</p>
-              <h2 className="font-display text-4xl text-white">Move from raw information to persuasive narrative.</h2>
-              <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              <h2 className="hero-title font-display text-4xl">Move from raw information to persuasive narrative.</h2>
+              <p className="hero-copy max-w-2xl text-sm leading-7 sm:text-base">
                 Start by tightening your profile, pull only the evidence that supports the role,
                 and finish with a cover letter that sounds specific to the opportunity.
               </p>
             </div>
             <div className="space-y-3">
               {["Profile foundation", "Resume evidence selection", "Cover letter articulation"].map((step) => (
-                <div key={step} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div key={step} className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
                   <span className="status-dot" />
-                  <span className="text-sm text-slate-200">{step}</span>
+                  <span className="text-foreground text-sm">{step}</span>
                 </div>
               ))}
             </div>

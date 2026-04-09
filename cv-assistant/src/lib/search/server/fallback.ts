@@ -7,12 +7,18 @@ const SOURCE_HINTS: Record<SearchSource, string> = {
   linkedin: "LinkedIn jobs",
   seek: "SEEK jobs",
   indeed: "Indeed jobs",
+  careerone: "CareerOne jobs",
+  adzuna: "Adzuna jobs",
+  talent: "Talent.com jobs",
 };
 
 const SOURCE_DOMAINS: Record<SearchSource, string[]> = {
   linkedin: ["linkedin.com"],
   seek: ["seek.com.au"],
   indeed: ["indeed.com"],
+  careerone: ["careerone.com.au"],
+  adzuna: ["adzuna.com.au"],
+  talent: ["talent.com"],
 };
 
 function buildFallbackQuery(source: SearchSource, request: SearchRequest) {
