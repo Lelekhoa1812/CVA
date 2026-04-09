@@ -11,6 +11,7 @@ const links = [
   { href: "/profile", label: "Profile", short: "Profile" },
   { href: "/resume", label: "Resume Lab", short: "Resume" },
   { href: "/generate", label: "Cover Letter", short: "Letter" },
+  { href: "/search", label: "Search", short: "Search" },
 ];
 
 export default function Navbar() {
