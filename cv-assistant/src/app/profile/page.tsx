@@ -68,8 +68,8 @@ function TextField({ label, value, onChange, placeholder, hint, type = "text" }:
   return (
     <label htmlFor={id} className="space-y-2">
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm font-medium text-slate-200">{label}</span>
-        {hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+        <span className="text-foreground text-sm font-medium">{label}</span>
+        {hint ? <span className="text-muted-foreground text-xs">{hint}</span> : null}
       </div>
       <input
         id={id}
@@ -100,8 +100,8 @@ function TextareaField({
   return (
     <label htmlFor={id} className="space-y-2">
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm font-medium text-slate-200">{label}</span>
-        {hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+        <span className="text-foreground text-sm font-medium">{label}</span>
+        {hint ? <span className="text-muted-foreground text-xs">{hint}</span> : null}
       </div>
       <textarea
         id={id}
@@ -353,8 +353,8 @@ export default function ProfilePage() {
         <GlassPanel className="flex items-center gap-4 px-6 py-5">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-sky-300/20 border-t-sky-300" />
           <div>
-            <p className="text-sm font-medium text-white">Loading profile workspace</p>
-            <p className="text-xs text-slate-400">Preparing your identity and evidence canvas.</p>
+            <p className="text-foreground text-sm font-medium">Loading profile workspace</p>
+            <p className="text-muted-foreground text-xs">Preparing your identity and evidence canvas.</p>
           </div>
         </GlassPanel>
       </div>
@@ -373,21 +373,23 @@ export default function ProfilePage() {
       ]}
       aside={
         <div className="space-y-6">
+          {/* Root Cause: the profile sidebar mixed white-only copy and translucent white surfaces, so light mode washed out both text and containers.
+              Logic: reuse theme-aware foreground tokens and shared surface styling so the sidebar remains readable without forking the layout. */}
           <div className="space-y-3">
             <p className="section-kicker">Signal Strength</p>
-            <h2 className="font-display text-3xl text-white">Your application foundation</h2>
-            <p className="text-sm leading-7 text-slate-300">
+            <h2 className="text-foreground font-display text-3xl">Your application foundation</h2>
+            <p className="text-muted-foreground text-sm leading-7">
               A stronger profile gives the resume selector and cover letter generator more
               specific proof to work with.
             </p>
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-              <span className="text-sm text-slate-300">Completeness</span>
-              <span className="text-lg font-semibold text-white">{completeness}%</span>
+            <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-4">
+              <span className="text-muted-foreground text-sm">Completeness</span>
+              <span className="text-foreground text-lg font-semibold">{completeness}%</span>
             </div>
-            <div className="h-2 rounded-full bg-white/8">
+            <div className="h-2 rounded-full bg-[hsl(var(--surface-3)/0.72)]">
               <div
                 className="h-2 rounded-full bg-gradient-to-r from-sky-300 to-violet-300"
                 style={{ width: `${completeness}%` }}
@@ -395,10 +397,10 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
+          <div className="surface-subtle space-y-3 rounded-[1.4rem] p-4">
             <div>
-              <p className="text-sm font-medium text-white">Resume import</p>
-              <p className="mt-1 text-xs leading-6 text-slate-400">
+              <p className="text-foreground text-sm font-medium">Resume import</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-6">
                 Pull in projects and experience from an existing resume, then refine what matters.
               </p>
             </div>
@@ -408,9 +410,9 @@ export default function ProfilePage() {
             </label>
           </div>
 
-          <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
-            <p className="text-sm font-medium text-white">Editorial note</p>
-            <p className="mt-2 text-xs leading-6 text-slate-400">
+          <div className="surface-subtle rounded-[1.4rem] p-4">
+            <p className="text-foreground text-sm font-medium">Editorial note</p>
+            <p className="text-muted-foreground mt-2 text-xs leading-6">
               Favor proof over adjectives. Specific outcomes, technologies, and scope make the
               rest of the product feel much smarter.
             </p>
@@ -421,7 +423,7 @@ export default function ProfilePage() {
       {error ? (
         <Reveal>
           <GlassPanel className="border-destructive/40 p-4">
-            <p className="text-sm text-rose-200">{error}</p>
+            <p className="text-sm text-rose-300 dark:text-rose-200">{error}</p>
           </GlassPanel>
         </Reveal>
       ) : null}
@@ -502,7 +504,7 @@ export default function ProfilePage() {
           <StaggerGroup className="mt-8 space-y-4">
             {profile.projects.length === 0 ? (
               <GlassPanel className="interactive-card p-5">
-                <p className="text-sm text-slate-300">
+                <p className="text-muted-foreground text-sm">
                   No projects yet. Add a few signature builds to strengthen your application evidence.
                 </p>
               </GlassPanel>
@@ -514,7 +516,7 @@ export default function ProfilePage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="section-kicker">Project {String(index + 1).padStart(2, "0")}</p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">
+                      <h3 className="text-foreground mt-2 text-lg font-semibold">
                         {project.name || "Untitled Project"}
                       </h3>
                     </div>
@@ -532,7 +534,7 @@ export default function ProfilePage() {
                             deleteProject(index);
                           }
                         }}
-                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-100"
+                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
                       >
                         Remove
                       </button>
@@ -541,7 +543,7 @@ export default function ProfilePage() {
 
                   <div className="grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
                     <TextField
-                      label={`Project Name ${index + 1}`}
+                      label="Project Name"
                       value={project.name}
                       onChange={(value) => {
                         const nextProjects = [...profile.projects];
@@ -551,7 +553,7 @@ export default function ProfilePage() {
                       }}
                     />
                     <TextareaField
-                      label={`Project Description ${index + 1}`}
+                      label="Project Description"
                       value={project.description}
                       onChange={(value) => {
                         const nextProjects = [...profile.projects];
@@ -585,7 +587,7 @@ export default function ProfilePage() {
           <StaggerGroup className="mt-8 space-y-4">
             {profile.experiences.length === 0 ? (
               <GlassPanel className="interactive-card p-5">
-                <p className="text-sm text-slate-300">
+                <p className="text-muted-foreground text-sm">
                   No experience entries yet. Add internships, freelance work, or employment to widen your evidence base.
                 </p>
               </GlassPanel>
@@ -597,7 +599,7 @@ export default function ProfilePage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="section-kicker">Experience {String(index + 1).padStart(2, "0")}</p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">
+                      <h3 className="text-foreground mt-2 text-lg font-semibold">
                         {experience.companyName || "Company"} · {experience.role || "Role"}
                       </h3>
                     </div>
@@ -615,7 +617,7 @@ export default function ProfilePage() {
                             deleteExperience(index);
                           }
                         }}
-                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-100"
+                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
                       >
                         Remove
                       </button>

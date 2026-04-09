@@ -32,14 +32,16 @@ export default function ModuleShell({
         <GlassPanel strong className="hero-card overflow-hidden p-7 sm:p-10">
           {/* Motivation: every module needs a strong editorial opening to feel premium and to orient the user quickly.
               Logic: centralize the hero treatment here so Profile, Resume, and Cover Letter all share the same high-end shell. */}
+          {/* Root Cause: the module shell used fixed white and slate copy tokens that disappeared against the light palette.
+              Logic: switch shared hero typography and stat cards to theme-aware tokens so every module stays legible in both themes. */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.14),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(183,163,255,0.16),transparent_35%)]" />
           <div className="relative space-y-5">
             <p className="section-kicker">{eyebrow}</p>
             <div className="max-w-3xl space-y-4">
-              <h1 className="font-display text-4xl leading-[1.02] text-white sm:text-5xl xl:text-6xl">
+              <h1 className="text-foreground font-display text-4xl leading-[1.02] sm:text-5xl xl:text-6xl">
                 {title}
               </h1>
-              <p className="max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
+              <p className="text-muted-foreground max-w-2xl text-base leading-8 sm:text-lg">
                 {description}
               </p>
             </div>
@@ -48,10 +50,10 @@ export default function ModuleShell({
                 {stats.map((stat) => (
                   <div
                     key={stat.label}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+                    className="surface-subtle rounded-2xl px-4 py-4"
                   >
-                    <div className="text-2xl font-semibold text-white">{stat.value}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">
+                    <div className="text-foreground text-2xl font-semibold">{stat.value}</div>
+                    <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.24em]">
                       {stat.label}
                     </div>
                   </div>

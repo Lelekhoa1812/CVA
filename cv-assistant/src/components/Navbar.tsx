@@ -27,11 +27,11 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-slate-950/70 px-4 py-3 shadow-elevated backdrop-blur-2xl">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/80 bg-[hsl(var(--surface-1)/0.82)] px-4 py-3 shadow-elevated backdrop-blur-2xl">
         <Link href="/" className="group flex items-center gap-3">
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-[hsl(var(--surface-2)/0.78)]">
             <div className="absolute inset-1 rounded-xl bg-gradient-to-br from-sky-300/70 via-cyan-200/50 to-violet-300/60 blur-sm" />
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-white">
+            <div className="bg-foreground text-background relative flex h-8 w-8 items-center justify-center rounded-xl">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -43,8 +43,8 @@ export default function Navbar() {
             </div>
           </div>
           <div className="hidden sm:block">
-            <div className="font-display text-xl text-white">CV Assistant</div>
-            <div className="text-xs uppercase tracking-[0.24em] text-slate-400">
+            <div className="text-foreground font-display text-xl">CV Assistant</div>
+            <div className="text-muted-foreground text-xs uppercase tracking-[0.24em]">
               Career Storytelling Suite
             </div>
           </div>
@@ -60,13 +60,13 @@ export default function Navbar() {
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium",
-                  active ? "text-white" : "text-slate-400 hover:text-white",
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {active ? (
                   <motion.span
                     layoutId="active-nav-pill"
-                    className="absolute inset-0 rounded-full border border-sky-300/30 bg-white/8"
+                    className="absolute inset-0 rounded-full border border-sky-300/30 bg-[hsl(var(--surface-2)/0.92)]"
                     transition={{ type: "spring", stiffness: 320, damping: 28 }}
                   />
                 ) : null}
@@ -77,13 +77,15 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Root Cause: the moon path sits close to the SVG bounds, so the stroke edge clipped inside the circular button.
+              Logic: allow the icon to overflow its box slightly and keep the button styling theme-aware so the control remains intact in both modes. */}
           <button
             onClick={toggleTheme}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 hover:border-sky-300/35 hover:text-white"
+            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.78)] hover:border-sky-300/35"
             aria-label="Toggle theme"
           >
             {theme === "dark" ? (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 overflow-visible" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -92,7 +94,7 @@ export default function Navbar() {
                 />
               </svg>
             ) : (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 overflow-visible" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -105,14 +107,14 @@ export default function Navbar() {
 
           <button
             onClick={logout}
-            className="hidden rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-200 hover:border-rose-300/40 hover:bg-rose-400/14 md:inline-flex"
+            className="hidden rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-200 md:inline-flex"
           >
             Logout
           </button>
 
           <button
             onClick={() => setMobileMenuOpen((value) => !value)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 hover:text-white lg:hidden"
+            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.78)] lg:hidden"
             aria-label="Toggle navigation"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,8 +137,8 @@ export default function Navbar() {
                   className={cn(
                     "flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium",
                     active
-                      ? "bg-white/8 text-white"
-                      : "text-slate-300 hover:bg-white/5 hover:text-white",
+                      ? "bg-[hsl(var(--surface-2)/0.92)] text-foreground"
+                      : "text-muted-foreground hover:bg-[hsl(var(--surface-2)/0.88)] hover:text-foreground",
                   )}
                 >
                   <span>{link.short}</span>
@@ -146,7 +148,7 @@ export default function Navbar() {
             })}
             <button
               onClick={logout}
-              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-100"
+              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-600 dark:text-rose-100"
             >
               <span>Logout</span>
               <span className="status-dot" />

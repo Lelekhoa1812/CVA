@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
-import path from "node:path";
 import { getAuthFromCookies } from "@/lib/auth";
 import { searchRequestSchema } from "@/lib/search/schema";
+import { streamSearchJobs } from "@/lib/search/server/stream";
 import type { ErrorEvent } from "@/lib/search/types";
 import type { NextRequest } from "next/server";
 
@@ -35,33 +34,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const workerPath = path.join(process.cwd(), "src", "search", "worker.py");
-  const pythonPath = path.join(process.cwd(), "src");
-  const payload = JSON.stringify(parsedBody.data);
-  let terminateWorker = () => {};
-
   return new Response(
     new ReadableStream<Uint8Array>({
-      start(controller) {
+      async start(controller) {
         let isClosed = false;
-        let wasAborted = false;
-        let didComplete = false;
-        let stderrOutput = "";
 
         // Motivation vs Logic:
-        // Motivation: The job search can span multiple sources and dozens of detail fetches, so the UI needs live
-        // progress without waiting for one huge response or re-implementing crawler logic in JavaScript.
-        // Logic: Keep the route focused on auth, validation, and process orchestration, then forward the Python
-        // worker's NDJSON stream directly so the frontend can react to incremental source updates and results.
-        const worker = spawn("python3", [workerPath], {
-          cwd: process.cwd(),
-          env: {
-            ...process.env,
-            PYTHONPATH: pythonPath,
-            PYTHONUNBUFFERED: "1",
-          },
-          stdio: ["pipe", "pipe", "pipe"],
-        });
+        // Motivation: Vercel can run this feature only if the crawl stays inside the Node.js runtime rather than
+        // spawning a separate Python process that the platform does not provide as part of a Next.js function.
+        // Logic: Keep the route focused on auth, validation, and streaming orchestration, then forward the native
+        // TypeScript crawler's async-generator events directly so the frontend preserves the same live contract.
 
         const safeClose = () => {
           if (isClosed) return;
@@ -82,70 +64,29 @@ export async function POST(req: NextRequest) {
           }
         };
 
-        terminateWorker = () => {
-          if (worker.killed) return;
-          worker.kill("SIGTERM");
-          setTimeout(() => {
-            if (!worker.killed) {
-              worker.kill("SIGKILL");
+        try {
+          for await (const event of streamSearchJobs(parsedBody.data, { signal: req.signal })) {
+            if (req.signal.aborted) {
+              safeClose();
+              return;
             }
-          }, 1000);
-        };
-
-        const abortListener = () => {
-          wasAborted = true;
-          terminateWorker();
-          safeClose();
-        };
-
-        req.signal.addEventListener("abort", abortListener);
-
-        worker.stdout.on("data", (chunk: Buffer) => {
-          const text = chunk.toString("utf8");
-          if (text.includes('"type":"complete"')) {
-            didComplete = true;
+            safeEnqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
           }
-          safeEnqueue(new Uint8Array(chunk));
-        });
-
-        worker.stderr.on("data", (chunk: Buffer) => {
-          stderrOutput += chunk.toString("utf8");
-        });
-
-        worker.on("error", (error) => {
-          safeEnqueue(errorLine(error.message || "Failed to start the search worker.", true));
-          safeClose();
-        });
-
-        worker.on("close", (code) => {
-          req.signal.removeEventListener("abort", abortListener);
-
-          if (wasAborted) {
-            safeClose();
-            return;
-          }
-
-          if (!didComplete && code !== 0) {
-            const detail = stderrOutput.trim();
+        } catch (error) {
+          if (!req.signal.aborted) {
             safeEnqueue(
               errorLine(
-                detail
-                  ? `Search worker exited unexpectedly: ${detail}`
-                  : "Search worker exited unexpectedly.",
+                error instanceof Error ? error.message : "Search worker exited unexpectedly.",
                 true,
               ),
             );
           }
-
+        } finally {
           safeClose();
-        });
-
-        worker.stdin.write(payload);
-        worker.stdin.end();
+        }
       },
       cancel() {
-        // A canceled client stream should stop the worker even if the fetch transport stays open briefly.
-        terminateWorker();
+        req.signal.throwIfAborted?.();
       },
     }),
     {
