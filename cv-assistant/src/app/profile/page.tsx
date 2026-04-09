@@ -123,6 +123,8 @@ export default function ProfilePage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [enhancingProject, setEnhancingProject] = useState<number | null>(null);
   const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
+  const [copiedProject, setCopiedProject] = useState<number | null>(null);
+  const [copiedExperience, setCopiedExperience] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -142,7 +144,7 @@ export default function ProfilePage() {
   function addProject() {
     setProfile((current) => ({
       ...current,
-      projects: [...current.projects, { name: "", description: "", _needsSummary: true }],
+      projects: [{ name: "", description: "", _needsSummary: true }, ...current.projects],
     }));
   }
 
@@ -150,7 +152,6 @@ export default function ProfilePage() {
     setProfile((current) => ({
       ...current,
       experiences: [
-        ...current.experiences,
         {
           companyName: "",
           role: "",
@@ -159,6 +160,7 @@ export default function ProfilePage() {
           description: "",
           _needsSummary: true,
         },
+        ...current.experiences,
       ],
     }));
   }
@@ -175,6 +177,67 @@ export default function ProfilePage() {
       ...current,
       experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index),
     }));
+  }
+
+  /* Motivation: users need one-click enhancement and one-click copy-to-paste output without duplicating formatting logic across cards.
+     Logic: build the formatted text in shared helpers and keep clipboard feedback local to each card type. */
+  function formatProjectForCopy(project: Project) {
+    return [
+      project.name.trim() ? `Project: ${project.name.trim()}` : null,
+      project.description.trim() ? `Description: ${project.description.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function formatExperienceForCopy(experience: Experience) {
+    return [
+      experience.companyName.trim() ? `Company: ${experience.companyName.trim()}` : null,
+      experience.role.trim() ? `Role: ${experience.role.trim()}` : null,
+      experience.timeFrom.trim() ? `Start: ${experience.timeFrom.trim()}` : null,
+      experience.timeTo.trim() ? `End: ${experience.timeTo.trim()}` : null,
+      experience.description.trim() ? `Description: ${experience.description.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function copyProject(index: number) {
+    const formatted = formatProjectForCopy(profile.projects[index]);
+    if (!formatted) {
+      setError("Please add project details before copying");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatted);
+      setError(null);
+      setCopiedProject(index);
+      window.setTimeout(() => {
+        setCopiedProject((current) => (current === index ? null : current));
+      }, 1500);
+    } catch {
+      setError("Failed to copy project details");
+    }
+  }
+
+  async function copyExperience(index: number) {
+    const formatted = formatExperienceForCopy(profile.experiences[index]);
+    if (!formatted) {
+      setError("Please add experience details before copying");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatted);
+      setError(null);
+      setCopiedExperience(index);
+      window.setTimeout(() => {
+        setCopiedExperience((current) => (current === index ? null : current));
+      }, 1500);
+    } catch {
+      setError("Failed to copy experience details");
+    }
   }
 
   async function enhanceProject(index: number) {
@@ -491,6 +554,126 @@ export default function ProfilePage() {
       <Reveal delay={0.06}>
         <GlassPanel className="p-6 sm:p-8">
           <SectionHeading
+            eyebrow="Experience"
+            title="Show scope, ownership, and outcomes"
+            description="Write each role so it gives the resume builder and cover letter generator clear achievement material to work with."
+            action={
+              <button onClick={addExperience} className="button-secondary">
+                Add Experience
+              </button>
+            }
+          />
+
+          <StaggerGroup className="mt-8 space-y-4">
+            {profile.experiences.length === 0 ? (
+              <GlassPanel className="interactive-card p-5">
+                <p className="text-muted-foreground text-sm">
+                  No experience entries yet. Add internships, freelance work, or employment to widen your evidence base.
+                </p>
+              </GlassPanel>
+            ) : null}
+
+            {profile.experiences.map((experience, index) => (
+              <StaggerItem key={`${experience.companyName}-${experience.role}-${index}`}>
+                <div className="interactive-card space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="section-kicker">Experience {String(index + 1).padStart(2, "0")}</p>
+                      <h3 className="text-foreground mt-2 text-lg font-semibold">
+                        {experience.companyName || "Company"} · {experience.role || "Role"}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => enhanceExperience(index)}
+                        className="button-secondary"
+                        disabled={enhancingExperience === index}
+                      >
+                        {enhancingExperience === index ? "Enhancing..." : "Enhance"}
+                      </button>
+                      <button onClick={() => copyExperience(index)} className="button-secondary">
+                        {copiedExperience === index ? "Copied" : "Copy"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm("Are you sure you want to delete this experience?")) {
+                            deleteExperience(index);
+                          }
+                        }}
+                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <TextField
+                      label="Company"
+                      value={experience.companyName}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].companyName = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                    />
+                    <TextField
+                      label="Role"
+                      value={experience.role}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].role = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                    />
+                    <TextField
+                      label="Start"
+                      value={experience.timeFrom}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].timeFrom = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                      placeholder="Jan 2023"
+                    />
+                    <TextField
+                      label="End"
+                      value={experience.timeTo}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].timeTo = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                      placeholder="Present"
+                    />
+                    <div className="md:col-span-2">
+                      <TextareaField
+                        label="Description"
+                        value={experience.description}
+                        onChange={(value) => {
+                          const nextExperiences = [...profile.experiences];
+                          nextExperiences[index].description = value;
+                          nextExperiences[index]._needsSummary = true;
+                          setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        }}
+                        rows={5}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </GlassPanel>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <GlassPanel className="p-6 sm:p-8">
+          <SectionHeading
             eyebrow="Projects"
             title="Keep proof points specific"
             description="Projects should read like compact case studies: what you built, how you built it, and why it mattered."
@@ -526,7 +709,10 @@ export default function ProfilePage() {
                         className="button-secondary"
                         disabled={enhancingProject === index}
                       >
-                        {enhancingProject === index ? "Enhancing..." : "Enhance Copy"}
+                        {enhancingProject === index ? "Enhancing..." : "Enhance"}
+                      </button>
+                      <button onClick={() => copyProject(index)} className="button-secondary">
+                        {copiedProject === index ? "Copied" : "Copy"}
                       </button>
                       <button
                         onClick={() => {
@@ -563,123 +749,6 @@ export default function ProfilePage() {
                       }}
                       rows={5}
                     />
-                  </div>
-                </div>
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
-        </GlassPanel>
-      </Reveal>
-
-      <Reveal delay={0.1}>
-        <GlassPanel className="p-6 sm:p-8">
-          <SectionHeading
-            eyebrow="Experience"
-            title="Show scope, ownership, and outcomes"
-            description="Write each role so it gives the resume builder and cover letter generator clear achievement material to work with."
-            action={
-              <button onClick={addExperience} className="button-secondary">
-                Add Experience
-              </button>
-            }
-          />
-
-          <StaggerGroup className="mt-8 space-y-4">
-            {profile.experiences.length === 0 ? (
-              <GlassPanel className="interactive-card p-5">
-                <p className="text-muted-foreground text-sm">
-                  No experience entries yet. Add internships, freelance work, or employment to widen your evidence base.
-                </p>
-              </GlassPanel>
-            ) : null}
-
-            {profile.experiences.map((experience, index) => (
-              <StaggerItem key={`${experience.companyName}-${experience.role}-${index}`}>
-                <div className="interactive-card space-y-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="section-kicker">Experience {String(index + 1).padStart(2, "0")}</p>
-                      <h3 className="text-foreground mt-2 text-lg font-semibold">
-                        {experience.companyName || "Company"} · {experience.role || "Role"}
-                      </h3>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => enhanceExperience(index)}
-                        className="button-secondary"
-                        disabled={enhancingExperience === index}
-                      >
-                        {enhancingExperience === index ? "Enhancing..." : "Enhance Copy"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm("Are you sure you want to delete this experience?")) {
-                            deleteExperience(index);
-                          }
-                        }}
-                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <TextField
-                      label={`Company ${index + 1}`}
-                      value={experience.companyName}
-                      onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].companyName = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
-                      }}
-                    />
-                    <TextField
-                      label={`Role ${index + 1}`}
-                      value={experience.role}
-                      onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].role = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
-                      }}
-                    />
-                    <TextField
-                      label={`Start ${index + 1}`}
-                      value={experience.timeFrom}
-                      onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].timeFrom = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
-                      }}
-                      placeholder="Jan 2023"
-                    />
-                    <TextField
-                      label={`End ${index + 1}`}
-                      value={experience.timeTo}
-                      onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].timeTo = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
-                      }}
-                      placeholder="Present"
-                    />
-                    <div className="md:col-span-2">
-                      <TextareaField
-                        label={`Description ${index + 1}`}
-                        value={experience.description}
-                        onChange={(value) => {
-                          const nextExperiences = [...profile.experiences];
-                          nextExperiences[index].description = value;
-                          nextExperiences[index]._needsSummary = true;
-                          setProfile((current) => ({ ...current, experiences: nextExperiences }));
-                        }}
-                        rows={5}
-                      />
-                    </div>
                   </div>
                 </div>
               </StaggerItem>

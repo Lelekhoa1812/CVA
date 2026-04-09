@@ -766,7 +766,7 @@ export default function ResumePage() {
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.projects?.map((p, i) => (
-                  <label key={i} className={`flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
+                  <label key={i} className={`group flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
                     selectedProjects.includes(i) 
                       ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
                       : 'hover:bg-accent'
@@ -779,8 +779,8 @@ export default function ResumePage() {
                       onChange={() => toggle(i, selectedProjects, setSelectedProjects)}
                     />
                     <div>
-                      <div className="font-medium text-foreground">{p.name || 'Untitled Project'}</div>
-                      <div className="text-sm text-muted-foreground whitespace-pre-wrap">{p.summary || ''}</div>
+                      <div className="font-medium text-foreground group-hover:text-white">{p.name || 'Untitled Project'}</div>
+                      <div className="text-sm text-muted-foreground whitespace-pre-wrap group-hover:text-white">{p.summary || ''}</div>
                     </div>
                   </label>
                 ))}
@@ -796,7 +796,7 @@ export default function ResumePage() {
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.experiences?.map((ex, i) => (
-                  <label key={i} className={`flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
+                  <label key={i} className={`group flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
                     selectedExperiences.includes(i) 
                       ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
                       : 'hover:bg-accent'
@@ -809,8 +809,8 @@ export default function ResumePage() {
                       onChange={() => toggle(i, selectedExperiences, setSelectedExperiences)}
                     />
                     <div>
-                      <div className="font-medium text-foreground">{ex.companyName} — {ex.role}</div>
-                      <div className="text-sm text-muted-foreground whitespace-pre-wrap">{ex.summary || ''}</div>
+                      <div className="font-medium text-foreground group-hover:text-white">{ex.companyName} — {ex.role}</div>
+                      <div className="text-sm text-muted-foreground whitespace-pre-wrap group-hover:text-white">{ex.summary || ''}</div>
                     </div>
                   </label>
                 ))}

@@ -8,10 +8,10 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/profile", label: "Profile", short: "Profile" },
+  { href: "/profile", label: "Your Profile", short: "Profile" },
   { href: "/resume", label: "Resume Lab", short: "Resume" },
-  { href: "/generate", label: "Cover Letter", short: "Letter" },
-  { href: "/search", label: "Search", short: "Search" },
+  { href: "/generate", label: "Cover Letter", short: "Cv" },
+  { href: "/search", label: "Job Search", short: "Search" },
 ];
 
 export default function Navbar() {

@@ -57,11 +57,11 @@ function formatElapsed(elapsedMs: number) {
 }
 
 function statusClasses(status: SourceProgressState["status"]) {
-  if (status === "complete") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-100";
-  if (status === "blocked") return "border-amber-400/30 bg-amber-400/10 text-amber-100";
-  if (status === "error") return "border-rose-400/30 bg-rose-400/10 text-rose-100";
-  if (status === "running") return "border-sky-300/30 bg-sky-300/10 text-sky-100";
-  return "border-white/10 bg-white/5 text-slate-300";
+  if (status === "complete") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100";
+  if (status === "blocked") return "border-amber-400/30 bg-amber-400/10 text-amber-700 dark:text-amber-100";
+  if (status === "error") return "border-rose-400/30 bg-rose-400/10 text-rose-700 dark:text-rose-100";
+  if (status === "running") return "border-sky-300/30 bg-sky-300/10 text-sky-700 dark:text-sky-100";
+  return "border-white/10 bg-white/5 text-muted-foreground";
 }
 
 export default function SearchPage() {
@@ -240,8 +240,8 @@ export default function SearchPage() {
         <div className="space-y-6">
           <div className="space-y-3">
             <p className="section-kicker">Hybrid Discovery</p>
-            <h2 className="font-display text-3xl text-white">Best effort, source by source.</h2>
-            <p className="text-sm leading-7 text-slate-300">
+            <h2 className="text-foreground font-display text-3xl">Best effort, source by source.</h2>
+            <p className="text-muted-foreground text-sm leading-7">
               LinkedIn is crawled directly, while SEEK and Indeed will fall back gracefully if a
               public HTML crawl is blocked in this runtime.
             </p>
@@ -258,7 +258,7 @@ export default function SearchPage() {
                 className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
               >
                 <span className="status-dot" />
-                <span className="text-sm text-slate-200">{item}</span>
+                <span className="text-foreground text-sm">{item}</span>
               </div>
             ))}
           </div>
@@ -268,7 +268,7 @@ export default function SearchPage() {
       {error ? (
         <Reveal>
           <GlassPanel className="border-rose-400/30 p-4">
-            <p className="text-sm text-rose-100">{error}</p>
+            <p className="text-sm text-rose-700 dark:text-rose-100">{error}</p>
           </GlassPanel>
         </Reveal>
       ) : null}
@@ -285,7 +285,7 @@ export default function SearchPage() {
             <form className="mt-8 space-y-5" onSubmit={handleSearch}>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Job title</span>
+                  <span className="text-foreground text-sm font-medium">Job title</span>
                   <input
                     className="input-premium"
                     placeholder="Software Engineer"
@@ -297,7 +297,7 @@ export default function SearchPage() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Location</span>
+                  <span className="text-foreground text-sm font-medium">Location</span>
                   <input
                     className="input-premium"
                     placeholder="Melbourne"
@@ -311,7 +311,7 @@ export default function SearchPage() {
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Posted within</span>
+                  <span className="text-foreground text-sm font-medium">Posted within</span>
                   <select
                     className="input-premium"
                     value={form.filters.postedWithin}
@@ -334,7 +334,7 @@ export default function SearchPage() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Workplace mode</span>
+                  <span className="text-foreground text-sm font-medium">Workplace mode</span>
                   <select
                     className="input-premium"
                     value={form.filters.workplaceMode}
@@ -357,7 +357,7 @@ export default function SearchPage() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Employment type</span>
+                  <span className="text-foreground text-sm font-medium">Employment type</span>
                   <select
                     className="input-premium"
                     value={form.filters.employmentType}
@@ -380,7 +380,7 @@ export default function SearchPage() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Max results per source</span>
+                  <span className="text-foreground text-sm font-medium">Max results per source</span>
                   <select
                     className="input-premium"
                     value={form.maxResultsPerSource}
@@ -434,18 +434,18 @@ export default function SearchPage() {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-[1.35rem] border border-white/10 bg-white/5 p-4">
-                <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Current state</div>
-                <div className="mt-2 text-lg font-semibold text-white">
+                <div className="text-muted-foreground text-xs uppercase tracking-[0.22em]">Current state</div>
+                <div className="text-foreground mt-2 text-lg font-semibold">
                   {isSearching ? "Crawl in progress" : "Idle"}
                 </div>
-                <div className="mt-2 text-sm leading-7 text-slate-300">{statusMessage}</div>
+                <div className="text-muted-foreground mt-2 text-sm leading-7">{statusMessage}</div>
               </div>
 
               {summary ? (
-                <div className="rounded-[1.35rem] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                  Finished in <span className="font-semibold text-white">{formatElapsed(summary.elapsedMs)}</span>
+                <div className="text-muted-foreground rounded-[1.35rem] border border-white/10 bg-white/5 p-4 text-sm">
+                  Finished in <span className="text-foreground font-semibold">{formatElapsed(summary.elapsedMs)}</span>
                   {" with "}
-                  <span className="font-semibold text-white">{summary.totalResults}</span> results.
+                  <span className="text-foreground font-semibold">{summary.totalResults}</span> results.
                 </div>
               ) : null}
             </div>
@@ -470,7 +470,7 @@ export default function SearchPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-xs uppercase tracking-[0.24em] opacity-70">Source</div>
-                        <div className="mt-2 font-display text-2xl text-white">
+                        <div className="mt-2 font-display text-2xl text-current">
                           {SOURCE_LABELS[source]}
                         </div>
                       </div>
@@ -482,13 +482,13 @@ export default function SearchPage() {
                     <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                       <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
                         <div className="text-xs uppercase tracking-[0.18em] opacity-70">Pages</div>
-                        <div className="mt-1 text-xl font-semibold text-white">
+                        <div className="mt-1 text-xl font-semibold text-current">
                           {progress.pagesScanned}
                         </div>
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
                         <div className="text-xs uppercase tracking-[0.18em] opacity-70">Matches</div>
-                        <div className="mt-1 text-xl font-semibold text-white">
+                        <div className="mt-1 text-xl font-semibold text-current">
                           {progress.resultsFound}
                         </div>
                       </div>
@@ -536,17 +536,17 @@ export default function SearchPage() {
                   </div>
 
                   <div className="mt-5 space-y-2">
-                    <h3 className="font-display text-2xl text-white">{result.title}</h3>
-                    <p className="text-sm text-slate-200">
+                    <h3 className="text-foreground font-display text-2xl">{result.title}</h3>
+                    <p className="text-muted-foreground text-sm">
                       {result.company || "Unknown company"}
                       {result.location ? ` · ${result.location}` : ""}
                     </p>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                    <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">
                       {result.postedText || "Posted time unavailable"}
                     </p>
                   </div>
 
-                  <p className="mt-4 text-sm leading-7 text-slate-300">
+                  <p className="text-muted-foreground mt-4 text-sm leading-7">
                     {result.snippet || "No snippet was publicly exposed for this listing."}
                   </p>
 
@@ -572,7 +572,7 @@ export default function SearchPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-8 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-8 text-sm leading-7 text-slate-300">
+            <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-8 text-sm leading-7">
               {summary
                 ? "The crawl finished without any jobs that survived the source-level and post-normalization filters."
                 : "Start a search to stream application targets into this panel."}

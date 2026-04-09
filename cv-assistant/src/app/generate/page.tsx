@@ -181,8 +181,8 @@ export default function GeneratePage() {
         <div className="space-y-6">
           <div className="space-y-3">
             <p className="section-kicker">Letter Strategy</p>
-            <h2 className="font-display text-3xl text-white">Narrative with proof</h2>
-            <p className="text-sm leading-7 text-slate-300">
+            <h2 className="text-foreground font-display text-3xl">Narrative with proof</h2>
+            <p className="text-muted-foreground text-sm leading-7">
               The highest-conversion letters connect company needs to a handful of relevant
               experiences instead of repeating the resume.
             </p>
@@ -196,7 +196,7 @@ export default function GeneratePage() {
             ].map((item) => (
               <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <span className="status-dot" />
-                <span className="text-sm text-slate-200">{item}</span>
+                <span className="text-foreground text-sm">{item}</span>
               </div>
             ))}
           </div>
@@ -206,7 +206,7 @@ export default function GeneratePage() {
       {error ? (
         <Reveal>
           <GlassPanel className="border-destructive/40 p-4">
-            <p className="text-sm text-rose-200">{error}</p>
+            <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
           </GlassPanel>
         </Reveal>
       ) : null}
@@ -223,7 +223,7 @@ export default function GeneratePage() {
 
               <div className="mt-8 space-y-4">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Company name</span>
+                  <span className="text-foreground text-sm font-medium">Company name</span>
                   <input
                     className="input-premium"
                     placeholder="Google, Canva, Atlassian..."
@@ -233,7 +233,7 @@ export default function GeneratePage() {
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-slate-200">Job description</span>
+                  <span className="text-foreground text-sm font-medium">Job description</span>
                   <textarea
                     className="input-premium min-h-64 resize-y"
                     placeholder="Paste the description here so the system can match requirements, responsibilities, and tone."
@@ -271,8 +271,8 @@ export default function GeneratePage() {
                     className="mt-1 h-4 w-4"
                   />
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-white">AI Coaching</p>
-                    <p className="text-xs leading-6 text-slate-400">
+                    <p className="text-foreground text-sm font-semibold">AI Coaching</p>
+                    <p className="text-muted-foreground text-xs leading-6">
                       Rank the strongest projects and experiences against the job brief, with concise relevance rationale.
                     </p>
                   </div>
@@ -291,8 +291,8 @@ export default function GeneratePage() {
                     className="mt-1 h-4 w-4"
                   />
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-white">Curate manually</p>
-                    <p className="text-xs leading-6 text-slate-400">
+                    <p className="text-foreground text-sm font-semibold">Curate manually</p>
+                    <p className="text-muted-foreground text-xs leading-6">
                       Pick the exact projects and experiences that should be woven into the letter.
                     </p>
                   </div>
@@ -302,7 +302,7 @@ export default function GeneratePage() {
               {enableManualSelection && profile ? (
                 <div className="mt-6 grid gap-4 lg:grid-cols-2">
                   <div className="interactive-card space-y-3">
-                    <p className="text-sm font-semibold text-white">Projects</p>
+                    <p className="text-foreground text-sm font-semibold">Projects</p>
                     <div className="space-y-2">
                       {profile.projects?.length ? (
                         profile.projects.map((project, idx) => (
@@ -314,23 +314,23 @@ export default function GeneratePage() {
                               className="mt-1 h-4 w-4"
                             />
                             <div>
-                              <div className="text-sm font-medium text-slate-100">
+                              <div className="text-foreground text-sm font-medium">
                                 {project.name || "Untitled Project"}
                               </div>
                               {project.summary ? (
-                                <div className="mt-1 text-xs leading-6 text-slate-400">{project.summary}</div>
+                                <div className="text-muted-foreground mt-1 text-xs leading-6">{project.summary}</div>
                               ) : null}
                             </div>
                           </label>
                         ))
                       ) : (
-                        <p className="text-xs text-slate-400">No projects added yet.</p>
+                        <p className="text-muted-foreground text-xs">No projects added yet.</p>
                       )}
                     </div>
                   </div>
 
                   <div className="interactive-card space-y-3">
-                    <p className="text-sm font-semibold text-white">Experiences</p>
+                    <p className="text-foreground text-sm font-semibold">Experiences</p>
                     <div className="space-y-2">
                       {profile.experiences?.length ? (
                         profile.experiences.map((experience, idx) => (
@@ -345,17 +345,17 @@ export default function GeneratePage() {
                               className="mt-1 h-4 w-4"
                             />
                             <div>
-                              <div className="text-sm font-medium text-slate-100">
+                              <div className="text-foreground text-sm font-medium">
                                 {experience.companyName} · {experience.role}
                               </div>
                               {experience.summary ? (
-                                <div className="mt-1 text-xs leading-6 text-slate-400">{experience.summary}</div>
+                                <div className="text-muted-foreground mt-1 text-xs leading-6">{experience.summary}</div>
                               ) : null}
                             </div>
                           </label>
                         ))
                       ) : (
-                        <p className="text-xs text-slate-400">No experiences added yet.</p>
+                        <p className="text-muted-foreground text-xs">No experiences added yet.</p>
                       )}
                     </div>
                   </div>
@@ -365,7 +365,7 @@ export default function GeneratePage() {
               {shouldSelect && rankings.length > 0 ? (
                 <div className="mt-6 interactive-card space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-white">AI Coaching results</p>
+                    <p className="text-foreground text-sm font-semibold">AI Coaching results</p>
                     <span className="metric-chip">{rankings.length} items</span>
                   </div>
                   <StaggerGroup className="space-y-2">
@@ -376,15 +376,15 @@ export default function GeneratePage() {
                             <span className="status-dot mt-2" />
                             <div>
                               <div className="flex items-center gap-2">
-                                <div className="text-sm font-medium text-slate-100">{item.title}</div>
-                                <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                                <div className="text-foreground text-sm font-medium">{item.title}</div>
+                                <span className="text-muted-foreground text-[11px] uppercase tracking-[0.2em]">
                                   {index + 1}
                                 </span>
                               </div>
-                              <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                              <div className="text-muted-foreground mt-1 text-[11px] uppercase tracking-[0.2em]">
                                 {item.type}
                               </div>
-                              <div className="mt-2 text-xs leading-6 text-slate-400">{item.justification}</div>
+                              <div className="text-muted-foreground mt-2 text-xs leading-6">{item.justification}</div>
                             </div>
                           </div>
                         </StaggerItem>
@@ -462,18 +462,18 @@ export default function GeneratePage() {
               />
               <div className="mt-6 space-y-3">
                 <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <span className="text-sm text-slate-300">Mode</span>
-                  <span className="text-sm font-medium text-white">
+                  <span className="text-muted-foreground text-sm">Mode</span>
+                  <span className="text-foreground text-sm font-medium">
                     {enableManualSelection ? "Manual curation" : shouldSelect ? "AI Coaching" : "Open generation"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <span className="text-sm text-slate-300">Evidence count</span>
-                  <span className="text-sm font-medium text-white">{evidenceCount}</span>
+                  <span className="text-muted-foreground text-sm">Evidence count</span>
+                  <span className="text-foreground text-sm font-medium">{evidenceCount}</span>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Recommendation</p>
-                  <p className="mt-2 text-sm leading-7 text-slate-300">
+                  <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">Recommendation</p>
+                  <p className="text-muted-foreground mt-2 text-sm leading-7">
                     Keep the letter anchored to two or three strong proof points. Specificity reads
                     as confidence; breadth often reads as filler.
                   </p>

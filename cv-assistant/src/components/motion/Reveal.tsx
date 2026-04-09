@@ -1,6 +1,7 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useAnimation, useInView, useReducedMotion } from "framer-motion";
+import { Children, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,19 @@ type StaggerProps = {
 
 export function StaggerGroup({ children, className }: StaggerProps) {
   const reduceMotion = useReducedMotion();
+  const controls = useAnimation();
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-8% 0px" });
+  const childCount = useMemo(() => Children.count(children), [children]);
+
+  /* Root Cause: the list only animates via a one-shot whileInView, so newly added children stay in the hidden variant.
+     Logic: watch visibility and child-count changes and re‑start the "show" animation through controls so cards remain opaque. */
+  useEffect(() => {
+    if (reduceMotion) return;
+    if (inView) {
+      controls.start("show");
+    }
+  }, [childCount, controls, inView, reduceMotion]);
 
   if (reduceMotion) {
     return <div className={className}>{children}</div>;
@@ -46,10 +60,10 @@ export function StaggerGroup({ children, className }: StaggerProps) {
 
   return (
     <motion.div
+      ref={ref}
       className={className}
       initial="hidden"
-      whileInView="show"
-      viewport={{ once: true, margin: "-8% 0px" }}
+      animate={controls}
       variants={{
         hidden: {},
         show: {
