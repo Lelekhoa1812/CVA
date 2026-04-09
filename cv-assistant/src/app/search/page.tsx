@@ -7,6 +7,7 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { defaultSearchRequest } from "@/lib/search/schema";
 import { buildApiUrl } from "@/lib/api";
+import { passesPostFilters } from "@/lib/search/server/utils";
 import {
   createInitialSourceProgress,
   EMPLOYMENT_TYPE_OPTIONS,
@@ -14,11 +15,15 @@ import {
   POSTED_WITHIN_OPTIONS,
   SEARCH_SOURCES,
   SOURCE_LABELS,
+  type EmploymentType,
   type JobSearchResult,
+  type PostedWithin,
+  type SearchFilters,
   type SearchRequest,
   type SearchSource,
   type SearchStreamEvent,
   type SourceProgressState,
+  type WorkplaceMode,
   WORKPLACE_MODE_OPTIONS,
 } from "@/lib/search/types";
 
@@ -52,6 +57,29 @@ const employmentLabels: Record<(typeof EMPLOYMENT_TYPE_OPTIONS)[number], string>
   internship: "Internship",
 };
 
+const MATCH_FILTER_OPTIONS = ["any", "strong", "partial"] as const;
+type MatchFilter = (typeof MATCH_FILTER_OPTIONS)[number];
+const matchLabels: Record<MatchFilter, string> = {
+  any: "Any match",
+  strong: "Strong matches only",
+  partial: "Partial matches only",
+};
+
+type PlatformFilter = SearchSource | "any";
+const PLATFORM_FILTER_OPTIONS: PlatformFilter[] = ["any", ...SEARCH_SOURCES];
+const platformLabels: Record<PlatformFilter, string> = {
+  any: "Any platform",
+  ...SOURCE_LABELS,
+};
+
+type ResultFilters = {
+  match: MatchFilter;
+  platform: PlatformFilter;
+  postedWithin: PostedWithin;
+  workplaceMode: WorkplaceMode;
+  employmentType: EmploymentType;
+};
+
 function formatElapsed(elapsedMs: number) {
   if (elapsedMs < 1000) return `${elapsedMs} ms`;
   return `${(elapsedMs / 1000).toFixed(1)} s`;
@@ -74,6 +102,13 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [runSources, setRunSources] = useState<SearchSource[]>([...SEARCH_SOURCES]);
+  const [resultFilters, setResultFilters] = useState<ResultFilters>({
+    match: "any",
+    platform: "any",
+    postedWithin: "any",
+    workplaceMode: "any",
+    employmentType: "any",
+  });
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -256,6 +291,26 @@ export default function SearchPage() {
         : form.selectedSources
       : SEARCH_SOURCES;
   const blockedCount = visibleSources.filter((source) => sourceProgress[source].status === "blocked").length;
+  const searchFilters: SearchFilters = {
+    postedWithin: resultFilters.postedWithin,
+    workplaceMode: resultFilters.workplaceMode,
+    employmentType: resultFilters.employmentType,
+  };
+  // Motivation vs Logic:
+  // Motivation: Result cards should be fine-grained so readers can dial in a subset of matches without re-running the crawl.
+  // Logic: Track dedicated UI filters and reuse the server heuristics to drop cards before we render them.
+  const filteredResults = results.filter((result) => {
+    if (resultFilters.match !== "any" && result.searchQueryMatch !== resultFilters.match) {
+      return false;
+    }
+    if (resultFilters.platform !== "any" && result.source !== resultFilters.platform) {
+      return false;
+    }
+    if (!passesPostFilters(result, searchFilters)) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <ModuleShell
@@ -587,9 +642,111 @@ export default function SearchPage() {
             }
           />
 
-          {results.length ? (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <label className="space-y-2">
+              <span className="text-foreground text-sm font-medium">Match strength</span>
+              <select
+                className="input-premium"
+                value={resultFilters.match}
+                onChange={(event) =>
+                  setResultFilters((current) => ({
+                    ...current,
+                    match: event.target.value as MatchFilter,
+                  }))
+                }
+              >
+                {MATCH_FILTER_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {matchLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-foreground text-sm font-medium">Platform</span>
+              <select
+                className="input-premium"
+                value={resultFilters.platform}
+                onChange={(event) =>
+                  setResultFilters((current) => ({
+                    ...current,
+                    platform: event.target.value as PlatformFilter,
+                  }))
+                }
+              >
+                {PLATFORM_FILTER_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {platformLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-foreground text-sm font-medium">Posted within</span>
+              <select
+                className="input-premium"
+                value={resultFilters.postedWithin}
+                onChange={(event) =>
+                  setResultFilters((current) => ({
+                    ...current,
+                    postedWithin: event.target.value as PostedWithin,
+                  }))
+                }
+              >
+                {POSTED_WITHIN_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {postedLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-foreground text-sm font-medium">Workplace mode</span>
+              <select
+                className="input-premium"
+                value={resultFilters.workplaceMode}
+                onChange={(event) =>
+                  setResultFilters((current) => ({
+                    ...current,
+                    workplaceMode: event.target.value as WorkplaceMode,
+                  }))
+                }
+              >
+                {WORKPLACE_MODE_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {workplaceLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-foreground text-sm font-medium">Employment type</span>
+              <select
+                className="input-premium"
+                value={resultFilters.employmentType}
+                onChange={(event) =>
+                  setResultFilters((current) => ({
+                    ...current,
+                    employmentType: event.target.value as EmploymentType,
+                  }))
+                }
+              >
+                {EMPLOYMENT_TYPE_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {employmentLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {filteredResults.length ? (
             <div className="mt-8 grid gap-4 xl:grid-cols-2">
-              {results.map((result) => (
+              {filteredResults.map((result) => (
                 <article
                   key={result.id}
                   className="interactive-card rounded-[1.5rem] p-6"
@@ -638,9 +795,11 @@ export default function SearchPage() {
             </div>
           ) : (
             <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-border/75 bg-[hsl(var(--surface-1)/0.5)] p-8 text-sm leading-7">
-              {summary
-                ? "The crawl finished without any jobs that survived the source-level and post-normalization filters."
-                : "Start a search to stream application targets into this panel."}
+              {results.length === 0
+                ? summary
+                  ? "The crawl finished without any jobs that survived the source-level and post-normalization filters."
+                  : "Start a search to stream application targets into this panel."
+                : "No results match the current card filters."}
             </div>
           )}
         </GlassPanel>

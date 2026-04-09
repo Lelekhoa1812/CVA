@@ -52,6 +52,8 @@ type GenericSearchLink = {
   title: string;
   listingUrl: string;
   context: string;
+  companyHint?: string;
+  postedHint?: string;
 };
 
 type GenericSourceConfig = {
@@ -292,6 +294,110 @@ function buildSourceSearchUrl(
   return GENERIC_SOURCE_CONFIGS[source].buildSearchUrl(request, page);
 }
 
+const SEEK_CONTEXT_LOCATION_TOKENS = [
+  "vic",
+  "nsw",
+  "qld",
+  "sa",
+  "wa",
+  "tas",
+  "act",
+  "nt",
+  "melbourne",
+  "sydney",
+  "brisbane",
+  "perth",
+  "adelaide",
+  "hobart",
+  "canberra",
+  "remote",
+  "hybrid",
+  "onsite",
+  "on-site",
+  "work from home",
+  "in office",
+];
+const MAX_SEEK_COMPANY_LENGTH = 60;
+
+function isSeekLocationLine(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return SEEK_CONTEXT_LOCATION_TOKENS.some((token) => normalized.includes(token));
+}
+
+function isPostedTimeLine(value: string): boolean {
+  const normalized = value.toLowerCase();
+  if (!normalized) return false;
+  if (
+    normalized.includes("ago") ||
+    normalized.includes("today") ||
+    normalized.includes("yesterday") ||
+    normalized.includes("just posted") ||
+    normalized.includes("new to you")
+  ) {
+    return true;
+  }
+  if (/\b\d+\s*(?:m|h|d|w|mo|y)\b/.test(normalized)) {
+    return true;
+  }
+  if (/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\b/.test(
+      normalized,
+    )) {
+    return true;
+  }
+  return false;
+}
+
+function isSeekMetaLine(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("this is a") ||
+    normalized.includes("featured") ||
+    normalized.includes("immediate start") ||
+    normalized.includes("subclassification") ||
+    normalized.includes("classification") ||
+    normalized.includes("per year") ||
+    normalized.includes("per annum") ||
+    normalized.includes("new to you") ||
+    normalized.includes("join") ||
+    value.includes("$") ||
+    value.startsWith("*")
+  );
+}
+
+function isLikelySeekCompanyLine(value: string): boolean {
+  if (!value) return false;
+  if (value.length > MAX_SEEK_COMPANY_LENGTH) return false;
+  if (value.includes("$")) return false;
+  return !isSeekLocationLine(value) && !isPostedTimeLine(value) && !isSeekMetaLine(value);
+}
+
+function extractSeekContextDetails(context: string, title: string) {
+  const normalized = context.replace(/\r/g, "\n");
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const rawLine of normalized.split(/\n+/)) {
+    const line = cleanText(rawLine);
+    if (!line || line === title || seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+  }
+
+  const postedHint = lines.find((line) => isPostedTimeLine(line)) || "";
+  let companyHint = "";
+  const locationIndex = lines.findIndex((line) => isSeekLocationLine(line));
+  if (locationIndex > 0) {
+    const candidate = lines[locationIndex - 1];
+    if (isLikelySeekCompanyLine(candidate)) {
+      companyHint = candidate;
+    }
+  }
+  if (!companyHint) {
+    companyHint = lines.find((line) => isLikelySeekCompanyLine(line)) || "";
+  }
+
+  return { companyHint, postedHint };
+}
+
 function parseSourceSearchLinks(
   source: GenericSource,
   html: string,
@@ -313,7 +419,9 @@ function parseSourceSearchLinks(
     seen.add(canonical);
 
     const context = cleanText($(element).closest("article, li, div").text()) || title;
-    links.push({ title, listingUrl: canonical, context });
+    const { companyHint, postedHint } =
+      source === "seek" ? extractSeekContextDetails(context, title) : { companyHint: "", postedHint: "" };
+    links.push({ title, listingUrl: canonical, context, companyHint, postedHint });
   });
 
   return links;
@@ -606,16 +714,16 @@ async function crawlLandingPage(
     const result = buildResult({
       source,
       title: detail?.title || link.title,
-      company: detail?.company || "",
+      company: detail?.company || link.companyHint || "",
       location: detail?.location || "",
-      postedText: detail?.postedText || "",
+      postedText: detail?.postedText || link.postedHint || "",
       snippet: detail?.snippet || truncateText(link.context),
       listingUrl: link.listingUrl,
       applicationUrl: applyTarget.applicationUrl,
       applicationUrlType: detail?.applicationUrlType || applyTarget.applicationUrlType,
       searchQueryMatch: computeSearchQueryMatch(request.jobTitle, [
         link.title,
-        detail?.company || "",
+        detail?.company || link.companyHint || "",
         link.context,
       ]),
     });
