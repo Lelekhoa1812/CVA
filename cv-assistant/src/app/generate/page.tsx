@@ -1,81 +1,151 @@
 "use client";
-import { useEffect, useState } from 'react';
+
+import { useEffect, useMemo, useState } from "react";
+import ModuleShell from "@/components/ui/ModuleShell";
+import GlassPanel from "@/components/ui/GlassPanel";
+import SectionHeading from "@/components/ui/SectionHeading";
+import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 
 type Project = { name: string; summary: string; description: string };
 type Experience = { companyName: string; role: string; summary: string; description: string };
 type Profile = { projects: Project[]; experiences: Experience[] };
+type RankedEvidence = {
+  index: number;
+  type: "project" | "experience";
+  title: string;
+  summary: string;
+  justification: string;
+};
 
 export default function GeneratePage() {
-  const [company, setCompany] = useState('');
-  const [jobDescription, setJobDescription] = useState('');
+  const [company, setCompany] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
   const [shouldSelect, setShouldSelect] = useState(true);
   const [indices, setIndices] = useState<number[] | null>(null);
-  const [items, setItems] = useState<Array<{ type: 'project'|'experience'; name: string; summary: string }>>([]);
+  const [rankings, setRankings] = useState<RankedEvidence[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [result, setResult] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [manualSelection, setManualSelection] = useState<{ projects: number[]; experiences: number[] }>({ projects: [], experiences: [] });
+  const [manualSelection, setManualSelection] = useState<{ projects: number[]; experiences: number[] }>({
+    projects: [],
+    experiences: [],
+  });
   const [enableManualSelection, setEnableManualSelection] = useState(false);
 
   async function selectRelevant() {
     setError(null);
-    const res = await fetch('/api/generate/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobDescription }) });
-    if (!res.ok) { setError('Failed to select relevant items'); return; }
+    const res = await fetch("/api/generate/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobDescription }),
+    });
+    if (!res.ok) {
+      setError("Failed to select relevant items");
+      return;
+    }
     const data = await res.json();
     setIndices(data.indices);
-    setItems(data.items);
+    setRankings(Array.isArray(data.rankings) ? data.rankings : []);
   }
 
   async function generate() {
     setLoading(true);
-    setResult('');
+    setResult("");
     setError(null);
-    
-    // Determine which indices to use: use manual selection if enabled, otherwise AI selection
+
     let finalIndices: number[] | null = null;
-    
+
     if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
-      // Use manual selections
       const projectCount = profile?.projects?.length || 0;
-      const manualIndices: number[] = [
-        ...manualSelection.projects.map((idx: number) => idx),
-        ...manualSelection.experiences.map((idx: number) => idx + projectCount)
+      finalIndices = [
+        ...manualSelection.projects.map((idx) => idx),
+        ...manualSelection.experiences.map((idx) => idx + projectCount),
       ];
-      finalIndices = manualIndices;
     } else if (shouldSelect && indices && indices.length > 0) {
-      // Use AI selections
       finalIndices = indices;
     }
-    
-    const res = await fetch('/api/generate/cover-letter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company, jobDescription, indices: finalIndices }) });
-    if (!res.ok) { setError('Failed to generate'); setLoading(false); return; }
+
+    const res = await fetch("/api/generate/cover-letter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company, jobDescription, indices: finalIndices }),
+    });
+
+    if (!res.ok) {
+      setError("Failed to generate");
+      setLoading(false);
+      return;
+    }
+
     const data = await res.json();
     setResult(data.coverLetter);
     setLoading(false);
   }
 
+  async function exportPdf() {
+    if (!result.trim()) return;
+
+    setExportingPdf(true);
+    setError(null);
+
+    try {
+      // Motivation vs Logic:
+      // Motivation: The cover-letter page needs a formal business-letter PDF without duplicating layout
+      // rules in the browser or asking the user to reformat the generated text manually.
+      // Logic: Keep the client focused on orchestration, then send the generated letter to the export route
+      // that owns the "Modern Executive" template and returns a ready-to-download PDF blob.
+      const res = await fetch("/api/generate/cover-letter/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company, coverLetter: result }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to export PDF");
+      }
+
+      const blob = await res.blob();
+      if (!blob.size) {
+        throw new Error("Exported PDF is empty");
+      }
+
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${(company || "cover-letter").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cover-letter"}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Failed to export PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   function toggleProject(index: number) {
-    setManualSelection((prev: { projects: number[]; experiences: number[] }) => ({
-      ...prev,
-      projects: prev.projects.includes(index) 
-        ? prev.projects.filter((i: number) => i !== index)
-        : [...prev.projects, index]
+    setManualSelection((current) => ({
+      ...current,
+      projects: current.projects.includes(index)
+        ? current.projects.filter((item) => item !== index)
+        : [...current.projects, index],
     }));
   }
 
   function toggleExperience(index: number) {
-    setManualSelection((prev: { projects: number[]; experiences: number[] }) => ({
-      ...prev,
-      experiences: prev.experiences.includes(index)
-        ? prev.experiences.filter((i: number) => i !== index)
-        : [...prev.experiences, index]
+    setManualSelection((current) => ({
+      ...current,
+      experiences: current.experiences.includes(index)
+        ? current.experiences.filter((item) => item !== index)
+        : [...current.experiences, index],
     }));
   }
 
   useEffect(() => {
     (async () => {
-      const res = await fetch('/api/profile');
+      const res = await fetch("/api/profile");
       if (res.ok) {
         const data = await res.json();
         setProfile(data.profile || null);
@@ -83,302 +153,336 @@ export default function GeneratePage() {
     })();
   }, []);
 
-  useEffect(() => { if (shouldSelect && jobDescription.trim()) { setIndices(null); } }, [jobDescription, shouldSelect]);
+  useEffect(() => {
+    if (shouldSelect && jobDescription.trim()) {
+      setIndices(null);
+      setRankings([]);
+    }
+  }, [jobDescription, shouldSelect]);
+
+  const evidenceCount = useMemo(() => {
+    if (enableManualSelection) {
+      return manualSelection.projects.length + manualSelection.experiences.length;
+    }
+    return indices?.length || 0;
+  }, [enableManualSelection, indices, manualSelection.experiences.length, manualSelection.projects.length]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-6xl mx-auto p-6 space-y-8">
-        {/* Header Section */}
-        <div className="text-center space-y-4 animate-fade-in">
-          <div className="inline-flex items-center space-x-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-medium">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span>AI-Powered Cover Letter Generator</span>
+    <ModuleShell
+      eyebrow="Cover Letter Module"
+      title="Build a cover letter around evidence, not generic claims."
+      description="Use job context, AI selection, and manual curation together so your final letter sounds tailored and confident."
+      stats={[
+        { label: "Selection mode", value: enableManualSelection ? "Manual" : shouldSelect ? "AI Coaching" : "Open" },
+        { label: "Evidence chosen", value: `${evidenceCount}` },
+        { label: "Output mode", value: result ? "Ready" : "Drafting" },
+      ]}
+      aside={
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <p className="section-kicker">Letter Strategy</p>
+            <h2 className="font-display text-3xl text-white">Narrative with proof</h2>
+            <p className="text-sm leading-7 text-slate-300">
+              The highest-conversion letters connect company needs to a handful of relevant
+              experiences instead of repeating the resume.
+            </p>
           </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Create Your Perfect Cover Letter
-          </h1>
-          <p className="text-lg text-muted-foreground dark:text-gray-400 max-w-2xl mx-auto">
-            Transform your experience into compelling cover letters that stand out to employers
-          </p>
+
+          <div className="space-y-3">
+            {[
+              "Frame why this company matters to you",
+              "Select evidence that maps to role requirements",
+              "End with confidence and momentum",
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <span className="status-dot" />
+                <span className="text-sm text-slate-200">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      }
+    >
+      {error ? (
+        <Reveal>
+          <GlassPanel className="border-destructive/40 p-4">
+            <p className="text-sm text-rose-200">{error}</p>
+          </GlassPanel>
+        </Reveal>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="space-y-6">
+          <Reveal>
+            <GlassPanel className="p-6 sm:p-8">
+              <SectionHeading
+                eyebrow="Job Brief"
+                title="Give the model a stronger read on the opportunity"
+                description="The more specific the company and role context, the easier it is to produce a letter that feels intentional."
+              />
+
+              <div className="mt-8 space-y-4">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-200">Company name</span>
+                  <input
+                    className="input-premium"
+                    placeholder="Google, Canva, Atlassian..."
+                    value={company}
+                    onChange={(event) => setCompany(event.target.value)}
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-200">Job description</span>
+                  <textarea
+                    className="input-premium min-h-64 resize-y"
+                    placeholder="Paste the description here so the system can match requirements, responsibilities, and tone."
+                    value={jobDescription}
+                    onChange={(event) => setJobDescription(event.target.value)}
+                  />
+                </label>
+              </div>
+            </GlassPanel>
+          </Reveal>
+
+          <Reveal delay={0.06}>
+            <GlassPanel className="p-6 sm:p-8">
+              <SectionHeading
+                eyebrow="Evidence Selection"
+                title="Control what the letter can reference"
+                description="Use AI Coaching for speed, or hand-pick the evidence you want included."
+                action={
+                  shouldSelect ? (
+                    <button onClick={selectRelevant} className="button-secondary">
+                      Run AI Coaching
+                    </button>
+                  ) : null
+                }
+              />
+
+              {/* Motivation: evidence selection used to feel like separate utility toggles with weak narrative context.
+                  Logic: treat selection as a guided strategy step so the user understands how proof flows into the final letter. */}
+              <div className="mt-8 grid gap-4 lg:grid-cols-2">
+                <label className="interactive-card flex cursor-pointer gap-3">
+                  <input
+                    type="checkbox"
+                    checked={shouldSelect}
+                    onChange={(event) => setShouldSelect(event.target.checked)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">AI Coaching</p>
+                    <p className="text-xs leading-6 text-slate-400">
+                      Rank the strongest projects and experiences against the job brief, with concise relevance rationale.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="interactive-card flex cursor-pointer gap-3">
+                  <input
+                    type="checkbox"
+                    checked={enableManualSelection}
+                    onChange={(event) => {
+                      setEnableManualSelection(event.target.checked);
+                      if (!event.target.checked) {
+                        setManualSelection({ projects: [], experiences: [] });
+                      }
+                    }}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">Curate manually</p>
+                    <p className="text-xs leading-6 text-slate-400">
+                      Pick the exact projects and experiences that should be woven into the letter.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {enableManualSelection && profile ? (
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <div className="interactive-card space-y-3">
+                    <p className="text-sm font-semibold text-white">Projects</p>
+                    <div className="space-y-2">
+                      {profile.projects?.length ? (
+                        profile.projects.map((project, idx) => (
+                          <label key={`${project.name}-${idx}`} className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3">
+                            <input
+                              type="checkbox"
+                              checked={manualSelection.projects.includes(idx)}
+                              onChange={() => toggleProject(idx)}
+                              className="mt-1 h-4 w-4"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-slate-100">
+                                {project.name || "Untitled Project"}
+                              </div>
+                              {project.summary ? (
+                                <div className="mt-1 text-xs leading-6 text-slate-400">{project.summary}</div>
+                              ) : null}
+                            </div>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-400">No projects added yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="interactive-card space-y-3">
+                    <p className="text-sm font-semibold text-white">Experiences</p>
+                    <div className="space-y-2">
+                      {profile.experiences?.length ? (
+                        profile.experiences.map((experience, idx) => (
+                          <label
+                            key={`${experience.companyName}-${experience.role}-${idx}`}
+                            className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={manualSelection.experiences.includes(idx)}
+                              onChange={() => toggleExperience(idx)}
+                              className="mt-1 h-4 w-4"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-slate-100">
+                                {experience.companyName} · {experience.role}
+                              </div>
+                              {experience.summary ? (
+                                <div className="mt-1 text-xs leading-6 text-slate-400">{experience.summary}</div>
+                              ) : null}
+                            </div>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-400">No experiences added yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {shouldSelect && rankings.length > 0 ? (
+                <div className="mt-6 interactive-card space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">AI Coaching results</p>
+                    <span className="metric-chip">{rankings.length} items</span>
+                  </div>
+                  <StaggerGroup className="space-y-2">
+                    {rankings.map((item, index) => {
+                      return (
+                        <StaggerItem key={`${item.type}-${item.index}`}>
+                          <div className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3">
+                            <span className="status-dot mt-2" />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm font-medium text-slate-100">{item.title}</div>
+                                <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                                  {index + 1}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                                {item.type}
+                              </div>
+                              <div className="mt-2 text-xs leading-6 text-slate-400">{item.justification}</div>
+                            </div>
+                          </div>
+                        </StaggerItem>
+                      );
+                    })}
+                  </StaggerGroup>
+                </div>
+              ) : null}
+            </GlassPanel>
+          </Reveal>
         </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-destructive animate-bounce-in">
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium">{error}</span>
-            </div>
-          </div>
-        )}
+        <div className="space-y-6 xl:sticky xl:top-28 xl:self-start">
+          <Reveal delay={0.08}>
+            <GlassPanel className="p-6">
+              <SectionHeading
+                eyebrow="Output"
+                title="Generated letter"
+                description="The final letter appears here with quick actions for refinement."
+              />
 
-        {/* Main Form */}
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Form Section */}
-          <div className="space-y-6 animate-slide-up">
-            <div className="bg-card border rounded-xl p-6 shadow-lg backdrop-blur-sm">
-              <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
-                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>Job Details</span>
-              </h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-foreground">
-                    Company Name *
-                  </label>
-                  <div className="relative">
-                    <input 
-                      className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200"
-                      placeholder="e.g., Google, Microsoft, Apple"
-                      value={company} 
-                      onChange={e => setCompany(e.target.value)}
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                      <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
+              <div className="mt-6 space-y-4">
+                <button
+                  onClick={generate}
+                  disabled={loading || !company.trim() || !jobDescription.trim()}
+                  className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Generating cover letter..." : "Generate Cover Letter"}
+                </button>
+
+                <div className="rounded-[1.4rem] border border-white/10 bg-slate-950/55 p-4">
+                  {result ? (
+                    <div className="space-y-4">
+                      <div className="max-h-[34rem] overflow-auto whitespace-pre-wrap text-sm leading-8 text-slate-200">
+                        {result}
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(result)}
+                          className="button-secondary flex-1"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          onClick={exportPdf}
+                          disabled={exportingPdf}
+                          className="button-secondary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {exportingPdf ? "Exporting PDF..." : "Export PDF"}
+                        </button>
+                        <button onClick={() => setResult("")} className="button-secondary flex-1">
+                          Clear
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-foreground">
-                    Job Description *
-                  </label>
-                  <textarea 
-                    className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-40 resize-none"
-                    placeholder="Paste the job description here to help AI understand the role requirements..."
-                    value={jobDescription} 
-                    onChange={e => setJobDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3 p-4 bg-gradient-to-r from-accent/50 to-accent/30 rounded-lg border border-accent shadow-sm">
-                    <input 
-                      type="checkbox" 
-                      id="shouldSelect"
-                      checked={shouldSelect} 
-                      onChange={e => setShouldSelect(e.target.checked)}
-                      className="w-5 h-5 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <label htmlFor="shouldSelect" className="text-sm font-semibold text-foreground cursor-pointer block">
-                        Use AI to prioritize best-matching skills and experiences
-                      </label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Let AI automatically select the most relevant projects and experiences based on the job description
+                  ) : (
+                    <div className="space-y-2 py-10 text-center">
+                      <p className="font-medium text-white">Your cover letter draft will appear here.</p>
+                      <p className="text-sm leading-7 text-slate-400">
+                        Add the role context, pick evidence, and generate when ready.
                       </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-x-3 p-4 bg-gradient-to-r from-purple-50 to-purple-30 dark:from-purple-950/20 dark:to-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 shadow-sm">
-                    <input 
-                      type="checkbox" 
-                      id="enableManualSelection"
-                      checked={enableManualSelection} 
-                      onChange={e => {
-                        setEnableManualSelection(e.target.checked);
-                        if (!e.target.checked) {
-                          setManualSelection({ projects: [], experiences: [] });
-                        }
-                      }}
-                      className="w-5 h-5 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <label htmlFor="enableManualSelection" className="text-sm font-semibold text-foreground cursor-pointer block">
-                        Manually select specific items
-                      </label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Choose specific projects and experiences to include in your cover letter
-                      </p>
-                    </div>
-                  </div>
-
-                  {enableManualSelection && profile && (
-                    <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-input">
-                      {profile.projects && profile.projects.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold text-foreground mb-2">Projects</h4>
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {profile.projects.map((project: Project, idx: number) => (
-                              <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
-                                <input
-                                  type="checkbox"
-                                  checked={manualSelection.projects.includes(idx)}
-                                  onChange={() => toggleProject(idx)}
-                                  className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-foreground">{project.name || 'Untitled Project'}</div>
-                                  {project.summary && (
-                                    <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{project.summary}</div>
-                                  )}
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {profile.experiences && profile.experiences.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-semibold text-foreground mb-2">Experiences</h4>
-                          <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {profile.experiences.map((exp: Experience, idx: number) => (
-                              <label key={idx} className="flex items-start space-x-2 p-2 hover:bg-accent/50 rounded cursor-pointer transition-colors">
-                                <input
-                                  type="checkbox"
-                                  checked={manualSelection.experiences.includes(idx)}
-                                  onChange={() => toggleExperience(idx)}
-                                  className="w-4 h-4 mt-0.5 text-primary border-input rounded focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-foreground">
-                                    {exp.companyName} - {exp.role}
-                                  </div>
-                                  {exp.summary && (
-                                    <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{exp.summary}</div>
-                                  )}
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {(!profile.projects || profile.projects.length === 0) && (!profile.experiences || profile.experiences.length === 0) && (
-                        <div className="text-sm text-muted-foreground text-center py-4">
-                          No projects or experiences available. Please add them in your profile first.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
-
-                {shouldSelect && (
-                  <div className="space-y-3">
-                    <button 
-                      onClick={selectRelevant} 
-                      className="inline-flex items-center space-x-2 px-4 py-2 text-sm font-medium text-primary hover:text-primary/80 hover:bg-primary/10 rounded-lg transition-all duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      <span>Identify Relevant Items</span>
-                    </button>
-                    
-                    {indices && items.length > 0 && (
-                      <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg space-y-3">
-                        <div className="flex items-center space-x-2 text-green-700 dark:text-green-300 text-sm font-medium">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span>Selected {indices.length} relevant items</span>
-                        </div>
-                        <div className="space-y-2">
-                          {indices.map((idx) => {
-                            const item = items[idx];
-                            if (!item) return null;
-                            return (
-                              <div key={idx} className="flex items-start space-x-2 text-sm text-foreground bg-white dark:bg-gray-800/50 p-2 rounded border border-green-100 dark:border-green-900/50">
-                                <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-1.5 ${
-                                  item.type === 'project' ? 'bg-blue-500' : 'bg-purple-500'
-                                }`} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-foreground">{item.name}</div>
-                                  <div className="text-xs text-muted-foreground capitalize">{item.type}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            </div>
+            </GlassPanel>
+          </Reveal>
 
-            {/* Generate Button */}
-            <button 
-              onClick={generate} 
-              disabled={loading || !company.trim() || !jobDescription.trim()}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Generating Your Cover Letter...</span>
+          <Reveal delay={0.12}>
+            <GlassPanel className="p-6">
+              <SectionHeading
+                eyebrow="Evidence Rail"
+                title="What supports the story"
+                description="A quick visual summary of the material currently available to the letter generator."
+              />
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <span className="text-sm text-slate-300">Mode</span>
+                  <span className="text-sm font-medium text-white">
+                    {enableManualSelection ? "Manual curation" : shouldSelect ? "AI Coaching" : "Open generation"}
+                  </span>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center space-x-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span>Generate Cover Letter</span>
+                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <span className="text-sm text-slate-300">Evidence count</span>
+                  <span className="text-sm font-medium text-white">{evidenceCount}</span>
                 </div>
-              )}
-            </button>
-          </div>
-
-          {/* Result Section */}
-          <div className="space-y-6 animate-slide-up">
-            <div className="bg-card border rounded-xl p-6 shadow-lg backdrop-blur-sm min-h-[400px]">
-              <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
-                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>Generated Cover Letter</span>
-              </h2>
-              
-              {result ? (
-                <div className="space-y-4">
-                  <div className="bg-muted/30 rounded-lg p-4 whitespace-pre-wrap text-foreground font-medium leading-relaxed">
-                    {result}
-                  </div>
-                  <div className="flex space-x-3">
-                    <button 
-                      onClick={() => navigator.clipboard.writeText(result)}
-                      className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      <span>Copy to Clipboard</span>
-                    </button>
-                    <button 
-                      onClick={() => setResult('')}
-                      className="px-4 py-2 border border-input rounded-lg hover:bg-accent transition-colors duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
-                  </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Recommendation</p>
+                  <p className="mt-2 text-sm leading-7 text-slate-300">
+                    Keep the letter anchored to two or three strong proof points. Specificity reads
+                    as confidence; breadth often reads as filler.
+                  </p>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground">
-                  <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-lg font-medium">Your cover letter will appear here</p>
-                  <p className="text-sm">Fill in the job details and click generate to get started</p>
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </GlassPanel>
+          </Reveal>
         </div>
       </div>
-    </div>
+    </ModuleShell>
   );
 }
-
-

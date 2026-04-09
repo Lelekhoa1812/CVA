@@ -1,12 +1,122 @@
 "use client";
-import { useEffect, useState } from 'react';
 
-type Project = { name: string; description: string; summary?: string; _needsSummary?: boolean };
-type Experience = { companyName: string; role: string; timeFrom: string; timeTo: string; description: string; summary?: string; _needsSummary?: boolean };
-type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
+import { useEffect, useMemo, useState } from "react";
+import ModuleShell from "@/components/ui/ModuleShell";
+import GlassPanel from "@/components/ui/GlassPanel";
+import SectionHeading from "@/components/ui/SectionHeading";
+import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+
+type Project = {
+  name: string;
+  description: string;
+  summary?: string;
+  _needsSummary?: boolean;
+};
+
+type Experience = {
+  companyName: string;
+  role: string;
+  timeFrom: string;
+  timeTo: string;
+  description: string;
+  summary?: string;
+  _needsSummary?: boolean;
+};
+
+type Profile = {
+  name: string;
+  major: string;
+  school: string;
+  studyPeriod?: string;
+  email: string;
+  workEmail?: string;
+  phone: string;
+  website?: string;
+  linkedin?: string;
+  projects: Project[];
+  experiences: Experience[];
+  languages?: string;
+};
+
+const emptyProfile: Profile = {
+  name: "",
+  major: "",
+  school: "",
+  studyPeriod: "",
+  email: "",
+  workEmail: "",
+  phone: "",
+  website: "",
+  linkedin: "",
+  projects: [],
+  experiences: [],
+  languages: "",
+};
+
+type FieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  hint?: string;
+  type?: string;
+};
+
+function TextField({ label, value, onChange, placeholder, hint, type = "text" }: FieldProps) {
+  const id = label.toLowerCase().replace(/\s+/g, "-");
+
+  return (
+    <label htmlFor={id} className="space-y-2">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm font-medium text-slate-200">{label}</span>
+        {hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+      </div>
+      <input
+        id={id}
+        type={type}
+        className="input-premium"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+type TextareaFieldProps = FieldProps & {
+  rows?: number;
+};
+
+function TextareaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  rows = 5,
+}: TextareaFieldProps) {
+  const id = label.toLowerCase().replace(/\s+/g, "-");
+
+  return (
+    <label htmlFor={id} className="space-y-2">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm font-medium text-slate-200">{label}</span>
+        {hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+      </div>
+      <textarea
+        id={id}
+        rows={rows}
+        className="input-premium min-h-32 resize-y"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Profile>({ name: '', major: '', school: '', studyPeriod: '', email: '', workEmail: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
+  const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -16,65 +126,89 @@ export default function ProfilePage() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch('/api/profile');
+      const res = await fetch("/api/profile");
       if (res.ok) {
         const data = await res.json();
-        setProfile(data.profile || { name: '', major: '', school: '', studyPeriod: '', email: '', workEmail: '', phone: '', website: '', linkedin: '', projects: [], experiences: [], languages: '' });
+        setProfile(data.profile || emptyProfile);
       }
       setLoading(false);
     })();
   }, []);
 
   function up<K extends keyof Profile>(key: K, value: Profile[K]) {
-    setProfile(p => ({ ...p, [key]: value }));
+    setProfile((current) => ({ ...current, [key]: value }));
   }
 
   function addProject() {
-    setProfile(p => ({ ...p, projects: [...p.projects, { name: '', description: '', _needsSummary: true }] }));
+    setProfile((current) => ({
+      ...current,
+      projects: [...current.projects, { name: "", description: "", _needsSummary: true }],
+    }));
   }
+
   function addExperience() {
-    setProfile(p => ({ ...p, experiences: [...p.experiences, { companyName: '', role: '', timeFrom: '', timeTo: '', description: '', _needsSummary: true }] }));
+    setProfile((current) => ({
+      ...current,
+      experiences: [
+        ...current.experiences,
+        {
+          companyName: "",
+          role: "",
+          timeFrom: "",
+          timeTo: "",
+          description: "",
+          _needsSummary: true,
+        },
+      ],
+    }));
   }
 
   function deleteProject(index: number) {
-    setProfile(p => ({ ...p, projects: p.projects.filter((_, i) => i !== index) }));
+    setProfile((current) => ({
+      ...current,
+      projects: current.projects.filter((_, itemIndex) => itemIndex !== index),
+    }));
   }
 
   function deleteExperience(index: number) {
-    setProfile(p => ({ ...p, experiences: p.experiences.filter((_, i) => i !== index) }));
+    setProfile((current) => ({
+      ...current,
+      experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index),
+    }));
   }
 
   async function enhanceProject(index: number) {
     const project = profile.projects[index];
     if (!project.description.trim()) {
-      setError('Please add a description before enhancing');
+      setError("Please add a description before enhancing");
       return;
     }
 
     setEnhancingProject(index);
     setError(null);
+
     try {
-      const res = await fetch('/api/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'project',
+          type: "project",
           name: project.name,
-          description: project.description
-        })
+          description: project.description,
+        }),
       });
 
       if (!res.ok) {
-        setError('Failed to enhance project description');
+        setError("Failed to enhance project description");
         return;
       }
 
       const data = await res.json();
-      const newProjects = [...profile.projects];
-      newProjects[index].description = data.enhancedDescription;
-      setProfile(p => ({ ...p, projects: newProjects }));
+      const nextProjects = [...profile.projects];
+      nextProjects[index].description = data.enhancedDescription;
+      setProfile((current) => ({ ...current, projects: nextProjects }));
     } catch {
-      setError('Failed to enhance project description');
+      setError("Failed to enhance project description");
     } finally {
       setEnhancingProject(null);
     }
@@ -83,34 +217,35 @@ export default function ProfilePage() {
   async function enhanceExperience(index: number) {
     const experience = profile.experiences[index];
     if (!experience.description.trim()) {
-      setError('Please add a description before enhancing');
+      setError("Please add a description before enhancing");
       return;
     }
 
     setEnhancingExperience(index);
     setError(null);
+
     try {
-      const res = await fetch('/api/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'experience',
+          type: "experience",
           name: `${experience.companyName} - ${experience.role}`,
-          description: experience.description
-        })
+          description: experience.description,
+        }),
       });
 
       if (!res.ok) {
-        setError('Failed to enhance experience description');
+        setError("Failed to enhance experience description");
         return;
       }
 
       const data = await res.json();
-      const newExperiences = [...profile.experiences];
-      newExperiences[index].description = data.enhancedDescription;
-      setProfile(p => ({ ...p, experiences: newExperiences }));
+      const nextExperiences = [...profile.experiences];
+      nextExperiences[index].description = data.enhancedDescription;
+      setProfile((current) => ({ ...current, experiences: nextExperiences }));
     } catch {
-      setError('Failed to enhance experience description');
+      setError("Failed to enhance experience description");
     } finally {
       setEnhancingExperience(null);
     }
@@ -119,352 +254,437 @@ export default function ProfilePage() {
   async function save() {
     setSaving(true);
     setError(null);
-    const res = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile) });
+
+    const res = await fetch("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    });
+
     if (!res.ok) {
-      const data = await res.json().catch(()=>({}));
-      setError(data.error || 'Failed to save');
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "Failed to save");
     } else {
       const data = await res.json();
       setProfile(data.profile);
     }
+
     setSaving(false);
   }
 
-  async function uploadResume(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function uploadResume(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
-    
+
     setOcrLoading(true);
     setError(null);
-    
+
     const form = new FormData();
-    form.append('file', file);
-    
+    form.append("file", file);
+
     try {
-    const res = await fetch('/api/ocr', { method: 'POST', body: form });
-    if (!res.ok) {
-      setError('Failed to parse resume');
-      return;
-    }
-      
-    const data: { data?: { projects?: Array<{ name?: string; description?: string }>; experiences?: Array<{ companyName?: string; role?: string; timeFrom?: string; timeTo?: string; description?: string }> } } = await res.json();
-    const o = data.data || {};
-      
-    setProfile(p => ({
-      ...p,
-      projects: [...(p.projects||[]), ...((o.projects||[]).map((x)=>({ name: x.name||'', description: x.description||'', _needsSummary: true })))],
-      experiences: [...(p.experiences||[]), ...((o.experiences||[]).map((x)=>({ companyName: x.companyName||'', role: x.role||'', timeFrom: x.timeFrom||'', timeTo: x.timeTo||'', description: x.description||'', _needsSummary: true })))],
-    }));
+      const res = await fetch("/api/ocr", { method: "POST", body: form });
+      if (!res.ok) {
+        setError("Failed to parse resume");
+        return;
+      }
+
+      const data: {
+        data?: {
+          projects?: Array<{ name?: string; description?: string }>;
+          experiences?: Array<{
+            companyName?: string;
+            role?: string;
+            timeFrom?: string;
+            timeTo?: string;
+            description?: string;
+          }>;
+        };
+      } = await res.json();
+
+      const parsed = data.data || {};
+      setProfile((current) => ({
+        ...current,
+        projects: [
+          ...(current.projects || []),
+          ...((parsed.projects || []).map((item) => ({
+            name: item.name || "",
+            description: item.description || "",
+            _needsSummary: true,
+          })) as Project[]),
+        ],
+        experiences: [
+          ...(current.experiences || []),
+          ...((parsed.experiences || []).map((item) => ({
+            companyName: item.companyName || "",
+            role: item.role || "",
+            timeFrom: item.timeFrom || "",
+            timeTo: item.timeTo || "",
+            description: item.description || "",
+            _needsSummary: true,
+          })) as Experience[]),
+        ],
+      }));
     } catch {
-      setError('Failed to parse resume. Please try again.');
+      setError("Failed to parse resume. Please try again.");
     } finally {
       setOcrLoading(false);
     }
   }
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
-          <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-r-primary/50 rounded-full animate-[spin_1.2s_linear_infinite_reverse]"></div>
-        </div>
-        <div className="text-sm text-foreground dark:text-gray-100 animate-pulse">Loading your profile...</div>
+  const completeness = useMemo(() => {
+    const keyValues = [
+      profile.name,
+      profile.major,
+      profile.school,
+      profile.email,
+      profile.phone,
+      profile.website,
+      profile.linkedin,
+      profile.languages,
+    ];
+    const filled = keyValues.filter((value) => value && value.trim()).length;
+    return Math.round((filled / keyValues.length) * 100);
+  }, [profile]);
+
+  if (loading) {
+    return (
+      <div className="page-shell flex min-h-[70vh] items-center justify-center">
+        <GlassPanel className="flex items-center gap-4 px-6 py-5">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-sky-300/20 border-t-sky-300" />
+          <div>
+            <p className="text-sm font-medium text-white">Loading profile workspace</p>
+            <p className="text-xs text-slate-400">Preparing your identity and evidence canvas.</p>
+          </div>
+        </GlassPanel>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-    <div className="max-w-5xl mx-auto p-6 space-y-8">
-      <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold dark:text-white text-foreground">Profile</h1>
-          <button onClick={save} className="bg-primary text-primary-foreground rounded px-4 py-2 hover:bg-primary/90 transition-colors duration-200" disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
-      </div>
-        {error && <p className="text-destructive text-sm">{error}</p>}
-
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Name</label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.name} onChange={e=>up('name', e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Major</label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.major} onChange={e=>up('major', e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">School</label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.school} onChange={e=>up('school', e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Study Period <span className="text-muted-foreground dark:text-white text-xs">(start year - end year)</span></label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" placeholder="2019 - 2023" value={profile.studyPeriod || ''} onChange={e=>up('studyPeriod', e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Email</label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.email} onChange={e=>up('email', e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Work Email <span className="text-muted-foreground dark:text-white text-xs">(optional, preferred)</span></label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" placeholder="you@company.com" value={profile.workEmail || ''} onChange={e=>up('workEmail', e.target.value)} />
-        </div>
-        <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Website URL <span className="text-muted-foreground dark:text-white text-xs">(optional)</span></label>
-            <input 
-              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
-              placeholder="https://yourwebsite.com"
-              value={profile.website || ''} 
-              onChange={e=>up('website', e.target.value)} 
-            />
-        </div>
-        <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">LinkedIn URL <span className="text-muted-foreground dark:text-white text-xs">(optional)</span></label>
-            <input 
-              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
-              placeholder="https://linkedin.com/in/yourprofile"
-              value={profile.linkedin || ''} 
-              onChange={e=>up('linkedin', e.target.value)} 
-            />
-        </div>
-        <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Phone Number</label>
-            <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={profile.phone} onChange={e=>up('phone', e.target.value)} />
-        </div>
-        <div>
-            <label className="block text-sm dark:text-white mb-1 text-foreground">Languages <span className="text-muted-foreground dark:text-white text-xs">(optional, separate by commas)</span></label>
-            <input 
-              className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" 
-              placeholder="English, Spanish, French"
-              value={profile.languages || ''} 
-              onChange={e=>up('languages', e.target.value)} 
-            />
-        </div>
-      </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl dark:text-white font-semibold text-foreground">Projects</h2>
-            <button onClick={addProject} className="bg-secondary text-secondary-foreground px-3 py-1 rounded text-sm hover:bg-secondary/80 transition-colors duration-200">Add Project</button>
-          </div>
-      <div className="space-y-4">
-            {profile.projects.map((project, index) => (
-              <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm mb-1 text-foreground">Project Name</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={project.name} onChange={e => {
-                      const newProjects = [...profile.projects];
-                      newProjects[index].name = e.target.value;
-                      newProjects[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, projects: newProjects }));
-                    }} />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1 text-foreground">Description</label>
-                    <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={project.description} onChange={e => {
-                      const newProjects = [...profile.projects];
-                      newProjects[index].description = e.target.value;
-                      newProjects[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, projects: newProjects }));
-                    }} />
-                  </div>
-                </div>
-                <button 
-                  onClick={() => {
-                    if (confirm('Are you sure you want to delete this project?')) {
-                      deleteProject(index);
-                    }
-                  }} 
-                  className="absolute top-2 right-2 p-2 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full transition-all duration-200"
-                  title="Delete Project"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-                <div className="absolute bottom-2 right-2 group">
-                  <button 
-                    onClick={() => enhanceProject(index)} 
-                    disabled={enhancingProject === index}
-                    className={`relative p-2 rounded-full transition-all duration-300 transform group-hover:scale-110 group-hover:shadow-lg ${
-                      enhancingProject === index 
-                        ? 'text-muted-foreground cursor-not-allowed' 
-                        : 'text-primary hover:text-primary/80 hover:bg-primary/10'
-                    }`}
-                  >
-                    {enhancingProject === index ? (
-                      <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-6 h-6" fill="currentColor" stroke="none" viewBox="0 0 24 24">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    )}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                    Enhance your description
-                    <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
-                  </div>
-        </div>
-            </div>
-          ))}
-        </div>
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl dark:text-white font-semibold text-foreground">Experience</h2>
-            <button onClick={addExperience} className="bg-secondary text-secondary-foreground px-3 py-1 rounded text-sm hover:bg-secondary/80 transition-colors duration-200">Add Experience</button>
-      </div>
-      <div className="space-y-4">
-            {profile.experiences.map((experience, index) => (
-              <div key={index} className="border border-border rounded-lg p-4 bg-card relative">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm mb-1 text-foreground">Company Name</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.companyName} onChange={e => {
-                      const newExperiences = [...profile.experiences];
-                      newExperiences[index].companyName = e.target.value;
-                      newExperiences[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, experiences: newExperiences }));
-                    }} />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-2 text-foreground">Role</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.role} onChange={e => {
-                      const newExperiences = [...profile.experiences];
-                      newExperiences[index].role = e.target.value;
-                      newExperiences[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, experiences: newExperiences }));
-                    }} />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1 text-foreground">Time From</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeFrom} onChange={e => {
-                      const newExperiences = [...profile.experiences];
-                      newExperiences[index].timeFrom = e.target.value;
-                      newExperiences[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, experiences: newExperiences }));
-                    }} />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1 text-foreground">Time To</label>
-                    <input className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder-text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" value={experience.timeTo} onChange={e => {
-                      const newExperiences = [...profile.experiences];
-                      newExperiences[index].timeTo = e.target.value;
-                      newExperiences[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, experiences: newExperiences }));
-                    }} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm mb-1 text-foreground">Description</label>
-                    <textarea className="w-full border border-input rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 min-h-20" value={experience.description} onChange={e => {
-                      const newExperiences = [...profile.experiences];
-                      newExperiences[index].description = e.target.value;
-                      newExperiences[index]._needsSummary = true;
-                      setProfile(p => ({ ...p, experiences: newExperiences }));
-                    }} />
-                  </div>
-                </div>
-                <button 
-                  onClick={() => {
-                    if (confirm('Are you sure you want to delete this experience?')) {
-                      deleteExperience(index);
-                    }
-                  }} 
-                  className="absolute top-2 right-2 p-2 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full transition-all duration-200"
-                  title="Delete Experience"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-                <div className="absolute bottom-2 right-2 group">
-                  <button 
-                    onClick={() => enhanceExperience(index)} 
-                    disabled={enhancingExperience === index}
-                    className={`relative p-2 rounded-full transition-all duration-300 transform group-hover:scale-110 group-hover:shadow-lg ${
-                      enhancingExperience === index 
-                        ? 'text-muted-foreground cursor-not-allowed' 
-                        : 'text-primary hover:text-primary/80 hover:bg-primary/10'
-                    }`}
-                  >
-                    {enhancingExperience === index ? (
-                      <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-6 h-6" fill="currentColor" stroke="none" viewBox="0 0 24 24">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    )}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                    Enhance your description
-                    <div className="absolute top-full right-3 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-gray-900"></div>
-                  </div>
-        </div>
-            </div>
-          ))}
-        </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl dark:text-white font-semibold text-foreground mb-4">Upload Resume</h2>
-          
-          {/* OCR Loading State */}
-          {ocrLoading && (
-            <div className="mb-4 p-4 bg-primary/10 border border-primary/20 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="relative">
-                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
-                  <div className="absolute inset-0 w-6 h-6 border-2 border-transparent border-r-primary/60 rounded-full animate-ping"></div>
-                </div>
-                <div className="flex-1">
-                  <p className="text-primary font-medium">Processing Resume...</p>
-                  <p className="text-sm text-muted-foreground">Please wait while we extract information from your document</p>
-                </div>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="mt-3 w-full bg-primary/20 rounded-full h-2 overflow-hidden">
-                <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }}></div>
-      </div>
-
-              {/* Processing Steps */}
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                  <span>Extracting text from document...</span>
-                </div>
-                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '1.5s' }}></div>
-                  <span>Identifying projects and experiences...</span>
-                </div>
-                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <div className="w-2 h-2 bg-primary/40 rounded-full animate-pulse" style={{ animationDelay: '1s' }}></div>
-                  <span>Preparing data for your profile...</span>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <input 
-            type="file" 
-            accept=".pdf,.png,.jpg,.jpeg,.docx,.doc" 
-            onChange={uploadResume} 
-            disabled={ocrLoading}
-            className={`block w-full text-sm text-black dark:text-gray-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 transition-colors duration-200 ${ocrLoading ? 'opacity-50 cursor-not-allowed' : ''}`} 
-          />
-          
-          {ocrLoading && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              ⚠️ Please don&apos;t close this page or navigate away while processing your resume
+    <ModuleShell
+      eyebrow="Profile Module"
+      title="Turn raw details into a sharper professional signal."
+      description="Organize the core information that powers both your resume and your cover letter. Think of this as the source of truth for every proof point you want the system to articulate well."
+      stats={[
+        { label: "Profile completeness", value: `${completeness}%` },
+        { label: "Projects captured", value: `${profile.projects.length}` },
+        { label: "Experience entries", value: `${profile.experiences.length}` },
+      ]}
+      aside={
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <p className="section-kicker">Signal Strength</p>
+            <h2 className="font-display text-3xl text-white">Your application foundation</h2>
+            <p className="text-sm leading-7 text-slate-300">
+              A stronger profile gives the resume selector and cover letter generator more
+              specific proof to work with.
             </p>
-          )}
-        </section>
-      </div>
-    </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+              <span className="text-sm text-slate-300">Completeness</span>
+              <span className="text-lg font-semibold text-white">{completeness}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/8">
+              <div
+                className="h-2 rounded-full bg-gradient-to-r from-sky-300 to-violet-300"
+                style={{ width: `${completeness}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
+            <div>
+              <p className="text-sm font-medium text-white">Resume import</p>
+              <p className="mt-1 text-xs leading-6 text-slate-400">
+                Pull in projects and experience from an existing resume, then refine what matters.
+              </p>
+            </div>
+            <label className="button-secondary cursor-pointer">
+              {ocrLoading ? "Parsing resume..." : "Import from Resume PDF"}
+              <input type="file" accept=".pdf" className="hidden" onChange={uploadResume} />
+            </label>
+          </div>
+
+          <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4">
+            <p className="text-sm font-medium text-white">Editorial note</p>
+            <p className="mt-2 text-xs leading-6 text-slate-400">
+              Favor proof over adjectives. Specific outcomes, technologies, and scope make the
+              rest of the product feel much smarter.
+            </p>
+          </div>
+        </div>
+      }
+    >
+      {error ? (
+        <Reveal>
+          <GlassPanel className="border-destructive/40 p-4">
+            <p className="text-sm text-rose-200">{error}</p>
+          </GlassPanel>
+        </Reveal>
+      ) : null}
+
+      <Reveal>
+        <GlassPanel className="p-6 sm:p-8">
+          <SectionHeading
+            eyebrow="Identity"
+            title="Core profile details"
+            description="This section anchors contact credibility and gives the rest of the system the context it needs."
+            action={
+              <button onClick={save} className="button-primary" disabled={saving}>
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
+            }
+          />
+
+          {/* Motivation: the profile form was previously one long utility list with little hierarchy.
+              Logic: group the fields into a two-column editorial layout so scanning, editing, and confidence all improve. */}
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            <TextField label="Name" value={profile.name} onChange={(value) => up("name", value)} />
+            <TextField label="Major" value={profile.major} onChange={(value) => up("major", value)} />
+            <TextField label="School" value={profile.school} onChange={(value) => up("school", value)} />
+            <TextField
+              label="Study Period"
+              value={profile.studyPeriod || ""}
+              onChange={(value) => up("studyPeriod", value)}
+              placeholder="2019 - 2023"
+            />
+            <TextField label="Email" value={profile.email} onChange={(value) => up("email", value)} type="email" />
+            <TextField
+              label="Work Email"
+              value={profile.workEmail || ""}
+              onChange={(value) => up("workEmail", value)}
+              placeholder="you@company.com"
+              type="email"
+              hint="Optional"
+            />
+            <TextField
+              label="Website URL"
+              value={profile.website || ""}
+              onChange={(value) => up("website", value)}
+              placeholder="https://yourwebsite.com"
+              hint="Optional"
+            />
+            <TextField
+              label="LinkedIn URL"
+              value={profile.linkedin || ""}
+              onChange={(value) => up("linkedin", value)}
+              placeholder="https://linkedin.com/in/yourprofile"
+              hint="Optional"
+            />
+            <TextField label="Phone Number" value={profile.phone} onChange={(value) => up("phone", value)} />
+            <TextField
+              label="Languages"
+              value={profile.languages || ""}
+              onChange={(value) => up("languages", value)}
+              placeholder="English, Spanish, French"
+              hint="Comma separated"
+            />
+          </div>
+        </GlassPanel>
+      </Reveal>
+
+      <Reveal delay={0.06}>
+        <GlassPanel className="p-6 sm:p-8">
+          <SectionHeading
+            eyebrow="Projects"
+            title="Keep proof points specific"
+            description="Projects should read like compact case studies: what you built, how you built it, and why it mattered."
+            action={
+              <button onClick={addProject} className="button-secondary">
+                Add Project
+              </button>
+            }
+          />
+
+          <StaggerGroup className="mt-8 space-y-4">
+            {profile.projects.length === 0 ? (
+              <GlassPanel className="interactive-card p-5">
+                <p className="text-sm text-slate-300">
+                  No projects yet. Add a few signature builds to strengthen your application evidence.
+                </p>
+              </GlassPanel>
+            ) : null}
+
+            {profile.projects.map((project, index) => (
+              <StaggerItem key={`${project.name}-${index}`}>
+                <div className="interactive-card space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="section-kicker">Project {String(index + 1).padStart(2, "0")}</p>
+                      <h3 className="mt-2 text-lg font-semibold text-white">
+                        {project.name || "Untitled Project"}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => enhanceProject(index)}
+                        className="button-secondary"
+                        disabled={enhancingProject === index}
+                      >
+                        {enhancingProject === index ? "Enhancing..." : "Enhance Copy"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm("Are you sure you want to delete this project?")) {
+                            deleteProject(index);
+                          }
+                        }}
+                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+                    <TextField
+                      label={`Project Name ${index + 1}`}
+                      value={project.name}
+                      onChange={(value) => {
+                        const nextProjects = [...profile.projects];
+                        nextProjects[index].name = value;
+                        nextProjects[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, projects: nextProjects }));
+                      }}
+                    />
+                    <TextareaField
+                      label={`Project Description ${index + 1}`}
+                      value={project.description}
+                      onChange={(value) => {
+                        const nextProjects = [...profile.projects];
+                        nextProjects[index].description = value;
+                        nextProjects[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, projects: nextProjects }));
+                      }}
+                      rows={5}
+                    />
+                  </div>
+                </div>
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </GlassPanel>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <GlassPanel className="p-6 sm:p-8">
+          <SectionHeading
+            eyebrow="Experience"
+            title="Show scope, ownership, and outcomes"
+            description="Write each role so it gives the resume builder and cover letter generator clear achievement material to work with."
+            action={
+              <button onClick={addExperience} className="button-secondary">
+                Add Experience
+              </button>
+            }
+          />
+
+          <StaggerGroup className="mt-8 space-y-4">
+            {profile.experiences.length === 0 ? (
+              <GlassPanel className="interactive-card p-5">
+                <p className="text-sm text-slate-300">
+                  No experience entries yet. Add internships, freelance work, or employment to widen your evidence base.
+                </p>
+              </GlassPanel>
+            ) : null}
+
+            {profile.experiences.map((experience, index) => (
+              <StaggerItem key={`${experience.companyName}-${experience.role}-${index}`}>
+                <div className="interactive-card space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="section-kicker">Experience {String(index + 1).padStart(2, "0")}</p>
+                      <h3 className="mt-2 text-lg font-semibold text-white">
+                        {experience.companyName || "Company"} · {experience.role || "Role"}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => enhanceExperience(index)}
+                        className="button-secondary"
+                        disabled={enhancingExperience === index}
+                      >
+                        {enhancingExperience === index ? "Enhancing..." : "Enhance Copy"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm("Are you sure you want to delete this experience?")) {
+                            deleteExperience(index);
+                          }
+                        }}
+                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <TextField
+                      label={`Company ${index + 1}`}
+                      value={experience.companyName}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].companyName = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                    />
+                    <TextField
+                      label={`Role ${index + 1}`}
+                      value={experience.role}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].role = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                    />
+                    <TextField
+                      label={`Start ${index + 1}`}
+                      value={experience.timeFrom}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].timeFrom = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                      placeholder="Jan 2023"
+                    />
+                    <TextField
+                      label={`End ${index + 1}`}
+                      value={experience.timeTo}
+                      onChange={(value) => {
+                        const nextExperiences = [...profile.experiences];
+                        nextExperiences[index].timeTo = value;
+                        nextExperiences[index]._needsSummary = true;
+                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                      }}
+                      placeholder="Present"
+                    />
+                    <div className="md:col-span-2">
+                      <TextareaField
+                        label={`Description ${index + 1}`}
+                        value={experience.description}
+                        onChange={(value) => {
+                          const nextExperiences = [...profile.experiences];
+                          nextExperiences[index].description = value;
+                          nextExperiences[index]._needsSummary = true;
+                          setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        }}
+                        rows={5}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </GlassPanel>
+      </Reveal>
+    </ModuleShell>
   );
 }
-
-

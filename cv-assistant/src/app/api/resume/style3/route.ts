@@ -12,8 +12,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
+import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -77,20 +78,18 @@ export async function POST(req: NextRequest) {
 
   let fontSize = 11;
   let useBoldPref = false;
-  let useItalicPref = false;
   let contentDensity = 'balanced';
   const accentPref = (stylePreferences?.accentColor as string) || 'black';
 
   if (stylePreferences) {
     fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
     useBoldPref = !!stylePreferences.useBold;
-    useItalicPref = !!stylePreferences.useItalic;
     contentDensity = stylePreferences.contentDensity || 'balanced';
   }
 
   if (enhance && stylePreferences) {
     try {
-      const model = getModel('gemini-2.5-flash');
+      const model = getModel('hard');
       async function improve(prompt: string) {
         const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
         return res.response.text().trim();
@@ -196,6 +195,8 @@ export async function POST(req: NextRequest) {
   const leftRightX = leftX + sidebarWidth;
   const rightX = leftRightX + gutter; // main column left
   const rightMaxX = width - margin;   // main column right
+  const sidebarMaxWidth = sidebarWidth - 4;
+  const rightContentWidth = rightMaxX - rightX;
 
   // Y cursors
   let yLeft = top;
@@ -250,47 +251,53 @@ export async function POST(req: NextRequest) {
   }
 
   function drawRightHeaderWithDate(leftText: string, rightText: string, size = fontSize, colorOverride?: RGB) {
-    const leftFont = useBoldPref ? timesBold : timesBold;
+    const leftFont = timesBold;
     const rightFont = times;
-    const leftWidth = measure(leftFont, leftText, size);
-    const rightWidth = measure(rightFont, rightText, size - 1);
-    const maxWidth = rightMaxX - rightX;
+    const normalizedLeft = leftText.trim();
+    const normalizedRight = rightText.trim();
+    const metaSize = Math.max(size - 1, 9);
+    const gap = 16;
+    const rightWidth = normalizedRight ? measure(rightFont, normalizedRight, metaSize) : 0;
+    const sameRowWidth = normalizedRight
+      ? Math.max(rightContentWidth - rightWidth - gap, rightContentWidth * 0.55)
+      : rightContentWidth;
+    const sameRowLines = normalizedLeft ? wrapTextLines(normalizedLeft, leftFont, size, sameRowWidth) : [];
 
-    // If too long, shrink left a bit
-    let finalSize = size;
-    if (leftWidth + 20 + rightWidth > maxWidth) finalSize = Math.max(size - 1, 9);
-
-    ensureSpaceRight(finalSize + 6);
-    // Left header
-    page.drawText(leftText, { x: rightX, y: yRight, size: finalSize, font: leftFont, color: colorOverride || accent });
-    // Right date (right-aligned)
-    const dateX = rightMaxX - measure(rightFont, rightText, finalSize - 1);
-    if (rightText && rightText.trim()) {
-      page.drawText(rightText, { x: dateX, y: yRight, size: finalSize - 1, font: rightFont, color: rgb(0, 0, 0) });
+    if (normalizedLeft && (!normalizedRight || sameRowLines.length === 1)) {
+      ensureSpaceRight(size + 6);
+      page.drawText(sameRowLines[0], { x: rightX, y: yRight, size, font: leftFont, color: colorOverride || accent });
+      if (normalizedRight) {
+        const dateX = rightMaxX - measure(rightFont, normalizedRight, metaSize);
+        page.drawText(normalizedRight, { x: dateX, y: yRight, size: metaSize, font: rightFont, color: rgb(0, 0, 0) });
+      }
+      yRight -= size + 4;
+      return;
     }
-    yRight -= finalSize + 4;
+
+    if (normalizedLeft) {
+      const fullLines = wrapTextLines(normalizedLeft, leftFont, size, rightContentWidth);
+      for (const line of fullLines) {
+        ensureSpaceRight(size + 4);
+        page.drawText(line, { x: rightX, y: yRight, size, font: leftFont, color: colorOverride || accent });
+        yRight -= size + 4;
+      }
+    }
+
+    if (normalizedRight) {
+      const rightLines = wrapTextLines(normalizedRight, rightFont, metaSize, rightContentWidth);
+      for (const line of rightLines) {
+        const dateX = rightMaxX - measure(rightFont, line, metaSize);
+        ensureSpaceRight(metaSize + 4);
+        page.drawText(line, { x: dateX, y: yRight, size: metaSize, font: rightFont, color: rgb(0, 0, 0) });
+        yRight -= metaSize + 4;
+      }
+    }
   }
 
   function drawRightWrapped(text: string, size = fontSize - 1) {
     const font = times;
-    const maxWidth = rightMaxX - rightX;
-    const words = (text || '').split(/\s+/).filter(Boolean);
-    if (words.length === 0) return;
-    let line = '';
-
-
-    for (const w of words) {
-      const next = line ? line + ' ' + w : w;
-      if (font.widthOfTextAtSize(next, size) > maxWidth) {
-        ensureSpaceRight(size + 4);
-        page.drawText(line, { x: rightX, y: yRight, size, font });
-        yRight -= size + 4;
-        line = w;
-      } else {
-        line = next;
-      }
-    }
-    if (line) {
+    const lines = wrapTextLines(text, font, size, rightContentWidth);
+    for (const line of lines) {
       ensureSpaceRight(size + 4);
       page.drawText(line, { x: rightX, y: yRight, size, font });
       yRight -= size + 4;
@@ -305,32 +312,13 @@ export async function POST(req: NextRequest) {
     const maxWidth = rightMaxX - rightX - bulletIndent;
 
     function drawOne(content: string) {
-      const words = content.split(/\s+/).filter(Boolean);
-      if (words.length === 0) return;
+      const lines = wrapTextLines(content, times, size, maxWidth);
+      if (!lines.length) return;
       ensureSpaceRight(size + 4);
-      // Bullet marker
       page.drawText(bulletChar, { x: rightX, y: yRight, size, font: times, color: rgb(0, 0, 0) });
-      // Wrapped bullet text
-      let lineWords: string[] = [];
-      let lineWidth = 0;
-      const spaceW = measure(times, ' ', size);
-
-      for (const w of words) {
-        const wW = measure(times, w, size);
-        const nextWidth = lineWords.length === 0 ? wW : lineWidth + spaceW + wW;
-        if (nextWidth > maxWidth) {
-          page.drawText(lineWords.join(' '), { x: rightX + bulletIndent, y: yRight, size, font: times });
-          yRight -= size + 4;
-          ensureSpaceRight(size + 4);
-          lineWords = [w];
-          lineWidth = wW;
-        } else {
-          lineWords.push(w);
-          lineWidth = nextWidth;
-        }
-      }
-      if (lineWords.length) {
-        page.drawText(lineWords.join(' '), { x: rightX + bulletIndent, y: yRight, size, font: times });
+      for (const line of lines) {
+        ensureSpaceRight(size + 4);
+        page.drawText(line, { x: rightX + bulletIndent, y: yRight, size, font: times });
         yRight -= size + 4;
       }
     }
@@ -401,66 +389,21 @@ export async function POST(req: NextRequest) {
 
   function drawSidebarLine(text: string, size = Math.max(fontSize - 1, 9)) {
     if (!text || !text.trim()) return;
-    const maxWidth = sidebarWidth - 4; // Leave some padding
-    const textWidth = times.widthOfTextAtSize(text, size);
-    
-    // If text fits in sidebar, draw it normally
-    if (textWidth <= maxWidth) {
-      page.drawText(text, { x: leftX, y: yLeft, size, font: times });
+    const lines = wrapTextLines(text, times, size, sidebarMaxWidth);
+    for (const line of lines) {
+      page.drawText(line, { x: leftX, y: yLeft, size, font: times });
       yLeft -= size + 4;
-    } else {
-      // Check if this looks like a URL (no spaces, contains common URL patterns)
-      const isUrl = /^https?:\/\//.test(text) || (!/\s/.test(text) && (text.includes('.') || text.includes('/')));
-      
-      if (isUrl) {
-        // For URLs, break at character boundaries
-        let currentLine = '';
-        
-        for (let i = 0; i < text.length; i++) {
-          const char = text[i];
-          const testLine = currentLine + char;
-          const testWidth = times.widthOfTextAtSize(testLine, size);
-          
-          if (testWidth > maxWidth && currentLine) {
-            // Draw current line and start new line
-            page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
-            yLeft -= size + 4;
-            currentLine = char;
-          } else {
-            currentLine = testLine;
-          }
-        }
-        
-        // Draw remaining line
-        if (currentLine) {
-          page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
-          yLeft -= size + 4;
-        }
-      } else {
-        // For regular text, wrap at word boundaries
-        const words = text.split(/\s+/).filter(Boolean);
-        let currentLine = '';
-        
-        for (const word of words) {
-          const testLine = currentLine ? currentLine + ' ' + word : word;
-          const testWidth = times.widthOfTextAtSize(testLine, size);
-          
-          if (testWidth > maxWidth && currentLine) {
-            // Draw current line and start new line
-            page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
-            yLeft -= size + 4;
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        }
-        
-        // Draw remaining line
-        if (currentLine) {
-          page.drawText(currentLine, { x: leftX, y: yLeft, size, font: times });
-          yLeft -= size + 4;
-        }
-      }
+    }
+  }
+
+  function drawSidebarCompactList(text: string, size = Math.max(fontSize - 2, 8)) {
+    const items = splitResumeItems(text);
+    const lines = items.length
+      ? packItemsIntoLines(items, times, size, sidebarMaxWidth, ' | ')
+      : wrapTextLines(text, times, size, sidebarMaxWidth);
+    for (const line of lines) {
+      page.drawText(line, { x: leftX, y: yLeft, size, font: times });
+      yLeft -= size + 4;
     }
   }
 
@@ -482,9 +425,12 @@ export async function POST(req: NextRequest) {
   drawSidebarLabel('Skills');
   let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
   if (!skillsText) skillsText = '—';
-  // Keep it compact in sidebar: split by comma/newline and draw as short lines
-  const skillTokens = skillsText.split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean);
-  for (const s of skillTokens) drawSidebarLine(`• ${s}`, Math.max(fontSize - 2, 8));
+  // Root Cause vs Logic:
+  // Root Cause: The sidebar rendered one bullet per skill, so long skill inventories consumed the entire rail and
+  // eventually pushed content past the page floor even though the data could fit with denser wrapping.
+  // Logic: Pack sidebar list fields into compact wrapped lines and use the same overflow-safe text wrapper for the
+  // main column headers, which keeps the template structured without changing its two-column visual identity.
+  drawSidebarCompactList(skillsText, Math.max(fontSize - 2, 8));
 
   yLeft -= 6;
   page.drawLine({ start: { x: leftX, y: yLeft }, end: { x: leftRightX, y: yLeft }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
@@ -493,9 +439,7 @@ export async function POST(req: NextRequest) {
   // Languages (optional separate field if user also wants it here)
   if (profile.languages && profile.languages.trim() && profile.languages !== skillsText) {
     drawSidebarLabel('Languages');
-    for (const lang of profile.languages.split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean)) {
-      drawSidebarLine(`• ${lang}`, Math.max(fontSize - 2, 8));
-    }
+    drawSidebarCompactList(profile.languages, Math.max(fontSize - 2, 8));
     yLeft -= 6;
     page.drawLine({ start: { x: leftX, y: yLeft }, end: { x: leftRightX, y: yLeft }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
     yLeft -= 10;

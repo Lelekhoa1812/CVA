@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -40,7 +40,7 @@ Start with question 1 only.`;
     }
 
     // Content agent uses LLM
-    const model = getModel('gemini-2.5-flash');
+    const model = getModel('hard');
     const parts = [{ text: contentSystem + (hint ? `\nAdditional hint: ${hint}` : '') }];
     for (const m of messages as Array<{ role: string; content: string }>) {
       parts.push({ text: `[${m.role}] ${m.content}` });
@@ -49,7 +49,7 @@ Start with question 1 only.`;
     const text = res.response.text().trim();
     return NextResponse.json({ message: text, agentType });
   } catch (error) {
-    console.error('Gemini API error:', error);
+    console.error('Azure AI error:', error);
     // Minimal fallback for content agent only
     const messageCount = messages.filter(m => m.role === 'user').length;
     const fallbackMessage = messageCount === 0
@@ -60,5 +60,4 @@ Start with question 1 only.`;
     return NextResponse.json({ message: fallbackMessage, agentType });
   }
 }
-
 

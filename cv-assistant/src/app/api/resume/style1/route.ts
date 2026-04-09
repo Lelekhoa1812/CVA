@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
+import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -46,14 +47,12 @@ export async function POST(req: NextRequest) {
   const enhancedExperienceSummaries: Record<number, string> = {};
   let fontSize = 11;
   let useBold = false;
-  let useItalic = false;
   let contentDensity = 'balanced';
   
   // Always parse style preferences if available, regardless of enhance flag
   if (stylePreferences) {
     fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
     useBold = stylePreferences.useBold || false;
-    useItalic = stylePreferences.useItalic || false;
     contentDensity = stylePreferences.contentDensity || 'balanced';
   }
   
@@ -62,11 +61,14 @@ export async function POST(req: NextRequest) {
       // Parse style preferences
       fontSize = stylePreferences.fontSize === '10pt' ? 10 : stylePreferences.fontSize === '12pt' ? 12 : 11;
       useBold = stylePreferences.useBold || false;
-      useItalic = stylePreferences.useItalic || false;
       contentDensity = stylePreferences.contentDensity || 'balanced';
       
-      // Enhance content with Gemini
-      const model = getModel('gemini-2.5-flash');
+      // Motivation vs Logic:
+      // Motivation: Resume enhancement touches multiple sections and should keep one stronger text model for
+      // higher-signal rewriting while the rest of the app can default to cheaper lightweight calls.
+      // Logic: This route stays on the shared `hard` preset so the Azure model choice remains centralized in
+      // `src/lib/ai.ts`, while section-specific prompts and downstream summarize/enhance flows remain unchanged.
+      const model = getModel('hard');
       async function improve(prompt: string) {
         const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
         return res.response.text().trim();
@@ -170,6 +172,7 @@ export async function POST(req: NextRequest) {
   const bottom = margin;
   const top = height - margin;
   let y = top;
+  const contentWidth = right - left;
 
   function newPage() {
     page = pdf.addPage([612, 792]);
@@ -190,47 +193,116 @@ export async function POST(req: NextRequest) {
     return rgb(0, 0, 0);
   }
 
-  function drawText(text: string, x: number, size = 11, bold = false, colorOverride?: RGB) {
-    if (!text || !text.trim()) return;
-    ensureSpace(size + 8);
-    
-    // Apply styling preferences
-    let finalSize = size;
-    let finalBold = bold;
-    
-    if (stylePreferences) {
-      // Apply font size preference if specified
-      if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
-        const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
-        if (sizeMatch) {
-          finalSize = parseInt(sizeMatch[1]);
-        }
+  function drawWrappedLines(
+    lines: string[],
+    x: number,
+    size = 11,
+    bold = false,
+    colorOverride?: RGB,
+    lineGap = 6
+  ) {
+    if (!lines.length) return;
+    const font = bold ? helvBold : helv;
+    const color: RGB = colorOverride || rgb(0, 0, 0);
+    for (const line of lines) {
+      ensureSpace(size + lineGap);
+      page.drawText(line, { x, y, size, font, color });
+      y -= size + lineGap;
+    }
+  }
+
+  function drawWrappedTextBlock(text: string, size = 11, bold = false, colorOverride?: RGB) {
+    const lines = wrapTextLines(text, bold ? helvBold : helv, size, contentWidth);
+    drawWrappedLines(lines, left, size, bold, colorOverride);
+  }
+
+  function drawCompactList(text: string, size = 10) {
+    const items = splitResumeItems(text);
+    const lines = items.length
+      ? packItemsIntoLines(items, helv, size, contentWidth)
+      : wrapTextLines(text, helv, size, contentWidth);
+    drawWrappedLines(lines, left, size, false);
+  }
+
+  function drawLabelValueLine(label: string, value: string, size = 10) {
+    const cleanValue = value.trim();
+    if (!cleanValue) return;
+    const labelText = `${label}:`;
+    const labelWidth = helvBold.widthOfTextAtSize(`${labelText} `, size);
+    const firstLineMaxWidth = Math.max(contentWidth - labelWidth, 60);
+    const valueLines = wrapTextLines(cleanValue, helv, size, firstLineMaxWidth);
+    if (!valueLines.length) return;
+
+    ensureSpace(size + 6);
+    page.drawText(`${labelText} `, { x: left, y, size, font: helvBold });
+    page.drawText(valueLines[0], { x: left + labelWidth, y, size, font: helv });
+    y -= size + 6;
+
+    if (valueLines.length > 1) {
+      drawWrappedLines(valueLines.slice(1), left, size, false);
+    }
+  }
+
+  function drawHeaderRow(leftText: string, rightText: string, leftSize = fontSize, rightSize = Math.max(fontSize - 1, 9), colorOverride?: RGB) {
+    const normalizedLeft = leftText.trim();
+    const normalizedRight = rightText.trim();
+    if (!normalizedLeft && !normalizedRight) return;
+
+    const gap = 18;
+    const rightWidth = normalizedRight ? helv.widthOfTextAtSize(normalizedRight, rightSize) : 0;
+    const sameRowMaxWidth = normalizedRight
+      ? Math.max(contentWidth - rightWidth - gap, contentWidth * 0.55)
+      : contentWidth;
+    const sameRowLines = normalizedLeft
+      ? wrapTextLines(normalizedLeft, useBold ? helvBold : helv, leftSize, sameRowMaxWidth)
+      : [];
+
+    if (normalizedLeft && (!normalizedRight || sameRowLines.length === 1)) {
+      ensureSpace(Math.max(leftSize, rightSize) + 6);
+      page.drawText(sameRowLines[0], {
+        x: left,
+        y,
+        size: leftSize,
+        font: useBold ? helvBold : helv,
+        color: colorOverride || getAccentColor()
+      });
+      if (normalizedRight) {
+        page.drawText(normalizedRight, {
+          x: right - rightWidth,
+          y,
+          size: rightSize,
+          font: helv,
+          color: rgb(0, 0, 0)
+        });
       }
-      
-      // Apply bold preference if specified
-      if (stylePreferences.useBold !== undefined) {
-        finalBold = stylePreferences.useBold && bold; // Only bold if both user wants bold AND function parameter is true
+      y -= Math.max(leftSize, rightSize) + 6;
+      return;
+    }
+
+    if (normalizedLeft) {
+      drawWrappedTextBlock(normalizedLeft, leftSize, useBold, colorOverride || getAccentColor());
+    }
+    if (normalizedRight) {
+      const rightLines = wrapTextLines(normalizedRight, helv, rightSize, contentWidth);
+      for (const line of rightLines) {
+        const lineWidth = helv.widthOfTextAtSize(line, rightSize);
+        ensureSpace(rightSize + 6);
+        page.drawText(line, { x: right - lineWidth, y, size: rightSize, font: helv });
+        y -= rightSize + 6;
       }
     }
-    
-    const font = finalBold ? helvBold : helv;
-    const color: RGB = colorOverride || rgb(0, 0, 0);
-    page.drawText(text, { x, y, size: finalSize, font, color });
-    y -= finalSize + 6;
   }
 
   function drawMarkdownText(text: string, x: number, size = 11) {
     // Apply styling preferences
     let finalSize = size;
     let allowBold = true;
-    let allowItalic = true;
     if (stylePreferences) {
       if (stylePreferences.fontSize && stylePreferences.fontSize !== '11pt') {
         const sizeMatch = stylePreferences.fontSize.match(/(\d+)pt/);
         if (sizeMatch) finalSize = parseInt(sizeMatch[1]);
       }
       if (stylePreferences.useBold !== undefined) allowBold = stylePreferences.useBold;
-      if (stylePreferences.useItalic !== undefined) allowItalic = stylePreferences.useItalic;
     }
 
     // Normalize line breaks into paragraphs
@@ -266,7 +338,6 @@ export async function POST(req: NextRequest) {
       const maxWidth = right - left;
       let line: Token[] = [];
       let lineWidth = 0;
-      const spaceCache = { helv: new Map<number, number>(), helvBold: new Map<number, number>() };
       const widthOf = (t: Token) => (t.bold ? helvBold : helv).widthOfTextAtSize(t.text, finalSize);
       const isSpace = (t: Token) => /^\s+$/.test(t.text);
 
@@ -359,29 +430,6 @@ export async function POST(req: NextRequest) {
       if (i < words.length - 1) {
         cursor += helv.widthOfTextAtSize(w, size) + spaceWidth + extra;
       }
-    }
-  }
-
-  function drawWrappedText(text: string, size = 10) {
-    const words = (text || '').split(/\s+/);
-    const maxWidth = right - left;
-    let line = '';
-    ensureSpace(size + 4);
-    for (const w of words) {
-      const next = line ? line + ' ' + w : w;
-      if (helv.widthOfTextAtSize(next, size) > maxWidth) {
-        drawJustifiedLine(line.split(' '), left, size, true);
-        y -= size + 4;
-        ensureSpace(size + 4);
-        line = w;
-      } else {
-        line = next;
-      }
-    }
-    if (line) {
-      // Last line not justified
-      page.drawText(line, { x: left, y, size, font: helv });
-      y -= size + 4;
     }
   }
 
@@ -501,9 +549,19 @@ export async function POST(req: NextRequest) {
     contactSize -= 0.5;
     contactWidth = helv.widthOfTextAtSize(contactFull, contactSize);
   }
-  const contactX = (width - contactWidth) / 2;
-  page.drawText(contactFull, { x: contactX, y, size: contactSize, font: helv });
-  y -= contactSize + 10;
+  const contactLines = wrapTextLines(contactFull, helv, contactSize, maxContactWidth);
+  if (contactLines.length <= 1) {
+    const contactX = (width - contactWidth) / 2;
+    page.drawText(contactFull, { x: contactX, y, size: contactSize, font: helv });
+    y -= contactSize + 10;
+  } else {
+    for (const line of contactLines) {
+      const lineWidth = helv.widthOfTextAtSize(line, contactSize);
+      page.drawText(line, { x: (width - lineWidth) / 2, y, size: contactSize, font: helv });
+      y -= contactSize + 4;
+    }
+    y -= 6;
+  }
 
   // Education
   drawSection('Education');
@@ -511,18 +569,8 @@ export async function POST(req: NextRequest) {
   const major = profile.major || 'No major specified';
   // Draw school and study period on one line (school left, period right)
   const studyPeriod = (profile as { studyPeriod?: string }).studyPeriod;
-  if (studyPeriod && studyPeriod.trim()) {
-    // Draw school (left)
-    drawText(school, left, fontSize, useBold);
-    // Draw study period (right, aligned to right margin on the same baseline)
-    const periodFont = useBold ? helvBold : helv;
-    const periodWidth = periodFont.widthOfTextAtSize(studyPeriod, fontSize);
-    const periodX = right - periodWidth;
-    page.drawText(studyPeriod, { x: periodX, y: y + fontSize + 6, size: fontSize, font: periodFont });
-  } else {
-    drawText(school, left, fontSize, useBold);
-  }
-  drawText(major, left, fontSize - 1, false);
+  drawHeaderRow(school, studyPeriod || '', fontSize, Math.max(fontSize - 1, 9));
+  drawWrappedTextBlock(major, fontSize - 1, false);
 
   // Contact emails under education: prefer workEmail if present
   // const preferredEmail = (profile as any).workEmail?.trim() ? (profile as any).workEmail : profile.email;
@@ -540,43 +588,20 @@ export async function POST(req: NextRequest) {
   }
   
   // Handle skills with proper wrapping to prevent overlap
+  // Root Cause vs Logic:
+  // Root Cause: Several templates were drawing user-provided skills and headers as optimistic single lines,
+  // which made long lists collide with the next section or run past the printable width.
+  // Logic: Normalize list-like fields into compact wrapped lines and measure header/date rows before drawing,
+  // so the route always reserves enough vertical space and falls back to stacked layouts when content grows.
   if (skillsText.includes('**') || skillsText.includes('*')) {
     drawMarkdownText(skillsText, left, fontSize - 1);
   } else {
-    // Preserve original line breaks from user input, but wrap long lines
-    const skillLines = skillsText.split('\n').filter((line: string) => line.trim());
-    for (const line of skillLines) {
-      if (line.trim()) {
-        // Check if line exceeds margin width
-        const lineWidth = helv.widthOfTextAtSize(line.trim(), fontSize - 1);
-        const maxWidth = right - left;
-        
-        if (lineWidth > maxWidth) {
-          // Line is too long, use word wrapping
-          drawWrappedText(line.trim(), fontSize - 1);
-        } else {
-          // Line fits, draw normally
-          drawText(line.trim(), left, fontSize - 1, false);
-        }
-      }
-    }
+    drawCompactList(skillsText, fontSize - 1);
   }
   
   // Add Languages section if user has language data
   if (profile.languages && profile.languages.trim()) {
-    const languagesText = `Language: ${profile.languages.trim()}`;
-    // Draw "Language:" in bold, then the languages in regular font
-    const labelPart = 'Language: ';
-    const languagesPart = profile.languages.trim();
-    
-    // Calculate positions for proper alignment
-    const labelWidth = helvBold.widthOfTextAtSize(labelPart, fontSize - 1);
-    
-    // Draw "Language:" label in bold
-    page.drawText(labelPart, { x: left, y, size: fontSize - 1, font: helvBold });
-    // Draw languages in regular font
-    page.drawText(languagesPart, { x: left + labelWidth, y, size: fontSize - 1, font: helv });
-    y -= fontSize - 1 + 6; // Adjust y position for next section
+    drawLabelValueLine('Languages', profile.languages.trim(), fontSize - 1);
   }
 
   // Projects
@@ -587,7 +612,7 @@ export async function POST(req: NextRequest) {
       const p = profile.projects[idx];
       if (!p) continue;
       console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
-      drawText(p.name || 'Untitled Project', left, fontSize, useBold, getAccentColor());
+      drawWrappedTextBlock(p.name || 'Untitled Project', fontSize, useBold, getAccentColor());
       // Use original content + enhanced summary if available
       const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
       const enhancedContent = enhancedProjectSummaries[idx];
@@ -619,26 +644,7 @@ export async function POST(req: NextRequest) {
       // Company and role on left, dates on right
       const headerText = `${ex.companyName || ''} — ${ex.role || ''}`.trim();
       const timeInfo = `${ex.timeFrom || ''} - ${ex.timeTo || ''}`.trim();
-      
-      // Calculate positions for proper alignment
-      const headerWidth = helvBold.widthOfTextAtSize(headerText, fontSize);
-      const timeWidth = helv.widthOfTextAtSize(timeInfo, fontSize - 1);
-      const maxHeaderWidth = right - left - timeWidth - 20; // 20pt spacing
-      
-      // Scale header font if too long
-      let headerFontSize = fontSize;
-      if (headerWidth > maxHeaderWidth) {
-        headerFontSize = Math.max(fontSize - 2, 8); // Don't go below 8pt
-      }
-      
-      // Draw header (left-aligned)
-      drawText(headerText, left, headerFontSize, useBold, getAccentColor());
-      
-      // Draw dates (right-aligned)
-      if (timeInfo && timeInfo !== ' - ') {
-        const timeX = right - timeWidth;
-        page.drawText(timeInfo, { x: timeX, y: y + headerFontSize + 6, size: fontSize - 1, font: helv, color: rgb(0, 0, 0) });
-      }
+      drawHeaderRow(headerText, timeInfo && timeInfo !== ' - ' ? timeInfo : '', fontSize, Math.max(fontSize - 1, 9), getAccentColor());
       
       // Use original content + enhanced summary if available
       const originalContent = (ex as { description?: string; summary?: string }).description || ex.summary || '';
@@ -681,5 +687,3 @@ export async function POST(req: NextRequest) {
     }
   });
 }
-
-

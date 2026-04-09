@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const model = getModel('gemini-2.5-flash-lite');
+    const model = getModel('easy');
     
     const prompt = `Enhance and tailor the following ${type} description to be more professional, impactful for a CV. 
 

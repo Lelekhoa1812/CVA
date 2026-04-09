@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid content' }, { status: 400 });
   }
 
-  const model = getModel('gemini-2.5-flash-lite');
+  const model = getModel('easy');
   const prompt = `Enhance and expand this ${contentType} content to be approximately 50% longer while adding more context, achievements, and professional details.
 
 Rules:

@@ -1,6 +1,5 @@
 "use client";
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -10,7 +9,15 @@ export default function LoginPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const router = useRouter();
+
+  function redirectToAuthenticatedApp() {
+    // Root Cause vs Logic:
+    // The login request sets the auth cookie asynchronously in the browser, so an immediate
+    // client-side router transition can sometimes reuse stale auth state and strand the user
+    // on `/login`. A full document navigation waits for the browser's cookie jar and reloads
+    // protected routes against the fresh session without requiring a manual refresh.
+    window.location.replace('/profile');
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,6 +28,7 @@ export default function LoginPage() {
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ username, password }),
     });
     
@@ -33,7 +41,7 @@ export default function LoginPage() {
     }
     
     setLoading(false);
-    router.push('/profile');
+    redirectToAuthenticatedApp();
   }
 
   return (
@@ -185,5 +193,4 @@ export default function LoginPage() {
     </div>
   );
 }
-
 

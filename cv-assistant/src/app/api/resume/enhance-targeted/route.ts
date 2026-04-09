@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const model = getModel('gemini-2.5-flash');
+    const model = getModel('hard');
     
     // Create a targeted enhancement prompt
     const prompt = `You are a professional resume writer. Enhance the following ${itemType} content based on the user's preferences:

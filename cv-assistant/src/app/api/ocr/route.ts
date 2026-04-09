@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // Use Next.js formData API for simplicity
 import { getAuthFromCookies } from '@/lib/auth';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getModel } from '@/lib/ai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,10 +18,7 @@ export async function POST(req: NextRequest) {
   const fileArrayBuffer = await file.arrayBuffer();
   const fileBuffer = Buffer.from(fileArrayBuffer);
 
-  const apiKey = process.env.GEMINI_API as string;
-  if (!apiKey) return NextResponse.json({ error: 'Missing GEMINI_API' }, { status: 500 });
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getModel('document');
 
   // Detect and validate MIME type: allow PDF, PNG, and JPG/JPEG
   const uploadedType = (file.type || '').toLowerCase();
@@ -63,10 +60,7 @@ Return ONLY JSON with no markdown fences. If uncertain, best-effort.`;
   for (let i = 0; i < 3; i++) {
     try {
       const res = await model.generateContent({
-        contents: [{ role: 'user', parts: [
-          { text: prompt },
-          filePart,
-        ]}],
+        contents: [{ role: 'user', parts: [{ text: prompt }, filePart] }],
       });
       const text = res.response.text();
       const start = text.indexOf('{');
@@ -82,5 +76,4 @@ Return ONLY JSON with no markdown fences. If uncertain, best-effort.`;
 
   return NextResponse.json({ data: parsed });
 }
-
 

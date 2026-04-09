@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid user response' }, { status: 400 });
   }
 
-  const model = getModel('gemini-2.5-flash-lite');
+  const model = getModel('easy');
   const prompt = `Parse this user response about resume styling preferences and return a JSON object with these exact keys:
 
 {
@@ -58,7 +58,7 @@ Return only the JSON object, no other text.`;
       additionalNotes: parsed.additionalNotes || ''
     });
   } catch (error) {
-    console.error('Style parser Gemini API error:', error);
+    console.error('Style parser Azure AI error:', error);
     
     // Fallback to default style preferences
     return NextResponse.json({ 

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
-import { getModel } from '@/lib/gemini';
+import { generateJsonSafe } from '@/lib/ai';
+import { buildExperienceRankingPrompt, getCoverLetterItems } from '@/lib/cover-letter';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -12,33 +13,73 @@ export async function POST(req: NextRequest) {
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
   const profile = user?.profile;
-  type Item = { type: 'project' | 'experience'; name: string; summary: string };
-  const items: Item[] = [
-    ...((profile?.projects || []).map((p: { name: string; summary: string }) => ({ type: 'project' as const, name: p.name, summary: p.summary })) ),
-    ...((profile?.experiences || []).map((e: { companyName: string; role: string; summary: string }) => ({ type: 'experience' as const, name: `${e.companyName} - ${e.role}`, summary: e.summary })) ),
-  ];
-
-  const model = getModel('gemini-2.5-flash-lite');
-  const prompt = `Given this job description, select the most relevant items (up to 6) from the user's profile summaries. Return JSON array of indices.
-Job Description:\n${jobDescription}\n
-Items:\n${items.map((it, i) => `${i}. [${it.type}] ${it.name}: ${it.summary}`).join('\n')}
-
-Return only JSON like {"indices": [0,2,5]}`;
-
-  let indices: number[] = [];
-  try {
-    const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-    const text = res.response.text();
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    const jsonStr = start>=0 && end>=0 ? text.slice(start, end+1) : text;
-    const parsed = JSON.parse(jsonStr);
-    indices = Array.isArray(parsed.indices) ? parsed.indices.slice(0,6) : [];
-  } catch {
-    indices = [];
+  const items = getCoverLetterItems(profile);
+  if (!items.length) {
+    return NextResponse.json({ indices: [], items: [], rankings: [] });
   }
 
-  return NextResponse.json({ indices, items });
+  let rankings: Array<{
+    index: number;
+    type: 'project' | 'experience';
+    title: string;
+    summary: string;
+    justification: string;
+  }> = [];
+
+  try {
+    const parsed = await generateJsonSafe('hard', buildExperienceRankingPrompt(jobDescription, items), 1);
+    const candidateRankings: Array<{ index?: number; justification?: string }> = Array.isArray(parsed?.rankings)
+      ? parsed.rankings
+      : [];
+    const seen = new Set<number>();
+
+    rankings = candidateRankings
+      .map((entry) => {
+        const index = typeof entry?.index === 'number' ? entry.index : Number.NaN;
+        const item = items[index];
+        if (!Number.isInteger(index) || !item || seen.has(index)) return null;
+        seen.add(index);
+
+        return {
+          index,
+          type: item.type,
+          title: item.title,
+          summary: item.summary,
+          justification:
+            typeof entry?.justification === 'string' && entry.justification.trim()
+              ? entry.justification.trim()
+              : `${item.title} aligns with the role based on the candidate data provided.`,
+        };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          index: number;
+          type: 'project' | 'experience';
+          title: string;
+          summary: string;
+          justification: string;
+        } => Boolean(entry),
+      )
+      .slice(0, 6);
+  } catch {
+    rankings = [];
+  }
+
+  if (!rankings.length) {
+    rankings = items.slice(0, 6).map((item) => ({
+      index: item.index,
+      type: item.type,
+      title: item.title,
+      summary: item.summary,
+      justification: 'Fallback ranking applied because AI coaching could not confidently reorder this evidence.',
+    }));
+  }
+
+  return NextResponse.json({
+    indices: rankings.map((item) => item.index),
+    items,
+    rankings,
+  });
 }
-
-

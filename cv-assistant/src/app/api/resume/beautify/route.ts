@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid content' }, { status: 400 });
   }
 
-  const model = getModel('gemini-2.5-flash');
+  const model = getModel('hard');
   const prompt = `Rewrite the following ${contentType} content by PRESERVING all original facts and wording as much as possible and ONLY INSERTING Markdown emphasis markers:
 
 STRICT RULES:

@@ -1,8 +1,17 @@
 "use client";
-import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useState } from 'react';
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { useTheme } from "@/contexts/ThemeContext";
+import { cn } from "@/lib/utils";
+
+const links = [
+  { href: "/profile", label: "Profile", short: "Profile" },
+  { href: "/resume", label: "Resume Lab", short: "Resume" },
+  { href: "/generate", label: "Cover Letter", short: "Letter" },
+];
 
 export default function Navbar() {
   const router = useRouter();
@@ -11,167 +20,139 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
   }
 
-  const active = (path: string) => pathname?.startsWith(path) 
-    ? 'text-primary bg-primary/10 border-primary/20' 
-    : 'text-muted-foreground hover:text-foreground hover:bg-accent border-transparent';
-
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-16">
-        {/* Enhanced Logo */}
-        <Link href="/" className="flex items-center space-x-3 group">
-          <div className="relative">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    <header className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-slate-950/70 px-4 py-3 shadow-elevated backdrop-blur-2xl">
+        <Link href="/" className="group flex items-center gap-3">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+            <div className="absolute inset-1 rounded-xl bg-gradient-to-br from-sky-300/70 via-cyan-200/50 to-violet-300/60 blur-sm" />
+            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-white">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M9 12h6m-6 4h6m1 5H8a2 2 0 01-2-2V5a2 2 0 012-2h5.17a2 2 0 011.41.58l3.83 3.83A2 2 0 0119 8.83V19a2 2 0 01-2 2z"
+                />
               </svg>
             </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-background animate-pulse"></div>
           </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-xl bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-              CV Assistant
-            </span>
-            <span className="text-xs text-muted-foreground -mt-1">AI-Powered</span>
+          <div className="hidden sm:block">
+            <div className="font-display text-xl text-white">CV Assistant</div>
+            <div className="text-xs uppercase tracking-[0.24em] text-slate-400">
+              Career Storytelling Suite
+            </div>
           </div>
         </Link>
 
-        {/* Navigation Links - Desktop */}
-        <div className="hidden md:flex items-center space-x-1">
-          <Link 
-            href="/profile" 
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/profile')}`}
-          >
-            <div className="flex items-center space-x-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <span>Profile</span>
-            </div>
-          </Link>
-          
-          <Link 
-            href="/resume" 
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/resume')}`}
-          >
-            <div className="flex items-center space-x-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m4-4H8m9 9H7a2 2 0 01-2-2V5a2 2 0 012-2h8l4 4v14a2 2 0 01-2 2z" />
-              </svg>
-              <span>Resume</span>
-            </div>
-          </Link>
-
-          <Link 
-            href="/generate" 
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/generate')}`}
-          >
-            <div className="flex items-center space-x-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-              <span>Cover Lt</span>
-            </div>
-          </Link>
+        <div className="hidden items-center gap-2 lg:flex">
+          {links.map((link) => {
+            const active = pathname?.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium",
+                  active ? "text-white" : "text-slate-400 hover:text-white",
+                )}
+              >
+                {active ? (
+                  <motion.span
+                    layoutId="active-nav-pill"
+                    className="absolute inset-0 rounded-full border border-sky-300/30 bg-white/8"
+                    transition={{ type: "spring", stiffness: 320, damping: 28 }}
+                  />
+                ) : null}
+                <span className="relative z-10">{link.label}</span>
+              </Link>
+            );
+          })}
         </div>
 
-        {/* Mobile Menu Button */}
-        <div className="md:hidden">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
-            aria-label="Toggle mobile menu"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Right side actions */}
-        <div className="flex items-center space-x-2">
-          {/* Theme Toggle */}
+        <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200 relative overflow-hidden group"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 hover:border-sky-300/35 hover:text-white"
             aria-label="Toggle theme"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
-            {theme === 'light' ? (
-              <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            {theme === "dark" ? (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M12 3v1.5M12 19.5V21M4.5 12H3m18 0h-1.5m-12.2 5.3l-1 1m10.4-10.4l1-1m-10.4 0l-1-1m10.4 10.4l1 1M15.5 12a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z"
+                />
               </svg>
             ) : (
-              <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M20.354 15.354A9 9 0 018.646 3.646 9.5 9.5 0 1012 21a9 9 0 008.354-5.646z"
+                />
               </svg>
             )}
           </button>
 
-          {/* Logout Button */}
           <button
             onClick={logout}
-            className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
+            className="hidden rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-200 hover:border-rose-300/40 hover:bg-rose-400/14 md:inline-flex"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            Logout
+          </button>
+
+          <button
+            onClick={() => setMobileMenuOpen((value) => !value)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 hover:text-white lg:hidden"
+            aria-label="Toggle navigation"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
             </svg>
-            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
-      </div>
+      </nav>
 
-      {/* Mobile Menu Dropdown */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="px-4 py-2 space-y-1">
-            <Link 
-              href="/profile" 
-              className={`block px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/profile')}`}
-              onClick={() => setMobileMenuOpen(false)}
+      {mobileMenuOpen ? (
+        <div className="mx-auto mt-3 max-w-7xl lg:hidden">
+          <div className="glass-panel overflow-hidden rounded-[1.5rem] p-3">
+            {links.map((link) => {
+              const active = pathname?.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    "flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium",
+                    active
+                      ? "bg-white/8 text-white"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white",
+                  )}
+                >
+                  <span>{link.short}</span>
+                  {active ? <span className="status-dot" /> : null}
+                </Link>
+              );
+            })}
+            <button
+              onClick={logout}
+              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-100"
             >
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                <span>Profile</span>
-              </div>
-            </Link>
-            
-            <Link 
-              href="/resume" 
-              className={`block px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/resume')}`}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m4-4H8m9 9H7a2 2 0 01-2-2V5a2 2 0 012-2h8l4 4v14a2 2 0 01-2 2z" />
-                </svg>
-                <span>Resume</span>
-              </div>
-            </Link>
-
-            <Link 
-              href="/generate" 
-              className={`block px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${active('/generate')}`}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-                <span>Cover Lt</span>
-              </div>
-            </Link>
+              <span>Logout</span>
+              <span className="status-dot" />
+            </button>
           </div>
         </div>
-      )}
-    </nav>
+      ) : null}
+    </header>
   );
 }
-
-

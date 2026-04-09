@@ -6,8 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
 
   if (enhance && stylePreferences) {
     try {
-      const model = getModel('gemini-2.5-flash');
+      const model = getModel('hard');
       async function improve(prompt: string) {
         const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
         return res.response.text().trim();
@@ -290,38 +291,44 @@ export async function POST(req: NextRequest) {
   }
 
   // Beautify markdown
-  function stripMdKeepNewlines(s: string): string {
-    return (s || '')
-      // remove list markers at line starts, including '*' variants
-      .replace(/^\s*[\*\-\u2013\u2014•]\s+/gm, '')
-      // basic markdown emphasis
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\*(.*?)\*/g, '$1')
-      .replace(/__([^_]+)__/g, '$1')
-      .replace(/_([^_]+)_/g, '$1')
-      .replace(/`([^`]+)`/g, '$1');
+  function truncateTextToWidth(text: string, size: number, maxWidth: number, font = helv) {
+    if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+    const ellipsis = '...';
+    let current = text;
+    while (current.length > 1 && font.widthOfTextAtSize(`${current}${ellipsis}`, size) > maxWidth) {
+      current = current.slice(0, -1);
+    }
+    return `${current}${ellipsis}`;
   }
 
   // Skills chips row (under banner)
   let y = top - bannerH - 16;
   const labelSize = Math.max(fontSize, 10);
-  page.drawText('SKILLS', { x: contentLeft, y, size: labelSize, font: helvBold, color: ACCENT });
-  y -= labelSize + 7;
+  y = drawSkillsLabel(y);
 
   let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
   if (!skillsText) skillsText = '—';
-  const chipTokens = stripMdKeepNewlines(skillsText)
-    .split(/[,;\n]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
+  const chipTokens = splitResumeItems(skillsText);
+  function drawSkillsLabel(currentY: number, continuation = false) {
+    page.drawText(continuation ? 'SKILLS (CONT.)' : 'SKILLS', { x: contentLeft, y: currentY, size: labelSize, font: helvBold, color: ACCENT });
+    return currentY - labelSize - 7;
+  }
   function drawChips(tokens: string[], startX: number, startY: number, lineHeight: number, maxWidth: number) {
     let cx = startX;
     let cy = startY;
     const padX = 6;
     const padY = 3;
     const chipSize = Math.max(fontSize - 1, 9);
+    const chipBottomBuffer = bottom + 40;
+    const maxChipTextWidth = maxWidth - startX - padX * 2;
+    // Root Cause vs Logic:
+    // Root Cause: The template rendered every chip immediately and only checked for overflow after the fact,
+    // so very long skill inventories could draw underneath later content or below the printable page area.
+    // Logic: Each chip now fits to the available width and paginates before drawing when the next row would
+    // cross the bottom buffer, which keeps the card grid starting from a clean, known cursor every time.
     for (const t of tokens) {
-      const textW = helv.widthOfTextAtSize(t, chipSize);
+      const fittedToken = truncateTextToWidth(t, chipSize, maxChipTextWidth, helv);
+      const textW = helv.widthOfTextAtSize(fittedToken, chipSize);
       const chipW = textW + padX * 2;
       const chipH = chipSize + padY * 2;
       if (cx + chipW > maxWidth) {
@@ -329,12 +336,18 @@ export async function POST(req: NextRequest) {
         cx = startX;
         cy -= (chipH + 6);
       }
+      if (cy - chipH < chipBottomBuffer) {
+        page = pdf.addPage([612, 792]);
+        ({ width, height } = page.getSize());
+        cy = drawSkillsLabel(height - margin, true);
+        cx = startX;
+      }
       // shadow (remove opacity if pdf-lib not supporting it)
       page.drawRectangle({ x: cx + 1, y: cy - 1, width: chipW, height: chipH, color: SHADOW, opacity: 0.25 });
       // chip
       page.drawRectangle({ x: cx, y: cy, width: chipW, height: chipH, color: CARD_BG, borderColor: ACCENT_LIGHT, borderWidth: 0.75 });
       // text
-      page.drawText(t, { x: cx + padX, y: cy + padY, size: chipSize, font: helv, color: rgb(0, 0, 0) });
+      page.drawText(fittedToken, { x: cx + padX, y: cy + padY, size: chipSize, font: helv, color: rgb(0, 0, 0) });
       cx += chipW + 6;
     }
     return cy - (chipSize + padY * 2 + 10);
@@ -349,13 +362,13 @@ export async function POST(req: NextRequest) {
   let colY: number[] = [y, y];
   // If the chips pushed below bottom margin, start a new page
   if (y < bottom + 60) {
-    newPageGrid(false);   // this sets colY internally, no header on new pages
+    newPageGrid();
   } else {
     // only set colY here if we didn't break page
     colY = [y, y];
   }
 
-  function newPageGrid(repeatHeader = false) {
+  function newPageGrid() {
     page = pdf.addPage([612, 792]);
     ({ width, height } = page.getSize());
 
@@ -369,7 +382,7 @@ export async function POST(req: NextRequest) {
       const other: 0 | 1 = col === 0 ? 1 : 0;
       if (colY[other] - needed >= bottom) return other;
       // new page
-      newPageGrid(false);
+      newPageGrid();
       return 0;
     }
     return col;
@@ -377,42 +390,18 @@ export async function POST(req: NextRequest) {
 
   // Helpers: wrap measurement & drawing
   function measureWrapped(text: string, size: number, maxWidth: number, font = helv) {
-    const words = (text || '').split(/\s+/).filter(Boolean);
-    if (!words.length) return 0;
-    let line = '';
-    let lines = 0;
-    for (const w of words) {
-      const next = line ? line + ' ' + w : w;
-      if (font.widthOfTextAtSize(next, size) > maxWidth) {
-        lines++;
-        line = w;
-      } else {
-        line = next;
-      }
-    }
-    if (line) lines++;
-    return lines * (size + 4);
+    const lines = wrapTextLines(text, font, size, maxWidth);
+    return lines.length * (size + 4);
   }
   function drawWrappedAt(x: number, yRef: { v: number }, text: string, size: number, maxWidth: number, font = helv) {
-    const words = (text || '').split(/\s+/).filter(Boolean);
-    let line = '';
-    for (const w of words) {
-      const next = line ? line + ' ' + w : w;
-      if (font.widthOfTextAtSize(next, size) > maxWidth) {
-        page.drawText(line, { x, y: yRef.v, size, font });
-        yRef.v -= size + 4;
-        line = w;
-      } else {
-        line = next;
-      }
-    }
-    if (line) {
+    const lines = wrapTextLines(text, font, size, maxWidth);
+    for (const line of lines) {
       page.drawText(line, { x, y: yRef.v, size, font });
       yRef.v -= size + 4;
     }
   }
   function measureBullets(text: string, size: number, maxWidth: number) {
-    text = stripMdKeepNewlines(text);
+    text = stripMarkdownForPdf(text);
     const lines = (text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
     let h = 0;
     const bullet = '•';
@@ -424,7 +413,7 @@ export async function POST(req: NextRequest) {
     return h + lines.length * 2;
   }
   function drawBulletsAt(x: number, yRef: { v: number }, text: string, size: number, maxWidth: number) {
-    text = stripMdKeepNewlines(text);
+    text = stripMarkdownForPdf(text);
     const lines = (text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
     const bullet = '•';
     const bulletIndent = helv.widthOfTextAtSize(`${bullet}  `, size);
@@ -439,15 +428,26 @@ export async function POST(req: NextRequest) {
   
 
   // Card renderer
+  function getTitleMetrics(title: string, metaRight: string, titleSize: number, maxWidth: number) {
+    const metaSize = Math.max(titleSize - 1, 9);
+    const titleLines = wrapTextLines(title, helvBold, titleSize, maxWidth);
+    const metaWidth = metaRight ? helv.widthOfTextAtSize(metaRight, metaSize) : 0;
+    const metaFitsFirstLine = !!metaRight
+      && titleLines.length > 0
+      && helvBold.widthOfTextAtSize(titleLines[0], titleSize) + metaWidth + 12 <= maxWidth;
+    return { metaSize, titleLines, metaFitsFirstLine };
+  }
+
   function estimateCardHeight(title: string, metaRight: string, body: string, bodyIsBullets: boolean) {
     const pad = 10;
     const ttlSize = Math.max(fontSize + 1, 12);
     const bodySize = Math.max(fontSize - 1, 10);
     const textW = colW - pad * 2;
+    const { metaSize, titleLines, metaFitsFirstLine } = getTitleMetrics(title, metaRight, ttlSize, textW);
 
     let h = pad; // top pad
-    h += ttlSize + 4; // title row
-    if (metaRight) h += 0; // same row
+    h += titleLines.length * (ttlSize + 2);
+    if (metaRight && !metaFitsFirstLine) h += metaSize + 4;
     h += 6; // gap
     if (body) {
       h += bodyIsBullets ? measureBullets(body, bodySize, textW) : measureWrapped(body, bodySize, textW);
@@ -458,35 +458,23 @@ export async function POST(req: NextRequest) {
 
   // Title styler with wrap
   function drawTitleWithWrap(title: string, metaRight: string, x: number, y: number, maxWidth: number, titleSize: number) {
-    const metaSize = Math.max(titleSize - 1, 9);
-    const metaWidth = metaRight ? helv.widthOfTextAtSize(metaRight, metaSize) + 12 : 0;
-    const words = (title || '').split(/\s+/).filter(Boolean);
-    const lines: string[] = [];
-    let line = '';
-    // Wrap: first line reserves space for date
-    for (const w of words) {
-      const test = line ? line + ' ' + w : w;
-      const testWidth = helvBold.widthOfTextAtSize(test, titleSize);
-      const limit = lines.length === 0 ? maxWidth - metaWidth : maxWidth;
-      if (testWidth > limit && line) {
-        lines.push(line);
-        line = w;
-      } else {
-        line = test;
-      }
-    }
-    if (line) lines.push(line);
-    // Draw first line with date
-    page.drawText(lines[0], { x, y, size: titleSize, font: helvBold, color: ACCENT_DARK });
-    if (metaRight) {
-      const mW = helv.widthOfTextAtSize(metaRight, metaSize);
-      page.drawText(metaRight, { x: x + maxWidth - mW, y, size: metaSize, font: helv, color: rgb(0.15,0.15,0.18) });
-    }
-    // Draw remaining lines
+    const { metaSize, titleLines, metaFitsFirstLine } = getTitleMetrics(title, metaRight, titleSize, maxWidth);
+    if (!titleLines.length) return y;
+
     let yy = y;
-    for (let i = 1; i < lines.length; i++) {
+    page.drawText(titleLines[0], { x, y: yy, size: titleSize, font: helvBold, color: ACCENT_DARK });
+    if (metaRight && metaFitsFirstLine) {
+      const mW = helv.widthOfTextAtSize(metaRight, metaSize);
+      page.drawText(metaRight, { x: x + maxWidth - mW, y: yy, size: metaSize, font: helv, color: rgb(0.15, 0.15, 0.18) });
+    }
+    for (let i = 1; i < titleLines.length; i++) {
       yy -= titleSize + 2;
-      page.drawText(lines[i], { x, y: yy, size: titleSize, font: helvBold, color: ACCENT_DARK });
+      page.drawText(titleLines[i], { x, y: yy, size: titleSize, font: helvBold, color: ACCENT_DARK });
+    }
+    if (metaRight && !metaFitsFirstLine) {
+      yy -= metaSize + 4;
+      const mW = helv.widthOfTextAtSize(metaRight, metaSize);
+      page.drawText(metaRight, { x: x + maxWidth - mW, y: yy, size: metaSize, font: helv, color: rgb(0.15, 0.15, 0.18) });
     }
     // Drop cursor further down to avoid merging with body
     return yy - (titleSize + 6);
@@ -495,7 +483,7 @@ export async function POST(req: NextRequest) {
   
   function drawCard(col: 0 | 1, title: string, metaRight: string, body: string, bodyIsBullets: boolean) {
     const pad = 10;
-    const ttlSize = Math.max(fontSize, 10);
+    const ttlSize = Math.max(fontSize + 1, 12);
     const metaSize = Math.max(fontSize - 1, 9);
     const bodySize = Math.max(fontSize - 1, 10);
     // each card’s available width = column width minus padding
@@ -521,7 +509,7 @@ export async function POST(req: NextRequest) {
     // Body
     if (body) {
       if (bodyIsBullets) drawBulletsAt(x + pad, yRef, body, bodySize, w - pad * 2);
-      else drawWrappedAt(x + pad, yRef, stripMdKeepNewlines(body), bodySize, w - pad * 2, helv);
+      else drawWrappedAt(x + pad, yRef, stripMarkdownForPdf(body), bodySize, w - pad * 2, helv);
     }
 
     // update column cursor (leave a gap after)
@@ -550,7 +538,7 @@ export async function POST(req: NextRequest) {
       const enhanced = enhancedExperienceSummaries[idx];
       const targeted = contentEnhancementData?.[`experience-${idx}`];
       const finalBody = (targeted || enhanced || original || '').trim();
-      const isBullets = finalBody.includes('\n') || /^[•\-\u2013\u2014]\s+/.test(finalBody);
+      const isBullets = finalBody.includes('\n') || /^[•\-\u2013\u2014\*]\s+/.test(finalBody);
       nextCol = drawCard(nextCol, header || 'Experience', timeInfo, finalBody, isBullets);
     }
   }
@@ -564,7 +552,7 @@ export async function POST(req: NextRequest) {
       const enhanced = enhancedProjectSummaries[idx];
       const targeted = contentEnhancementData?.[`project-${idx}`];
       const finalBody = (targeted || enhanced || original || '').trim();
-      const isBullets = finalBody.includes('\n') || /^[•\-\u2013\u2014]\s+/.test(finalBody);
+      const isBullets = finalBody.includes('\n') || /^[•\-\u2013\u2014\*]\s+/.test(finalBody);
       nextCol = drawCard(nextCol, p.name || 'Project', '', finalBody, isBullets);
     }
   }

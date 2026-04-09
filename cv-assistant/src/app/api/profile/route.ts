@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getAuthFromCookies } from '@/lib/auth';
-import { getModel } from '@/lib/gemini';
+import { getModel } from '@/lib/ai';
 
 export async function GET(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -18,8 +18,8 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   await connectToDatabase();
 
-  // Generate summaries for new/updated items using flash model
-  const model = getModel('gemini-2.5-flash-lite');
+  // Generate summaries for new/updated items using the lightweight shared model preset.
+  const model = getModel('easy');
 
   async function summarize(text: string) {
     const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: `Summarize in 1-2 concise sentences, return answer in text-only, no comments, not markdown:
@@ -48,5 +48,4 @@ ${text}
   const updated = await UserModel.findByIdAndUpdate(auth.userId, { profile }, { new: true, upsert: false });
   return NextResponse.json({ ok: true, profile: updated?.profile || profile });
 }
-
 

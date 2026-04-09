@@ -1,9 +1,26 @@
 "use client";
 import { useEffect, useState } from 'react';
+import { AICoachingInput } from '@/components/resume/AICoachingInput';
+import Style5Preview from '@/components/resume/Style5Preview';
+import { MAX_RESUME_ITEMS, MIN_JOB_DESCRIPTION_WORDS } from '@/lib/resume/constants';
 
 type Project = { name: string; summary?: string };
 type Experience = { companyName: string; role: string; summary?: string };
 type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
+type StyleId = 'style1' | 'style2' | 'style3' | 'style4' | 'style5';
+
+const STYLE_OPTIONS: Array<{
+  id: StyleId;
+  label: string;
+  previewKind: 'pdf' | 'mock';
+  previewSrc?: string;
+}> = [
+  { id: 'style1', label: 'Style 1 - Harvard', previewKind: 'pdf', previewSrc: '/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
+  { id: 'style2', label: 'Style 2 - Chronological', previewKind: 'pdf', previewSrc: '/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.05' },
+  { id: 'style3', label: 'Style 3 - Modernised', previewKind: 'pdf', previewSrc: '/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
+  { id: 'style4', label: 'Style 4 - Creative', previewKind: 'pdf', previewSrc: '/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
+  { id: 'style5', label: 'Style 5 - Dossier Ledger', previewKind: 'mock' },
+];
 
 export default function ResumePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -12,8 +29,11 @@ export default function ResumePage() {
   const [selectedExperiences, setSelectedExperiences] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Generating PDF...');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [enhance, setEnhance] = useState<boolean>(false);
+  const [aiCoachingEnabled, setAiCoachingEnabled] = useState<boolean>(false);
+  const [jobDescription, setJobDescription] = useState<string>('');
   const [stylingCustomization, setStylingCustomization] = useState<boolean>(false);
   const [contentCustomization, setContentCustomization] = useState<boolean>(false);
   const [stylingMessages, setStylingMessages] = useState<Array<{ role: 'user'|'assistant'; content: string }>>([]);
@@ -43,6 +63,21 @@ export default function ResumePage() {
   useEffect(() => {
     console.log('Content enhancement started changed to:', contentEnhancementStarted);
   }, [contentEnhancementStarted]);
+
+  useEffect(() => {
+    if (!aiCoachingEnabled) return;
+    if (contentCustomization) {
+      setContentCustomization(false);
+    }
+    if (currentAgent === 'content') {
+      setCurrentAgent(null);
+      setContentMessages([]);
+      setContentSelectedItems([]);
+      setCurrentContentItem(0);
+      setContentEnhancementStarted(false);
+    }
+  }, [aiCoachingEnabled, contentCustomization, currentAgent]);
+
   const [stylePreferences, setStylePreferences] = useState<{
     fontSize?: string;
     useBold?: boolean;
@@ -59,9 +94,8 @@ export default function ResumePage() {
   const [uiUseBold, setUiUseBold] = useState<boolean>(false);
   const [uiUseItalic, setUiUseItalic] = useState<boolean>(false);
   const [uiAccentColor, setUiAccentColor] = useState<'black' | 'dark-blue' | 'dark-gray' | 'crimson' | 'dark-green'>('black');
-  const [selectedStyle, setSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4'>('style1');
   const [isStyleModalOpen, setIsStyleModalOpen] = useState<boolean>(false);
-  const [modalSelectedStyle, setModalSelectedStyle] = useState<'style1' | 'style2' | 'style3' | 'style4' | null>(null);
+  const [modalSelectedStyle, setModalSelectedStyle] = useState<StyleId | null>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState<number>(0);
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
@@ -87,12 +121,12 @@ export default function ResumePage() {
 
   // Function to navigate to next preview
   const nextPreview = () => {
-    setCurrentPreviewIndex((prev) => (prev + 1) % 4);
+    setCurrentPreviewIndex((prev) => (prev + 1) % STYLE_OPTIONS.length);
   };
 
   // Function to navigate to previous preview
   const prevPreview = () => {
-    setCurrentPreviewIndex((prev) => (prev - 1 + 4) % 4);
+    setCurrentPreviewIndex((prev) => (prev - 1 + STYLE_OPTIONS.length) % STYLE_OPTIONS.length);
   };
 
   // Function to go to specific preview
@@ -246,7 +280,7 @@ export default function ResumePage() {
                     finalEnhancedContent = beautified.formattedContent;
                   }
                 }
-              } catch (e) {
+              } catch {
                 console.warn('Beautify step failed, using raw enhanced content');
               }
             }
@@ -293,28 +327,6 @@ export default function ResumePage() {
       setCurrentContentItem(contentSelectedItems.length);
       setContentMessages([]);
     }
-  }
-
-  // Function to check if coaching is in progress
-  function isCoachingInProgress() {
-    // Check if any agent is active
-    if (!currentAgent) return false;
-    
-    if (currentAgent === 'styling') {
-      // Styling is in progress if preferences not set yet
-      return stylingCustomization && !stylePreferences;
-    } else if (currentAgent === 'content') {
-      // Content is in progress if items are selected, enhancement has started, but not all completed
-      if (contentSelectedItems.length === 0 || !contentEnhancementStarted) {
-        console.log('Content coaching not in progress:', { contentSelectedItems: contentSelectedItems.length, contentEnhancementStarted });
-        return false;
-      }
-      const inProgress = currentContentItem < contentSelectedItems.length;
-      console.log('Content coaching in progress:', { currentContentItem, totalItems: contentSelectedItems.length, inProgress });
-      return inProgress;
-    }
-    
-    return false;
   }
 
   // Function to check if ALL coaching is complete (both agents if enabled)
@@ -400,23 +412,45 @@ export default function ResumePage() {
   }, []);
 
   const totalSelected = selectedProjects.length + selectedExperiences.length;
-  const limitReached = totalSelected > 7;
+  const manualSelectionCount = totalSelected;
+  const limitReached = !aiCoachingEnabled && manualSelectionCount > MAX_RESUME_ITEMS;
+  const jobDescriptionWordCount = jobDescription.trim() ? jobDescription.trim().split(/\s+/).filter(Boolean).length : 0;
+  const aiCoachingInputError = !aiCoachingEnabled
+    ? null
+    : !jobDescription.trim()
+      ? 'Job description is required when AI Coaching is enabled.'
+      : jobDescriptionWordCount < MIN_JOB_DESCRIPTION_WORDS
+        ? `Job description is too short. Please add at least ${MIN_JOB_DESCRIPTION_WORDS} words so AI Coaching has enough context.`
+        : null;
+  const generationBlockedReason = !isAllCoachingComplete()
+    ? 'Please complete your AI coaching session first, or click Reset to cancel'
+    : aiCoachingInputError;
 
   function toggle(index: number, list: number[], setList: (v: number[]) => void) {
+    if (aiCoachingEnabled) return;
     setList(list.includes(index) ? list.filter(i => i !== index) : [...list, index]);
   }
 
-  async function generate() {
+  async function requestResumePreview(chosenStyle: StyleId) {
     if (!profile) return;
-    if (limitReached) {
-      setError('You can include at most 7 items across projects and experiences.');
+    if (chosenStyle === 'style5') {
+      setError('Style 5 preview is not available for PDF generation yet. Please choose styles 1-4.');
       return;
     }
+    if (limitReached) {
+      setError(`You can include at most ${MAX_RESUME_ITEMS} items across projects and experiences.`);
+      return;
+    }
+    if (aiCoachingInputError) {
+      setError(aiCoachingInputError);
+      return;
+    }
+
     setLoading(true);
+    setLoadingMessage(aiCoachingEnabled ? 'AI is analyzing the JD...' : 'Generating PDF...');
     setError(null);
     setPdfUrl(null);
-    
-    // Debug: Log what we're sending
+
     console.log('Generating resume with:', {
       skills,
       selectedProjects,
@@ -424,23 +458,29 @@ export default function ResumePage() {
       enhance,
       qa: [...stylingMessages, ...contentMessages],
       stylePreferences,
-      contentEnhancementData
+      contentEnhancementData,
+      aiCoachingEnabled,
+      jobDescription,
+      chosenStyle,
     });
-    
-    const res = await fetch(`/api/resume/${selectedStyle}`, {
+
+    const res = await fetch('/api/generate-resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        skills, 
-        selectedProjects, 
-        selectedExperiences, 
-        enhance, 
-        qa: [...stylingMessages, ...contentMessages], 
+      body: JSON.stringify({
+        selectedStyle: chosenStyle,
+        skills,
+        selectedProjects,
+        selectedExperiences,
+        enhance,
+        qa: [...stylingMessages, ...contentMessages],
         stylePreferences,
-        contentEnhancementData
-      })
+        contentEnhancementData,
+        ai_coaching_enabled: aiCoachingEnabled,
+        job_description: jobDescription,
+      }),
     });
-    
+
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       console.error('PDF generation failed:', d);
@@ -448,7 +488,7 @@ export default function ResumePage() {
       setLoading(false);
       return;
     }
-    
+
     try {
       const blob = await res.blob();
       if (blob.size === 0) {
@@ -503,7 +543,7 @@ export default function ResumePage() {
               <div className="mb-3">
                 <h2 className="text-lg font-semibold text-foreground dark:text-black">Choose a Resume Style</h2>
                 <p className="text-sm text-muted-foreground dark:text-gray-800">
-                  {isMobile ? 'Swipe through styles to preview and select your preferred layout.' : 'Preview all four styles and select your preferred layout.'}
+                  {isMobile ? 'Swipe through styles to preview and select your preferred layout.' : 'Preview all five styles and select your preferred layout.'}
                 </p>
               </div>
 
@@ -514,9 +554,9 @@ export default function ResumePage() {
                   <div className="border rounded-lg overflow-hidden">
                     <div className="px-3 py-2 border-b flex items-center justify-between bg-gray-50 dark:bg-gray-800">
                       <span className="text-sm font-medium dark:text-white">
-                        {['Style 1 - Harvard', 'Style 2 - Chronological', 'Style 3 - Modernised', 'Style 4 - Creative'][currentPreviewIndex]}
+                        {STYLE_OPTIONS[currentPreviewIndex]?.label}
                       </span>
-                      {modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex] && (
+                      {modalSelectedStyle === STYLE_OPTIONS[currentPreviewIndex]?.id && (
                         <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
                       )}
                     </div>
@@ -526,16 +566,20 @@ export default function ResumePage() {
                       onTouchMove={onTouchMove}
                       onTouchEnd={onTouchEnd}
                     >
-                      <iframe 
-                        src={`/${['style1', 'style2', 'style3', 'style4'][currentPreviewIndex]}.pdf#toolbar=0&navpanes=0&scrollbar=0&view=Fit&zoom=1.0`}
-                        className="border-0"
-                        title={`${['Style 1 - Harvard', 'Style 2 - Chronological', 'Style 3 - Modernised', 'Style 4 - Creative'][currentPreviewIndex]} Preview`}
-                        onError={(e) => console.error(`${['Style 1', 'Style 2', 'Style 3', 'Style 4'][currentPreviewIndex]} PDF failed to load:`, e)}
-                        style={{ 
-                          width: '100%',
-                          height: '100%',
-                        }}
-                      />
+                      {STYLE_OPTIONS[currentPreviewIndex]?.previewKind === 'pdf' ? (
+                        <iframe 
+                          src={STYLE_OPTIONS[currentPreviewIndex]?.previewSrc}
+                          className="border-0"
+                          title={`${STYLE_OPTIONS[currentPreviewIndex]?.label} Preview`}
+                          onError={(e) => console.error(`${STYLE_OPTIONS[currentPreviewIndex]?.label} PDF failed to load:`, e)}
+                          style={{ 
+                            width: '100%',
+                            height: '100%',
+                          }}
+                        />
+                      ) : (
+                        <Style5Preview />
+                      )}
                       {/* Swipe hint overlay for mobile */}
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4 opacity-0 hover:opacity-100 transition-opacity">
                         <div className="text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
@@ -564,21 +608,21 @@ export default function ResumePage() {
                     {/* Preview Indicators with Style Names */}
                     <div className="flex flex-col items-center gap-1">
                       <div className="flex gap-2">
-                        {[0, 1, 2, 3].map((index) => (
+                        {STYLE_OPTIONS.map((style, index) => (
                           <button
-                            key={index}
+                            key={style.id}
                             onClick={() => goToPreview(index)}
                             className={`w-3 h-3 rounded-full transition-all ${
                               index === currentPreviewIndex
                                 ? 'bg-primary scale-110'
                                 : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'
                             }`}
-                            aria-label={`Go to style ${index + 1}`}
+                            aria-label={`Go to ${style.label}`}
                           />
                         ))}
                       </div>
                       <div className="text-xs text-gray-500 text-center">
-                        {currentPreviewIndex + 1} of 4
+                        {currentPreviewIndex + 1} of {STYLE_OPTIONS.length}
                       </div>
                     </div>
 
@@ -598,133 +642,55 @@ export default function ResumePage() {
                   <div className="text-center">
                     <button
                       onClick={() => {
-                        const styleMap = ['style1', 'style2', 'style3', 'style4'] as const;
-                        setModalSelectedStyle(styleMap[currentPreviewIndex]);
+                        setModalSelectedStyle(STYLE_OPTIONS[currentPreviewIndex].id);
                       }}
                       className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                        modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex]
+                        modalSelectedStyle === STYLE_OPTIONS[currentPreviewIndex].id
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                       }`}
                     >
-                      {modalSelectedStyle === ['style1', 'style2', 'style3', 'style4'][currentPreviewIndex] ? 'Selected' : 'Select This Style'}
+                      {modalSelectedStyle === STYLE_OPTIONS[currentPreviewIndex].id ? 'Selected' : 'Select This Style'}
                     </button>
                   </div>
                 </div>
               ) : (
                 /* Desktop Layout - Grid of All Previews */
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div
-                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
-                      modalSelectedStyle === 'style1' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
-                    }`}
-                    onClick={() => setModalSelectedStyle('style1')}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="px-3 py-2 border-b flex items-center justify-between">
-                      <span className="text-sm font-medium">Style 1 - Harvard</span>
-                      {modalSelectedStyle === 'style1' && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
-                      )}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+                  {STYLE_OPTIONS.map((style) => (
+                    <div
+                      key={style.id}
+                      className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
+                        modalSelectedStyle === style.id ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
+                      }`}
+                      onClick={() => setModalSelectedStyle(style.id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="px-3 py-2 border-b flex items-center justify-between">
+                        <span className="text-sm font-medium">{style.label}</span>
+                        {modalSelectedStyle === style.id && (
+                          <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
+                        )}
+                      </div>
+                      <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
+                        {style.previewKind === 'pdf' ? (
+                          <iframe 
+                            src={style.previewSrc}
+                            className="w-full h-full border-0"
+                            title={`${style.label} Preview`}
+                            onError={(e) => console.error(`${style.label} PDF failed to load:`, e)}
+                            style={{ 
+                              width: '100%',
+                              height: '100%'
+                            }}
+                          />
+                        ) : (
+                          <Style5Preview />
+                        )}
+                      </div>
                     </div>
-                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                      <iframe 
-                        src="/style1.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                        className="w-full h-full border-0"
-                        title="Style 1 Preview"
-                        onError={(e) => console.error('Style 1 PDF failed to load:', e)}
-                        style={{ 
-                          width: '100%',
-                          height: '100%'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
-                      modalSelectedStyle === 'style2' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
-                    }`}
-                    onClick={() => setModalSelectedStyle('style2')}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="px-3 py-2 border-b flex items-center justify-between">
-                      <span className="text-sm font-medium">Style 2 - Chronological</span>
-                      {modalSelectedStyle === 'style2' && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
-                      )}
-                    </div>
-                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                      <iframe 
-                        src="/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.0" 
-                        className="w-full h-full border-0"
-                        title="Style 2 Preview"
-                        onError={(e) => console.error('Style 2 PDF failed to load:', e)}
-                        style={{ 
-                          width: '100%',
-                          height: '100%'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
-                      modalSelectedStyle === 'style3' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
-                    }`}
-                    onClick={() => setModalSelectedStyle('style3')}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="px-3 py-2 border-b flex items-center justify-between">
-                      <span className="text-sm font-medium">Style 3 - Modernised</span>
-                      {modalSelectedStyle === 'style3' && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
-                      )}
-                    </div>
-                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                      <iframe 
-                        src="/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                        className="w-full h-full border-0"
-                        title="Style 3 Preview"
-                        onError={(e) => console.error('Style 3 PDF failed to load:', e)}
-                        style={{ 
-                          width: '100%',
-                          height: '100%'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={`border rounded-lg overflow-hidden hover:ring-2 cursor-pointer transition-all ${
-                      modalSelectedStyle === 'style4' ? 'ring-2 ring-primary' : 'ring-0 hover:ring-1 hover:ring-gray-300'
-                    }`}
-                    onClick={() => setModalSelectedStyle('style4')}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="px-3 py-2 border-b flex items-center justify-between">
-                      <span className="text-sm font-medium">Style 4 - Creative</span>
-                      {modalSelectedStyle === 'style4' && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">Selected</span>
-                      )}
-                    </div>
-                    <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                      <iframe 
-                        src="/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.8" 
-                        className="w-full h-full border-0"
-                        title="Style 4 Preview"
-                        onError={(e) => console.error('Style 4 Preview', e)}
-                        style={{ 
-                          width: '100%',
-                          height: '100%'
-                        }}
-                      />
-                    </div>
-                  </div>
+                  ))}
                 </div>
               )}
               <div className="mt-4 flex justify-end gap-3">
@@ -735,57 +701,19 @@ export default function ResumePage() {
                   Cancel
                 </button>
                 <button
-                  disabled={!modalSelectedStyle}
+                  disabled={!modalSelectedStyle || !!aiCoachingInputError}
                   onClick={async () => {
                     if (!modalSelectedStyle) return;
-                    setLoading(true);
-                    setError(null);
-                    setPdfUrl(null);
-                    const chosenStyle = modalSelectedStyle; // Store the selected style
-                    setSelectedStyle(chosenStyle);
+                    const chosenStyle = modalSelectedStyle;
                     setIsStyleModalOpen(false);
                     setModalSelectedStyle(null);
-                    // Use the stored value directly instead of relying on state update
-                    const res = await fetch(`/api/resume/${chosenStyle}`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ 
-                        skills, 
-                        selectedProjects, 
-                        selectedExperiences, 
-                        enhance, 
-                        qa: [...stylingMessages, ...contentMessages], 
-                        stylePreferences,
-                        contentEnhancementData
-                      })
-                    });
-                    
-                    if (!res.ok) {
-                      const d = await res.json().catch(() => ({}));
-                      console.error('PDF generation failed:', d);
-                      setError(d.error || 'Failed to generate PDF');
-                      setLoading(false);
-                      return;
-                    }
-                    
-                    try {
-                      const blob = await res.blob();
-                      if (blob.size === 0) {
-                        console.error('PDF blob is empty');
-                        setError('Generated PDF is empty. Please check your selections and try again.');
-                        setLoading(false);
-                        return;
-                      }
-                      const url = URL.createObjectURL(blob);
-                      setPdfUrl(url);
-                      setLoading(false);
-                    } catch (error) {
-                      console.error('Error processing PDF response:', error);
-                      setError('Error processing generated PDF');
-                      setLoading(false);
-                    }
+                    await requestResumePreview(chosenStyle);
                   }}
-                  className={`px-4 py-2 rounded ${!modalSelectedStyle ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
+                  className={`px-4 py-2 rounded ${
+                    !modalSelectedStyle || aiCoachingInputError
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  }`}
                 >
                   Generate
                 </button>
@@ -812,10 +740,29 @@ export default function ResumePage() {
               <p className="text-xs text-muted-foreground mt-2">Tips: Don&apos;t overcrowd this section. Keep it concise and relevant.</p>
             </div>
 
+            <AICoachingInput
+              enabled={aiCoachingEnabled}
+              jobDescription={jobDescription}
+              disabled={loading}
+              error={aiCoachingInputError}
+              onEnabledChange={setAiCoachingEnabled}
+              onJobDescriptionChange={setJobDescription}
+            />
+
+            {aiCoachingEnabled && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                AI Coaching will score your full project and experience history against the job description,
+                keep the strongest matches, and rewrite each retained item individually for a more
+                detailed, job-aligned resume.
+              </div>
+            )}
+
             <div className="bg-card border rounded-xl p-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-semibold">Projects</h2>
-                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/7 selected</span>
+                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {aiCoachingEnabled ? 'Auto-ranked on generate' : `${manualSelectionCount}/${MAX_RESUME_ITEMS} selected`}
+                </span>
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.projects?.map((p, i) => (
@@ -828,6 +775,7 @@ export default function ResumePage() {
                       type="checkbox"
                       className="mt-1"
                       checked={selectedProjects.includes(i)}
+                      disabled={aiCoachingEnabled}
                       onChange={() => toggle(i, selectedProjects, setSelectedProjects)}
                     />
                     <div>
@@ -842,7 +790,9 @@ export default function ResumePage() {
             <div className="bg-card border rounded-xl p-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-semibold">Experiences</h2>
-                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>{totalSelected}/7 selected</span>
+                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {aiCoachingEnabled ? 'Auto-ranked on generate' : `${manualSelectionCount}/${MAX_RESUME_ITEMS} selected`}
+                </span>
               </div>
               <div className="space-y-2 max-h-80 overflow-auto pr-2">
                 {profile.experiences?.map((ex, i) => (
@@ -855,6 +805,7 @@ export default function ResumePage() {
                       type="checkbox"
                       className="mt-1"
                       checked={selectedExperiences.includes(i)}
+                      disabled={aiCoachingEnabled}
                       onChange={() => toggle(i, selectedExperiences, setSelectedExperiences)}
                     />
                     <div>
@@ -865,7 +816,9 @@ export default function ResumePage() {
                 ))}
               </div>
               {limitReached && (
-                <div className="mt-2 text-xs text-destructive">You can include at most 7 items. Please deselect some.</div>
+                <div className="mt-2 text-xs text-destructive">
+                  You can include at most {MAX_RESUME_ITEMS} items. Please deselect some.
+                </div>
               )}
             </div>
 
@@ -886,15 +839,15 @@ export default function ResumePage() {
 
             <button
               onClick={!isAllCoachingComplete() ? () => alert('Please complete your AI coaching session first, or click Reset to cancel') : () => setIsStyleModalOpen(true)}
-              disabled={loading || limitReached || !isAllCoachingComplete()}
+              disabled={loading || limitReached || !isAllCoachingComplete() || !!aiCoachingInputError}
               className={`w-full rounded px-4 py-3 transition-all duration-200 ${
-                !isAllCoachingComplete() 
+                !isAllCoachingComplete() || aiCoachingInputError
                   ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
                   : 'bg-primary text-primary-foreground hover:bg-primary/90'
               } ${loading ? 'opacity-75' : ''}`}
-              title={!isAllCoachingComplete() ? 'Please complete your AI coaching session first, or click Reset to cancel' : ''}
+              title={generationBlockedReason || ''}
             >
-              {loading ? 'Generating PDF...' : 'Generate PDF'}
+              {loading ? loadingMessage : 'Generate PDF'}
             </button>
           </div>
 
@@ -922,7 +875,13 @@ export default function ResumePage() {
             </div>
             {enhance && (
               <div className="mt-3 border rounded-lg p-3">
-                <div className="text-sm dark:text-white text-foreground font-medium mb-2">AI Coaching</div>
+                <div className="text-sm dark:text-white text-foreground font-medium mb-2">Manual AI Coaching</div>
+                {aiCoachingEnabled && (
+                  <div className="mb-3 rounded bg-blue-50 p-2 text-xs text-blue-900">
+                    JD-based AI Coaching already auto-selects and rewrites resume items. Manual content
+                    enhancement is disabled while that mode is enabled, but styling preferences still work.
+                  </div>
+                )}
                 
                 {/* Initial Selection */}
                 {!currentAgent && (
@@ -943,6 +902,7 @@ export default function ResumePage() {
                         id="content" 
                         checked={contentCustomization} 
                         onChange={e => setContentCustomization(e.target.checked)} 
+                        disabled={aiCoachingEnabled}
                         className="w-4 h-4"
                       />
                       <label htmlFor="content" className="text-sm dark:text-gray-100 text-foreground">Enhance your content</label>
@@ -1328,5 +1288,3 @@ export default function ResumePage() {
     </div>
   );
 }
-
-

@@ -1,149 +1,144 @@
+"use client";
+
 import Link from "next/link";
+import { motion } from "framer-motion";
+import GlassPanel from "@/components/ui/GlassPanel";
+import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+
+const pillars = [
+  {
+    title: "Profile Intelligence",
+    body: "Shape a richer candidate narrative with cleaner profile signals, stronger project framing, and sharper contact credibility.",
+  },
+  {
+    title: "Resume Direction",
+    body: "Select evidence with intent, preview premium layouts, and tune styling choices before generating a polished final PDF.",
+  },
+  {
+    title: "Letter Conversion",
+    body: "Pair job requirements with proof from your experience so your cover letter reads like conviction, not filler.",
+  },
+];
+
+const stats = [
+  { value: "3", label: "Core Modules" },
+  { value: "4", label: "Resume Directions" },
+  { value: "1", label: "Premium Workflow" },
+];
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        {/* Hero Section */}
-        <div className="text-center space-y-8 animate-fade-in">
-          <div className="inline-flex items-center space-x-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-medium">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span>AI-Powered Cover Letters & Resumes</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
-            Create Perfect Cover Letters
-            <br />
-            <span className="text-4xl md:text-5xl">and Customized Resumes</span>
-          </h1>
-          
-          <p className="text-xl text-muted-foreground dark:text-gray-400 max-w-3xl mx-auto leading-relaxed">
-            Transform your professional experience into compelling cover letters and tailored resumes. 
-            Our AI analyzes job descriptions and your profile to create personalized, impactful career documents.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-            <Link
-              href="/generate"
-              className="inline-flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span>Start Generating</span>
-            </Link>
-            
-            <Link
-              href="/profile"
-              className="inline-flex items-center space-x-2 px-8 py-4 border border-input bg-background text-foreground font-semibold rounded-xl hover:bg-accent transition-all duration-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <span>Manage Profile</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Features Section */}
-        <div className="mt-20 grid md:grid-cols-3 gap-8 animate-slide-up">
-          <div className="bg-card border rounded-xl p-6 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">AI-Powered Analysis</h3>
-            <p className="text-muted-foreground">
-              Our AI analyzes job descriptions and your profile to identify the best skills and experiences for both letters and resumes.
-            </p>
-          </div>
-
-          <div className="bg-card border rounded-xl p-6 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Professional Content</h3>
-            <p className="text-muted-foreground">
-              Generate polished, professional cover letters and resumes that highlight your strengths and match job requirements.
-            </p>
-          </div>
-
-          <div className="bg-card border rounded-xl p-6 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-red-600 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Lightning Fast</h3>
-            <p className="text-muted-foreground">
-              Create compelling cover letters and customized resumes in minutes, not hours.
-            </p>
-          </div>
-        </div>
-
-        {/* How It Works Section */}
-        <div className="mt-20 text-center animate-slide-up">
-          <h2 className="text-3xl font-bold mb-12 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            How It Works
-          </h2>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <span className="text-2xl font-bold text-primary">1</span>
+    <div className="page-shell space-y-8 pb-16">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_360px]">
+        <Reveal>
+          <GlassPanel strong className="hero-card p-8 sm:p-12">
+            <div className="halo-ring" />
+            <div className="relative space-y-8">
+              <div className="space-y-4">
+                <p className="section-kicker">Premium Career Workflow</p>
+                <h1 className="font-display text-balance text-5xl leading-[0.95] text-white sm:text-6xl xl:text-7xl">
+                  Build a portfolio-quality application story.
+                </h1>
+                <p className="max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
+                  CV Assistant now feels less like a form filler and more like a high-end
+                  career studio: profile strategy, premium resume direction, and cover letter
+                  generation in one polished experience.
+                </p>
               </div>
-              <h3 className="text-xl dark:text-white font-semibold">Add Job Details</h3>
-              <p className="text-muted-foreground dark:text-gray-400">
-                Enter the company name and paste the job description to help our AI understand the role.
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <motion.div whileHover={{ y: -2, scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+                  <Link href="/profile" className="button-primary w-full sm:w-auto">
+                    Shape Your Profile
+                  </Link>
+                </motion.div>
+                <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}>
+                  <Link href="/resume" className="button-secondary w-full sm:w-auto">
+                    Explore Resume Lab
+                  </Link>
+                </motion.div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4"
+                  >
+                    <div className="text-2xl font-semibold text-white">{stat.value}</div>
+                    <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-400">
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </GlassPanel>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <GlassPanel className="relative overflow-hidden p-6">
+            <div className="absolute inset-0 bg-grid-fade opacity-35" />
+            <div className="relative space-y-5">
+              <p className="section-kicker">What Changes</p>
+              <h2 className="font-display text-3xl text-white">A better first impression.</h2>
+              <div className="space-y-4 text-sm leading-7 text-slate-300">
+                <p>
+                  The redesign centers on dark editorial surfaces, stronger hierarchy, cleaner
+                  selection flows, and previews that feel deliberate instead of utilitarian.
+                </p>
+                <p>
+                  Every module now demonstrates premium UX patterns: glass surfaces, Bento
+                  composition, contextual actions, and motion that feels cinematic but restrained.
+                </p>
+              </div>
+              <Link href="/generate" className="metric-chip">
+                High-conviction cover letters
+              </Link>
+            </div>
+          </GlassPanel>
+        </Reveal>
+      </section>
+
+      <StaggerGroup className="bento-grid">
+        {pillars.map((pillar, index) => (
+          <StaggerItem
+            key={pillar.title}
+            className={index === 0 ? "xl:col-span-5" : index === 1 ? "xl:col-span-3" : "xl:col-span-4"}
+          >
+            <GlassPanel className="interactive-card h-full p-6">
+              <div className="space-y-4">
+                <div className="metric-chip">{`0${index + 1}`}</div>
+                <h3 className="font-display text-2xl text-white">{pillar.title}</h3>
+                <p className="text-sm leading-7 text-slate-300">{pillar.body}</p>
+              </div>
+            </GlassPanel>
+          </StaggerItem>
+        ))}
+      </StaggerGroup>
+
+      <Reveal delay={0.12}>
+        <GlassPanel className="overflow-hidden p-8 sm:p-10">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+            <div className="space-y-4">
+              <p className="section-kicker">Conversion Sequence</p>
+              <h2 className="font-display text-4xl text-white">Move from raw information to persuasive narrative.</h2>
+              <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                Start by tightening your profile, pull only the evidence that supports the role,
+                and finish with a cover letter that sounds specific to the opportunity.
               </p>
             </div>
-
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <span className="text-2xl font-bold text-primary">2</span>
-              </div>
-              <h3 className="text-xl dark:text-white font-semibold">AI Analysis</h3>
-              <p className="text-muted-foreground dark:text-gray-400">
-                Our AI analyzes the job requirements and your profile to identify the best matches.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <span className="text-2xl font-bold text-primary">3</span>
-              </div>
-              <h3 className="text-xl dark:text-white font-semibold">Generate & Customize</h3>
-              <p className="text-muted-foreground dark:text-gray-400">
-                Get your personalized cover letter and customize your resume for your application.
-              </p>
+            <div className="space-y-3">
+              {["Profile foundation", "Resume evidence selection", "Cover letter articulation"].map((step) => (
+                <div key={step} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <span className="status-dot" />
+                  <span className="text-sm text-slate-200">{step}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-
-        {/* CTA Section */}
-        <div className="mt-20 text-center animate-bounce-in">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-            <h2 className="text-3xl font-bold mb-4">Ready to Land Your Dream Job?</h2>
-            <p className="text-xl mb-6 opacity-90">
-              Start creating professional cover letters and customized resumes that get you noticed by top employers.
-            </p>
-            <Link
-              href="/profile"
-              className="inline-flex items-center space-x-2 px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-100 transition-all duration-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span>Get Started Now</span>
-            </Link>
-          </div>
-        </div>
-      </div>
+        </GlassPanel>
+      </Reveal>
     </div>
   );
 }
