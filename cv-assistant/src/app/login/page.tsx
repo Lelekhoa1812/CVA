@@ -68,9 +68,8 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { label: "Theme system", value: "Solar / Orbit" },
                 { label: "Workspace", value: "Profile to PDF" },
                 { label: "Session", value: isRegister ? "New" : "Active" },
               ].map((item) => (
