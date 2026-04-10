@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { AICoachingInput } from '@/components/resume/AICoachingInput';
-import Style5Preview from '@/components/resume/Style5Preview';
 import { MAX_RESUME_ITEMS, MIN_JOB_DESCRIPTION_WORDS } from '@/lib/resume/constants';
 import { buildApiUrl } from '@/lib/api';
 
@@ -10,6 +9,9 @@ type Experience = { companyName: string; role: string; summary?: string };
 type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
 type StyleId = 'style1' | 'style2' | 'style3' | 'style4' | 'style5';
 
+// Motivation vs Logic:
+// Motivation: The Ledger preview should match the actual PDF output so users see the same format they can download.
+// Logic: Point every preview at the real `/styleX.pdf` asset and render it in the iframe instead of custom mock markup.
 const STYLE_OPTIONS: Array<{
   id: StyleId;
   label: string;
@@ -20,7 +22,7 @@ const STYLE_OPTIONS: Array<{
   { id: 'style2', label: 'Style 2 - Chronological', previewKind: 'pdf', previewSrc: '/style2.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.05' },
   { id: 'style3', label: 'Style 3 - Modernised', previewKind: 'pdf', previewSrc: '/style3.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
   { id: 'style4', label: 'Style 4 - Creative', previewKind: 'pdf', previewSrc: '/style4.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.15' },
-  { id: 'style5', label: 'Style 5 - Ledger', previewKind: 'mock' },
+  { id: 'style5', label: 'Style 5 - Ledger', previewKind: 'pdf', previewSrc: '/style5.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitV&zoom=1.05' },
 ];
 
 export default function ResumePage() {
@@ -520,6 +522,8 @@ export default function ResumePage() {
     </div>
   );
 
+  const currentStyle = STYLE_OPTIONS[currentPreviewIndex];
+
   return (
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -563,19 +567,21 @@ export default function ResumePage() {
                       onTouchMove={onTouchMove}
                       onTouchEnd={onTouchEnd}
                     >
-                      {STYLE_OPTIONS[currentPreviewIndex]?.previewKind === 'pdf' ? (
+                      {currentStyle?.previewKind === 'pdf' && currentStyle.previewSrc ? (
                         <iframe 
-                          src={STYLE_OPTIONS[currentPreviewIndex]?.previewSrc}
+                          src={currentStyle.previewSrc}
                           className="border-0"
-                          title={`${STYLE_OPTIONS[currentPreviewIndex]?.label} Preview`}
-                          onError={(e) => console.error(`${STYLE_OPTIONS[currentPreviewIndex]?.label} PDF failed to load:`, e)}
+                          title={`${currentStyle.label} Preview`}
+                          onError={(e) => console.error(`${currentStyle.label} PDF failed to load:`, e)}
                           style={{ 
                             width: '100%',
                             height: '100%',
                           }}
                         />
                       ) : (
-                        <Style5Preview />
+                        <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                          Preview unavailable
+                        </div>
                       )}
                       {/* Swipe hint overlay for mobile */}
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-4 opacity-0 hover:opacity-100 transition-opacity">
@@ -671,7 +677,7 @@ export default function ResumePage() {
                         )}
                       </div>
                       <div className="relative w-full h-[350px] bg-white border border-gray-200 rounded overflow-hidden">
-                        {style.previewKind === 'pdf' ? (
+                        {style.previewKind === 'pdf' && style.previewSrc ? (
                           <iframe 
                             src={style.previewSrc}
                             className="w-full h-full border-0"
@@ -683,7 +689,9 @@ export default function ResumePage() {
                             }}
                           />
                         ) : (
-                          <Style5Preview />
+                          <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                            Preview unavailable
+                          </div>
                         )}
                       </div>
                     </div>

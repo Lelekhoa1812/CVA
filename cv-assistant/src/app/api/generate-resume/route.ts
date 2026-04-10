@@ -6,8 +6,11 @@ import { UserModel } from '@/lib/models/User';
 import { runAICoaching, AICoachingValidationError, type ResumeProfile } from '@/lib/resume/ai-coaching';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 
+// Root Cause vs Logic:
+// Root Cause: The resume generation payload validation only allowed styles 1-4, so style5 requests failed with "Invalid resume generation payload."
+// Logic: Include style5 in the enum so ledger-style resumes pass schema validation and reach the specialized PDF route.
 const requestSchema = z.object({
-  selectedStyle: z.enum(['style1', 'style2', 'style3', 'style4']),
+  selectedStyle: z.enum(['style1', 'style2', 'style3', 'style4', 'style5']),
   skills: z.string().optional().default(''),
   selectedProjects: z.array(z.number()).default([]),
   selectedExperiences: z.array(z.number()).default([]),
