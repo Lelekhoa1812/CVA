@@ -111,6 +111,40 @@ export function packItemsIntoLines(
   return lines;
 }
 
+export type JustifiedTextLine = {
+  justify: boolean;
+  text: string;
+  words: string[];
+};
+
+export function buildJustifiedTextLines(
+  text: string,
+  font: MeasuredFont,
+  size: number,
+  maxWidth: number
+): JustifiedTextLine[] {
+  const paragraphs = (text || '')
+    .split('\n')
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  const lines: JustifiedTextLine[] = [];
+
+  for (const paragraph of paragraphs) {
+    const paragraphLines = wrapTextLines(paragraph, font, size, maxWidth);
+    paragraphLines.forEach((line, index) => {
+      const words = line.split(/\s+/).filter(Boolean);
+      lines.push({
+        justify: index < paragraphLines.length - 1 && words.length > 1,
+        text: line,
+        words,
+      });
+    });
+  }
+
+  return lines;
+}
+
 export function measureLineBlock(lines: string[], lineHeight: number): number {
   return lines.length * lineHeight;
 }

@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { buildApiUrl } from "@/lib/api";
+import type { ImportedProfileData } from "@/lib/profile-import";
 
 type Project = {
+  _id?: string;
   name: string;
   description: string;
   summary?: string;
@@ -17,6 +19,7 @@ type Project = {
 };
 
 type Experience = {
+  _id?: string;
   companyName: string;
   role: string;
   timeFrom: string;
@@ -68,11 +71,44 @@ const createClientId = () => {
   return `${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 };
 
-function ensureClientIds<T extends { _clientId?: string }>(items: T[] | undefined, fallback?: T[]) {
+const PROFILE_SCALAR_FIELDS = [
+  "name",
+  "major",
+  "school",
+  "studyPeriod",
+  "email",
+  "workEmail",
+  "phone",
+  "website",
+  "linkedin",
+  "skills",
+  "languages",
+] as const satisfies ReadonlyArray<keyof Profile>;
+
+const cleanString = (value: string | undefined | null) => value?.trim() || "";
+
+function getListIdentity<T extends { _id?: string; createdAt?: string }>(item: T, index: number) {
+  if (item._id) return `id:${item._id}`;
+  if (item.createdAt) return `created:${item.createdAt}`;
+  return `index:${index}`;
+}
+
+function ensureClientIds<T extends { _clientId?: string; _id?: string; createdAt?: string }>(
+  items: T[] | undefined,
+  fallback?: T[]
+) {
   const list = items || [];
+  const fallbackByIdentity = new Map(
+    (fallback || []).map((item, index) => [getListIdentity(item, index), item] as const)
+  );
+
   return list.map((item, index) => ({
     ...item,
-    _clientId: item._clientId ?? fallback?.[index]?._clientId ?? createClientId(),
+    _clientId:
+      item._clientId ??
+      fallbackByIdentity.get(getListIdentity(item, index))?._clientId ??
+      fallback?.[index]?._clientId ??
+      createClientId(),
   }));
 }
 
@@ -88,7 +124,7 @@ function sortByCreatedAtDescending<T extends { createdAt?: string }>(items: T[])
   return [...items].sort((a, b) => timestampFrom(b.createdAt) - timestampFrom(a.createdAt));
 }
 
-const hydrateList = <T extends { createdAt?: string; _clientId?: string }>(
+const hydrateList = <T extends { createdAt?: string; _clientId?: string; _id?: string }>(
   items: T[] | undefined,
   previous?: T[]
 ) => sortByCreatedAtDescending(ensureClientIds(items, previous));
@@ -118,6 +154,50 @@ function stripClientIds(profile: Profile): Profile {
     ...profile,
     projects: profile.projects.map(withoutClientId),
     experiences: profile.experiences.map(withoutClientId),
+  };
+}
+
+function mergeImportedProfile(current: Profile, imported: ImportedProfileData): Profile {
+  const importedProjects = (imported.projects || []).map((item, index) => ({
+    name: item.name || "",
+    description: item.description || "",
+    createdAt: new Date(Date.now() + index).toISOString(),
+    _clientId: createClientId(),
+    _needsSummary: true,
+  })) as Project[];
+
+  const importedExperiences = (imported.experiences || []).map((item, index) => ({
+    companyName: item.companyName || "",
+    role: item.role || "",
+    timeFrom: item.timeFrom || "",
+    timeTo: item.timeTo || "",
+    description: item.description || "",
+    createdAt: new Date(Date.now() + index).toISOString(),
+    _clientId: createClientId(),
+    _needsSummary: true,
+  })) as Experience[];
+
+  return {
+    ...current,
+    ...PROFILE_SCALAR_FIELDS.reduce<Partial<Profile>>((accumulator, field) => {
+      const incomingValue = cleanString(imported[field]);
+      if (!incomingValue) {
+        return accumulator;
+      }
+
+      return {
+        ...accumulator,
+        [field]: cleanString(current[field]) || incomingValue,
+      };
+    }, {}),
+    projects: [
+      ...importedProjects,
+      ...current.projects,
+    ],
+    experiences: [
+      ...importedExperiences,
+      ...current.experiences,
+    ],
   };
 }
 
@@ -185,32 +265,68 @@ function TextareaField({
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile>(hydrateProfile(emptyProfile));
+  const profileRef = useRef(profile);
+  const profileRevisionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [textImportOpen, setTextImportOpen] = useState(false);
+  const [textImportValue, setTextImportValue] = useState("");
   const [enhancingProject, setEnhancingProject] = useState<number | null>(null);
   const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
   const [copiedProject, setCopiedProject] = useState<number | null>(null);
   const [copiedExperience, setCopiedExperience] = useState<number | null>(null);
+
+  function commitProfile(updater: Profile | ((current: Profile) => Profile)) {
+    setProfile((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      profileRef.current = next;
+      profileRevisionRef.current += 1;
+      return next;
+    });
+  }
+
+  function updateProject(index: number, updater: (project: Project) => Project) {
+    commitProfile((current) => {
+      const nextProjects = [...current.projects];
+      nextProjects[index] = updater(nextProjects[index]);
+      return { ...current, projects: nextProjects };
+    });
+  }
+
+  function updateExperience(index: number, updater: (experience: Experience) => Experience) {
+    commitProfile((current) => {
+      const nextExperiences = [...current.experiences];
+      nextExperiences[index] = updater(nextExperiences[index]);
+      return { ...current, experiences: nextExperiences };
+    });
+  }
+
+  async function applyImportedData(imported: ImportedProfileData) {
+    commitProfile((current) => mergeImportedProfile(current, imported));
+    setTextImportValue("");
+    setTextImportOpen(false);
+  }
 
   useEffect(() => {
     (async () => {
       const res = await fetch(buildApiUrl("/api/profile"));
       if (res.ok) {
         const data = await res.json();
-        setProfile((current) => hydrateProfile(data.profile || current, current));
+        commitProfile((current) => hydrateProfile(data.profile || current, current));
       }
       setLoading(false);
     })();
   }, []);
 
   function up<K extends keyof Profile>(key: K, value: Profile[K]) {
-    setProfile((current) => ({ ...current, [key]: value }));
+    commitProfile((current) => ({ ...current, [key]: value }));
   }
 
   function addProject() {
-    setProfile((current) => ({
+    commitProfile((current) => ({
       ...current,
       projects: [
         {
@@ -226,7 +342,7 @@ export default function ProfilePage() {
   }
 
   function addExperience() {
-    setProfile((current) => ({
+    commitProfile((current) => ({
       ...current,
       experiences: [
         {
@@ -245,14 +361,14 @@ export default function ProfilePage() {
   }
 
   function deleteProject(index: number) {
-    setProfile((current) => ({
+    commitProfile((current) => ({
       ...current,
       projects: current.projects.filter((_, itemIndex) => itemIndex !== index),
     }));
   }
 
   function deleteExperience(index: number) {
-    setProfile((current) => ({
+    commitProfile((current) => ({
       ...current,
       experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index),
     }));
@@ -346,9 +462,11 @@ export default function ProfilePage() {
       }
 
       const data = await res.json();
-      const nextProjects = [...profile.projects];
-      nextProjects[index].description = data.enhancedDescription;
-      setProfile((current) => ({ ...current, projects: nextProjects }));
+      updateProject(index, (current) => ({
+        ...current,
+        description: data.enhancedDescription,
+        _needsSummary: true,
+      }));
     } catch {
       setError("Failed to enhance project description");
     } finally {
@@ -383,9 +501,11 @@ export default function ProfilePage() {
       }
 
       const data = await res.json();
-      const nextExperiences = [...profile.experiences];
-      nextExperiences[index].description = data.enhancedDescription;
-      setProfile((current) => ({ ...current, experiences: nextExperiences }));
+      updateExperience(index, (current) => ({
+        ...current,
+        description: data.enhancedDescription,
+        _needsSummary: true,
+      }));
     } catch {
       setError("Failed to enhance experience description");
     } finally {
@@ -394,28 +514,51 @@ export default function ProfilePage() {
   }
 
   async function save() {
+    if (saveInFlightRef.current) {
+      return;
+    }
+
+    saveInFlightRef.current = true;
     setSaving(true);
     setError(null);
 
-    const payload = stripClientIds(profile);
-    const res = await fetch(buildApiUrl("/api/profile"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      /* Root Cause vs Logic:
+         Root Cause: once we stopped hydrating stale save responses, any edits made while the request was still running stayed
+         in local state only, so refreshes could "lose" the newest changes even though the user had already pressed save.
+         Logic: keep saving in a loop until the server has persisted the latest draft revision, while still refusing to
+         overwrite newer in-memory edits with an older response payload. */
+      while (true) {
+        const saveRevision = profileRevisionRef.current;
+        const payload = stripClientIds(profileRef.current);
+        const res = await fetch(buildApiUrl("/api/profile"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || "Failed to save");
-    } else {
-      const data = await res.json();
-      setProfile((current) => hydrateProfile(data.profile || current, current));
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error || "Failed to save");
+          return;
+        }
+
+        const data = await res.json();
+
+        if (saveRevision !== profileRevisionRef.current) {
+          continue;
+        }
+
+        commitProfile((current) => hydrateProfile(data.profile || current, current));
+        return;
+      }
+    } finally {
+      saveInFlightRef.current = false;
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
-  async function uploadResume(event: React.ChangeEvent<HTMLInputElement>) {
+  async function importFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -428,52 +571,47 @@ export default function ProfilePage() {
     try {
       const res = await fetch(buildApiUrl("/api/ocr"), { method: "POST", body: form });
       if (!res.ok) {
-        setError("Failed to parse resume");
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to parse file");
         return;
       }
 
-      const data: {
-        data?: {
-          projects?: Array<{ name?: string; description?: string }>;
-          experiences?: Array<{
-            companyName?: string;
-            role?: string;
-            timeFrom?: string;
-            timeTo?: string;
-            description?: string;
-          }>;
-        };
-      } = await res.json();
-
-      const parsed = data.data || {};
-      setProfile((current) => ({
-        ...current,
-        projects: [
-          ...(current.projects || []),
-          ...((parsed.projects || []).map((item) => ({
-            name: item.name || "",
-            description: item.description || "",
-                createdAt: new Date().toISOString(),
-            _clientId: createClientId(),
-            _needsSummary: true,
-          })) as Project[]),
-        ],
-        experiences: [
-          ...(current.experiences || []),
-          ...((parsed.experiences || []).map((item) => ({
-            companyName: item.companyName || "",
-            role: item.role || "",
-            timeFrom: item.timeFrom || "",
-            timeTo: item.timeTo || "",
-            description: item.description || "",
-                createdAt: new Date().toISOString(),
-            _clientId: createClientId(),
-            _needsSummary: true,
-          })) as Experience[]),
-        ],
-      }));
+      const data: { data?: ImportedProfileData } = await res.json();
+      await applyImportedData(data.data || {});
     } catch {
-      setError("Failed to parse resume. Please try again.");
+      setError("Failed to parse file. Please try again.");
+    } finally {
+      event.target.value = "";
+      setOcrLoading(false);
+    }
+  }
+
+  async function importText() {
+    if (!textImportValue.trim()) {
+      setError("Paste resume text before importing");
+      return;
+    }
+
+    setOcrLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(buildApiUrl("/api/ocr"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: textImportValue }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to parse text");
+        return;
+      }
+
+      const data: { data?: ImportedProfileData } = await res.json();
+      await applyImportedData(data.data || {});
+    } catch {
+      setError("Failed to parse text. Please try again.");
     } finally {
       setOcrLoading(false);
     }
@@ -509,64 +647,129 @@ export default function ProfilePage() {
   }
 
   return (
-    <ModuleShell
-      eyebrow="Profile Module"
-      title="Turn raw details into a sharper professional signal."
-      description="Organize the core information that powers both your resume and your cover letter. Think of this as the source of truth for every proof point you want the system to articulate well."
-      stats={[
-        { label: "Profile completeness", value: `${completeness}%` },
-        { label: "Projects captured", value: `${profile.projects.length}` },
-        { label: "Experience entries", value: `${profile.experiences.length}` },
-      ]}
-      aside={
-        <div className="space-y-6">
+    <>
+      {textImportOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-text-title"
+            className="bg-card border-border/60 w-full max-w-2xl rounded-[1.6rem] border p-6 shadow-2xl"
+          >
+            {/* Motivation vs Logic:
+                Motivation: users need a fast no-file import path when they copy resume text from docs, LinkedIn, or notes.
+                Logic: open a dedicated modal with one free-form textarea and route its contents through the same parser used
+                for file imports so text and file ingestion stay behaviorally aligned. */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <p className="section-kicker">Import Text</p>
+                <h2 id="import-text-title" className="text-foreground text-2xl font-semibold">
+                  Paste your resume or profile text
+                </h2>
+                <p className="text-muted-foreground text-sm leading-7">
+                  Free-form text is fine. We&apos;ll extract projects, experiences, and profile details into the same JSON shape used by file import.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close import text modal"
+                onClick={() => {
+                  setTextImportOpen(false);
+                  setTextImportValue("");
+                }}
+                className="text-muted-foreground hover:text-foreground rounded-full border border-white/10 px-3 py-2 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            <textarea
+              className="textarea-premium mt-6 min-h-[18rem] w-full"
+              placeholder="Paste your resume, LinkedIn profile, or any structured/unstructured experience text here..."
+              value={textImportValue}
+              onChange={(event) => setTextImportValue(event.target.value)}
+            />
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setTextImportOpen(false);
+                  setTextImportValue("");
+                }}
+                className="button-secondary"
+              >
+                Cancel
+              </button>
+              <button type="button" onClick={importText} className="button-primary" disabled={ocrLoading}>
+                {ocrLoading ? "Importing..." : "Import Text"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ModuleShell
+        eyebrow="Profile Module"
+        title="Turn raw details into a sharper professional signal."
+        description="Organize the core information that powers both your resume and your cover letter. Think of this as the source of truth for every proof point you want the system to articulate well."
+        stats={[
+          { label: "Profile completeness", value: `${completeness}%` },
+          { label: "Projects captured", value: `${profile.projects.length}` },
+          { label: "Experience entries", value: `${profile.experiences.length}` },
+        ]}
+        aside={
+          <div className="space-y-6">
           {/* Root Cause: the profile sidebar mixed white-only copy and translucent white surfaces, so light mode washed out both text and containers.
               Logic: reuse theme-aware foreground tokens and shared surface styling so the sidebar remains readable without forking the layout. */}
-          <div className="space-y-3">
+            <div className="space-y-3">
             <p className="section-kicker">Signal Strength</p>
             <h2 className="text-foreground font-display text-3xl">Your application foundation</h2>
             <p className="text-muted-foreground text-sm leading-7">
               A stronger profile gives the resume selector and cover letter generator more
               specific proof to work with.
             </p>
-          </div>
+            </div>
 
-          <div className="space-y-3">
-            <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-4">
+            <div className="space-y-3">
+              <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-4">
               <span className="text-muted-foreground text-sm">Completeness</span>
               <span className="text-foreground text-lg font-semibold">{completeness}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-[hsl(var(--surface-3)/0.72)]">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-sky-300 to-violet-300"
+                  style={{ width: `${completeness}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-[hsl(var(--surface-3)/0.72)]">
-              <div
-                className="h-2 rounded-full bg-gradient-to-r from-sky-300 to-violet-300"
-                style={{ width: `${completeness}%` }}
-              />
-            </div>
-          </div>
 
-          <div className="surface-subtle space-y-3 rounded-[1.4rem] p-4">
-            <div>
-              <p className="text-foreground text-sm font-medium">Resume import</p>
-              <p className="text-muted-foreground mt-1 text-xs leading-6">
-                Pull in projects and experience from an existing resume, then refine what matters.
+            <div className="surface-subtle space-y-3 rounded-[1.4rem] p-4">
+              <div>
+                <p className="text-foreground text-sm font-medium">Resume import</p>
+                <p className="text-muted-foreground mt-1 text-xs leading-6">
+                  Pull in projects, experience, and profile details from a PDF, DOCX, or pasted text.
+                </p>
+              </div>
+              <label className="button-secondary flex cursor-pointer items-center justify-center">
+                {ocrLoading ? "Parsing file..." : "Import File"}
+                <input type="file" accept=".pdf,.docx" className="hidden" onChange={importFile} />
+              </label>
+              <button type="button" className="button-secondary w-full" onClick={() => setTextImportOpen(true)}>
+                Import Text
+              </button>
+            </div>
+
+            <div className="surface-subtle rounded-[1.4rem] p-4">
+              <p className="text-foreground text-sm font-medium">Editorial note</p>
+              <p className="text-muted-foreground mt-2 text-xs leading-6">
+                Favor proof over adjectives. Specific outcomes, technologies, and scope make the
+                rest of the product feel much smarter.
               </p>
             </div>
-            <label className="button-secondary cursor-pointer">
-              {ocrLoading ? "Parsing resume..." : "Import from Resume PDF"}
-              <input type="file" accept=".pdf" className="hidden" onChange={uploadResume} />
-            </label>
           </div>
-
-          <div className="surface-subtle rounded-[1.4rem] p-4">
-            <p className="text-foreground text-sm font-medium">Editorial note</p>
-            <p className="text-muted-foreground mt-2 text-xs leading-6">
-              Favor proof over adjectives. Specific outcomes, technologies, and scope make the
-              rest of the product feel much smarter.
-            </p>
-          </div>
-        </div>
-      }
-    >
+        }
+      >
       {error ? (
         <Reveal>
           <GlassPanel className="border-destructive/40 p-4">
@@ -646,6 +849,9 @@ export default function ProfilePage() {
                 Optional. Add technical skills, tools, frameworks, and domains you want prefilled in Resume Lab.
               </p>
             </div>
+            {/* Motivation vs Logic:
+                Motivation: the skills textarea should feel generous so people can list full tool stacks without scrolling immediately.
+                Logic: raise the minimum height and keep the premium textarea styling responsible for strong contrast in both themes. */}
             <label htmlFor="profile-skills" className="space-y-2">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-foreground text-sm font-medium">Skills (Optional)</span>
@@ -653,7 +859,7 @@ export default function ProfilePage() {
               </div>
               <textarea
                 id="profile-skills"
-                className="textarea-premium min-h-28"
+                className="textarea-premium min-h-[12rem]"
                 value={profile.skills || ""}
                 placeholder="Python, TypeScript, React, Node.js, Docker, RAG, LLM evaluation"
                 onChange={(event) => up("skills", event.target.value)}
@@ -686,12 +892,7 @@ export default function ProfilePage() {
             ) : null}
 
             {profile.experiences.map((experience, index) => (
-              <StaggerItem
-                key={
-                  experience._clientId ||
-                  `${experience.companyName}-${experience.role}-${index}`
-                }
-              >
+              <StaggerItem key={experience._id ?? experience._clientId ?? `${experience.companyName}-${experience.role}-${index}`}>
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -729,30 +930,33 @@ export default function ProfilePage() {
                       label="Company"
                       value={experience.companyName}
                       onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].companyName = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        updateExperience(index, (current) => ({
+                          ...current,
+                          companyName: value,
+                          _needsSummary: true,
+                        }));
                       }}
                     />
                     <TextField
                       label="Role"
                       value={experience.role}
                       onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].role = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        updateExperience(index, (current) => ({
+                          ...current,
+                          role: value,
+                          _needsSummary: true,
+                        }));
                       }}
                     />
                     <TextField
                       label="Start"
                       value={experience.timeFrom}
                       onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].timeFrom = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        updateExperience(index, (current) => ({
+                          ...current,
+                          timeFrom: value,
+                          _needsSummary: true,
+                        }));
                       }}
                       placeholder="Jan 2023"
                     />
@@ -760,10 +964,11 @@ export default function ProfilePage() {
                       label="End"
                       value={experience.timeTo}
                       onChange={(value) => {
-                        const nextExperiences = [...profile.experiences];
-                        nextExperiences[index].timeTo = value;
-                        nextExperiences[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                        updateExperience(index, (current) => ({
+                          ...current,
+                          timeTo: value,
+                          _needsSummary: true,
+                        }));
                       }}
                       placeholder="Present"
                     />
@@ -772,10 +977,11 @@ export default function ProfilePage() {
                         label="Description"
                         value={experience.description}
                         onChange={(value) => {
-                          const nextExperiences = [...profile.experiences];
-                          nextExperiences[index].description = value;
-                          nextExperiences[index]._needsSummary = true;
-                          setProfile((current) => ({ ...current, experiences: nextExperiences }));
+                          updateExperience(index, (current) => ({
+                            ...current,
+                            description: value,
+                            _needsSummary: true,
+                          }));
                         }}
                         rows={5}
                       />
@@ -811,7 +1017,7 @@ export default function ProfilePage() {
             ) : null}
 
             {profile.projects.map((project, index) => (
-              <StaggerItem key={project._clientId ?? `${project.name}-${index}`}>
+              <StaggerItem key={project._id ?? project._clientId ?? `${project.name}-${index}`}>
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -849,20 +1055,22 @@ export default function ProfilePage() {
                       label="Project Name"
                       value={project.name}
                       onChange={(value) => {
-                        const nextProjects = [...profile.projects];
-                        nextProjects[index].name = value;
-                        nextProjects[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, projects: nextProjects }));
+                        updateProject(index, (current) => ({
+                          ...current,
+                          name: value,
+                          _needsSummary: true,
+                        }));
                       }}
                     />
                     <TextareaField
                       label="Project Description"
                       value={project.description}
                       onChange={(value) => {
-                        const nextProjects = [...profile.projects];
-                        nextProjects[index].description = value;
-                        nextProjects[index]._needsSummary = true;
-                        setProfile((current) => ({ ...current, projects: nextProjects }));
+                        updateProject(index, (current) => ({
+                          ...current,
+                          description: value,
+                          _needsSummary: true,
+                        }));
                       }}
                       rows={5}
                     />
@@ -873,6 +1081,7 @@ export default function ProfilePage() {
           </StaggerGroup>
         </GlassPanel>
       </Reveal>
-    </ModuleShell>
+      </ModuleShell>
+    </>
   );
 }

@@ -11,9 +11,9 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
-import { resolveResumeSkillsText } from '@/lib/resume/skills';
+import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -270,11 +270,15 @@ export async function POST(req: NextRequest) {
 
       let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
       if (!skillsText) skillsText = 'No skills specified';
-      const capabilityItems = splitResumeItems(skillsText);
-      const capabilityLines = capabilityItems.length
-        ? packItemsIntoLines(capabilityItems, helv, Math.max(fontSize - 1, 9), right - left - 24, '  •  ')
-        : wrapTextLines(skillsText, helv, Math.max(fontSize - 1, 9), right - left - 24);
-      const capabilityLineHeight = Math.max(fontSize - 1, 9) + 5;
+      // Motivation vs Logic:
+      // Motivation: The ledger header needed a quieter skills treatment that still aligns like polished body copy
+      // instead of a full-size utility list.
+      // Logic: Normalize the skills inventory into one paragraph, reduce the font size slightly, and justify the
+      // wrapped lines inside the capabilities band so the section stays refined without changing the overall layout.
+      const capabilitiesText = formatResumeSkillsParagraph(skillsText) || skillsText;
+      const capabilitySize = Math.max(fontSize - 2, 9);
+      const capabilityLines = buildJustifiedTextLines(capabilitiesText, helv, capabilitySize, right - left - 24);
+      const capabilityLineHeight = capabilitySize + 5;
       const capabilitiesHeight = 16 + capabilityLines.length * capabilityLineHeight + 14;
       const bandTop = contactY - 10;
       const bandBottom = bandTop - capabilitiesHeight;
@@ -283,7 +287,7 @@ export async function POST(req: NextRequest) {
       page.drawText('CAPABILITIES', { x: left + 12, y: bandTop - 14, size: labelSize, font: helvBold, color: accentDark });
       let capabilityY = bandTop - 30;
       for (const line of capabilityLines) {
-        page.drawText(line, { x: left + 12, y: capabilityY, size: Math.max(fontSize - 1, 9), font: helv, color: ink });
+        drawJustifiedLineAt(line.words, line.text, left + 12, capabilityY, capabilitySize, right - left - 24, line.justify);
         capabilityY -= capabilityLineHeight;
       }
 
@@ -397,6 +401,39 @@ export async function POST(req: NextRequest) {
       .map((line) => wrapTextLines(line.replace(/^[•\-\u2013\u2014\*]\s*/, ''), helv, bodySize, bodyWidth - 12));
     const height = bulletLines.reduce((total, lines) => total + lines.length * (bodySize + lineGap) + 2, 0);
     return { bodySize, height, lines: [] as string[], bullets: bulletLines };
+  }
+
+  function drawJustifiedLineAt(
+    words: string[],
+    text: string,
+    x: number,
+    y: number,
+    size: number,
+    maxWidth: number,
+    justify: boolean
+  ) {
+    if (!justify || words.length <= 1) {
+      page.drawText(text, { x, y, size, font: helv, color: ink });
+      return;
+    }
+
+    const textWidth = helv.widthOfTextAtSize(text, size);
+    if (textWidth >= maxWidth) {
+      page.drawText(text, { x, y, size, font: helv, color: ink });
+      return;
+    }
+
+    const spaceWidth = helv.widthOfTextAtSize(' ', size);
+    const extra = (maxWidth - textWidth) / (words.length - 1);
+    let cursor = x;
+
+    for (let i = 0; i < words.length; i += 1) {
+      const word = words[i];
+      page.drawText(word, { x: cursor, y, size, font: helv, color: ink });
+      if (i < words.length - 1) {
+        cursor += helv.widthOfTextAtSize(word, size) + spaceWidth + extra;
+      }
+    }
   }
 
   function drawSection(title: string) {

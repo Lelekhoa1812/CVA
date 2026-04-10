@@ -8,9 +8,9 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
-import { resolveResumeSkillsText } from '@/lib/resume/skills';
+import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -293,69 +293,66 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Beautify markdown
-  function truncateTextToWidth(text: string, size: number, maxWidth: number, font = helv) {
-    if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
-    const ellipsis = '...';
-    let current = text;
-    while (current.length > 1 && font.widthOfTextAtSize(`${current}${ellipsis}`, size) > maxWidth) {
-      current = current.slice(0, -1);
-    }
-    return `${current}${ellipsis}`;
-  }
-
-  // Skills chips row (under banner)
+  // Skills paragraph row (under banner)
   let y = top - bannerH - 16;
   const labelSize = Math.max(fontSize, 10);
-  y = drawSkillsLabel(y);
-
-  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
-  if (!skillsText) skillsText = '—';
-  const chipTokens = splitResumeItems(skillsText);
   function drawSkillsLabel(currentY: number, continuation = false) {
     page.drawText(continuation ? 'SKILLS (CONT.)' : 'SKILLS', { x: contentLeft, y: currentY, size: labelSize, font: helvBold, color: ACCENT });
     return currentY - labelSize - 7;
   }
-  function drawChips(tokens: string[], startX: number, startY: number, lineHeight: number, maxWidth: number) {
-    let cx = startX;
-    let cy = startY;
-    const padX = 6;
-    const padY = 3;
-    const chipSize = Math.max(fontSize - 1, 9);
-    const chipBottomBuffer = bottom + 40;
-    const maxChipTextWidth = maxWidth - startX - padX * 2;
-    // Root Cause vs Logic:
-    // Root Cause: The template rendered every chip immediately and only checked for overflow after the fact,
-    // so very long skill inventories could draw underneath later content or below the printable page area.
-    // Logic: Each chip now fits to the available width and paginates before drawing when the next row would
-    // cross the bottom buffer, which keeps the card grid starting from a clean, known cursor every time.
-    for (const t of tokens) {
-      const fittedToken = truncateTextToWidth(t, chipSize, maxChipTextWidth, helv);
-      const textW = helv.widthOfTextAtSize(fittedToken, chipSize);
-      const chipW = textW + padX * 2;
-      const chipH = chipSize + padY * 2;
-      if (cx + chipW > maxWidth) {
-        // wrap
-        cx = startX;
-        cy -= (chipH + 6);
+  function drawJustifiedLineAt(words: string[], text: string, x: number, yPos: number, size: number, maxWidth: number, justify: boolean) {
+    if (!justify || words.length <= 1) {
+      page.drawText(text, { x, y: yPos, size, font: helv, color: rgb(0, 0, 0) });
+      return;
+    }
+
+    const textWidth = helv.widthOfTextAtSize(text, size);
+    if (textWidth >= maxWidth) {
+      page.drawText(text, { x, y: yPos, size, font: helv, color: rgb(0, 0, 0) });
+      return;
+    }
+
+    const spaceWidth = helv.widthOfTextAtSize(' ', size);
+    const extra = (maxWidth - textWidth) / (words.length - 1);
+    let cursor = x;
+
+    for (let i = 0; i < words.length; i += 1) {
+      const word = words[i];
+      page.drawText(word, { x: cursor, y: yPos, size, font: helv, color: rgb(0, 0, 0) });
+      if (i < words.length - 1) {
+        cursor += helv.widthOfTextAtSize(word, size) + spaceWidth + extra;
       }
-      if (cy - chipH < chipBottomBuffer) {
+    }
+  }
+  function drawSkillsParagraph(text: string, startY: number) {
+    const skillsSize = Math.max(fontSize - 2, 9);
+    const lineGap = 5;
+    const bottomBuffer = bottom + 40;
+    const maxWidth = contentRight - contentLeft;
+    const lines = buildJustifiedTextLines(text, helv, skillsSize, maxWidth);
+    let currentY = drawSkillsLabel(startY);
+
+    // Motivation vs Logic:
+    // Motivation: Users wanted the skills area to read more like the richer experience/project copy and less like a
+    // full-size strip of chips, while still fitting the card-grid layout cleanly.
+    // Logic: Replace chips with a smaller justified paragraph block that paginates under the same section heading, so
+    // long skill inventories stay polished and aligned without forcing the rest of the template to change.
+    for (const line of lines) {
+      if (currentY - skillsSize < bottomBuffer) {
         page = pdf.addPage([612, 792]);
         ({ width, height } = page.getSize());
-        cy = drawSkillsLabel(height - margin, true);
-        cx = startX;
+        currentY = drawSkillsLabel(height - margin, true);
       }
-      // shadow (remove opacity if pdf-lib not supporting it)
-      page.drawRectangle({ x: cx + 1, y: cy - 1, width: chipW, height: chipH, color: SHADOW, opacity: 0.25 });
-      // chip
-      page.drawRectangle({ x: cx, y: cy, width: chipW, height: chipH, color: CARD_BG, borderColor: ACCENT_LIGHT, borderWidth: 0.75 });
-      // text
-      page.drawText(fittedToken, { x: cx + padX, y: cy + padY, size: chipSize, font: helv, color: rgb(0, 0, 0) });
-      cx += chipW + 6;
+      drawJustifiedLineAt(line.words, line.text, contentLeft, currentY, skillsSize, maxWidth, line.justify);
+      currentY -= skillsSize + lineGap;
     }
-    return cy - (chipSize + padY * 2 + 10);
+
+    return currentY - 10;
   }
-  y = drawChips(chipTokens, contentLeft, y, Math.max(fontSize + 4, 14), contentRight);
+  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
+  if (!skillsText) skillsText = '—';
+  const skillsParagraph = formatResumeSkillsParagraph(skillsText) || skillsText;
+  y = drawSkillsParagraph(skillsParagraph, y);
 
   // Two-column grid for cards
   const gutter = 18;

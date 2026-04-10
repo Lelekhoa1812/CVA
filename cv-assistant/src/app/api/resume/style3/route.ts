@@ -14,9 +14,9 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
-import { resolveResumeSkillsText } from '@/lib/resume/skills';
+import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
-import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -410,6 +410,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  function drawSidebarJustifiedLine(words: string[], size: number, justify: boolean) {
+    const textWidth = times.widthOfTextAtSize(words.join(' '), size);
+    if (!justify || words.length <= 1 || textWidth >= sidebarMaxWidth) {
+      page.drawText(words.join(' '), { x: leftX, y: yLeft, size, font: times });
+      return;
+    }
+
+    const spaceWidth = times.widthOfTextAtSize(' ', size);
+    const extra = (sidebarMaxWidth - textWidth) / (words.length - 1);
+    let cursor = leftX;
+
+    for (let i = 0; i < words.length; i += 1) {
+      const word = words[i];
+      page.drawText(word, { x: cursor, y: yLeft, size, font: times });
+      if (i < words.length - 1) {
+        cursor += times.widthOfTextAtSize(word, size) + spaceWidth + extra;
+      }
+    }
+  }
+
+  function drawSidebarJustifiedParagraph(text: string, size = Math.max(fontSize - 3, 8)) {
+    const lines = buildJustifiedTextLines(text, times, size, sidebarMaxWidth);
+    for (const line of lines) {
+      drawSidebarJustifiedLine(line.words, size, line.justify);
+      yLeft -= size + 4;
+    }
+  }
+
   // Contact & Links
   drawSidebarLabel('Contact');
   const contactLines: string[] = [];
@@ -429,11 +457,12 @@ export async function POST(req: NextRequest) {
   let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
   if (!skillsText) skillsText = '—';
   // Root Cause vs Logic:
-  // Root Cause: The sidebar rendered one bullet per skill, so long skill inventories consumed the entire rail and
-  // eventually pushed content past the page floor even though the data could fit with denser wrapping.
-  // Logic: Pack sidebar list fields into compact wrapped lines and use the same overflow-safe text wrapper for the
-  // main column headers, which keeps the template structured without changing its two-column visual identity.
-  drawSidebarCompactList(skillsText, Math.max(fontSize - 2, 8));
+  // Root Cause: The sidebar packed skills into terse list rows, which made the section feel visually louder than the
+  // body content and left ragged text edges unlike the polished narrative blocks elsewhere in the resume.
+  // Logic: Normalize skills into one paragraph, shrink the text slightly, and justify each wrapped line inside the
+  // sidebar width so the section stays compact without abandoning the template's two-column structure.
+  const skillsParagraph = formatResumeSkillsParagraph(skillsText);
+  drawSidebarJustifiedParagraph(skillsParagraph || skillsText, Math.max(fontSize - 3, 8));
 
   yLeft -= 6;
   page.drawLine({ start: { x: leftX, y: yLeft }, end: { x: leftRightX, y: yLeft }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });

@@ -4,9 +4,9 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
-import { resolveResumeSkillsText } from '@/lib/resume/skills';
+import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
-import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -223,12 +223,17 @@ export async function POST(req: NextRequest) {
     drawWrappedLines(lines, left, size, bold, colorOverride);
   }
 
-  function drawCompactList(text: string, size = 10) {
-    const items = splitResumeItems(text);
-    const lines = items.length
-      ? packItemsIntoLines(items, helv, size, contentWidth)
-      : wrapTextLines(text, helv, size, contentWidth);
-    drawWrappedLines(lines, left, size, false);
+  function drawJustifiedParagraph(text: string, size = 10) {
+    const lines = buildJustifiedTextLines(text, helv, size, contentWidth);
+    for (const line of lines) {
+      ensureSpace(size + 6);
+      if (line.justify) {
+        drawJustifiedLine(line.words, left, size, true);
+      } else {
+        page.drawText(line.text, { x: left, y, size, font: helv });
+      }
+      y -= size + 6;
+    }
   }
 
   function drawLabelValueLine(label: string, value: string, size = 10) {
@@ -617,15 +622,13 @@ export async function POST(req: NextRequest) {
   
   // Handle skills with proper wrapping to prevent overlap
   // Root Cause vs Logic:
-  // Root Cause: This route assumed skills, dates, and centered contact lines would stay on one line, so large
-  // resumes could cross the content width and visually crash into neighboring rows or following sections.
-  // Logic: Convert list-like fields into compact wrapped lines and measure header/date pairs before drawing so
-  // the centered layout still holds while oversized content gracefully stacks instead of overlapping.
-  if (skillsText.includes('**') || skillsText.includes('*')) {
-    drawMarkdownText(skillsText, left, fontSize - 1);
-  } else {
-    drawCompactList(skillsText, fontSize - 1);
-  }
+  // Root Cause: This route still rendered Skills as compact list text, so it visually outweighed other sections and
+  // never lined up with the more editorial paragraph rhythm used for the rest of the resume content.
+  // Logic: Normalize skills into a single paragraph, render it one size smaller than the surrounding body copy, and
+  // feed the wrapped lines through the same justification flow that keeps long content neatly aligned to both edges.
+  const skillsParagraph = formatResumeSkillsParagraph(skillsText);
+  const skillsSize = Math.max(fontSize - 2, 8);
+  drawJustifiedParagraph(skillsParagraph || skillsText, skillsSize);
   
   // Add Languages section if user has language data
   if (profile.languages && profile.languages.trim()) {

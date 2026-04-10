@@ -6,10 +6,10 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
-import { resolveResumeSkillsText } from '@/lib/resume/skills';
+import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, rgb, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts');
 const NOTO_SANS_REGULAR = fs.readFileSync(path.join(FONTS_DIR, 'NotoSans-Regular.ttf'));
@@ -233,12 +233,17 @@ export async function POST(req: NextRequest) {
     drawWrappedLines(lines, left, size, bold, colorOverride);
   }
 
-  function drawCompactList(text: string, size = 10) {
-    const items = splitResumeItems(text);
-    const lines = items.length
-      ? packItemsIntoLines(items, notoSans, size, contentWidth)
-      : wrapTextLines(text, notoSans, size, contentWidth);
-    drawWrappedLines(lines, left, size, false);
+  function drawJustifiedParagraph(text: string, size = 10) {
+    const lines = buildJustifiedTextLines(text, notoSans, size, contentWidth);
+    for (const line of lines) {
+      ensureSpace(size + 6);
+      if (line.justify) {
+        drawJustifiedLine(line.words, left, size, true);
+      } else {
+        page.drawText(line.text, { x: left, y, size, font: notoSans });
+      }
+      y -= size + 6;
+    }
   }
 
   function drawLabelValueLine(label: string, value: string, size = 10) {
@@ -610,15 +615,13 @@ export async function POST(req: NextRequest) {
   
   // Handle skills with proper wrapping to prevent overlap
   // Root Cause vs Logic:
-  // Root Cause: Several templates were drawing user-provided skills and headers as optimistic single lines,
-  // which made long lists collide with the next section or run past the printable width.
-  // Logic: Normalize list-like fields into compact wrapped lines and measure header/date rows before drawing,
-  // so the route always reserves enough vertical space and falls back to stacked layouts when content grows.
-  if (skillsText.includes('**') || skillsText.includes('*')) {
-    drawMarkdownText(skillsText, left, fontSize - 1);
-  } else {
-    drawCompactList(skillsText, fontSize - 1);
-  }
+  // Root Cause: Skills were still rendered as a compact list at the same size as headline body copy, so the section
+  // looked denser than Experience/Projects and never achieved the fully justified text edges users expect.
+  // Logic: Normalize skills into one paragraph, step the font size down slightly, and reuse justified line drawing so
+  // the section reads like polished body content while preserving the route's overflow-safe spacing.
+  const skillsParagraph = formatResumeSkillsParagraph(skillsText);
+  const skillsSize = Math.max(fontSize - 2, 8);
+  drawJustifiedParagraph(skillsParagraph || skillsText, skillsSize);
   
   // Add Languages section if user has language data
   if (profile.languages && profile.languages.trim()) {
