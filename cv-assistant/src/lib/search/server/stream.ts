@@ -4,7 +4,8 @@ import type {
   SearchStreamEvent,
   SourceProgressEvent,
 } from "@/lib/search/types";
-import { passesPostFilters, canonicalizeUrl } from "@/lib/search/server/utils";
+import { passesPostFilters } from "@/lib/search/filters";
+import { canonicalizeUrl } from "@/lib/search/server/utils";
 import { crawlBlockProneSource, crawlLinkedIn } from "@/lib/search/server/sources";
 
 type StreamOptions = {

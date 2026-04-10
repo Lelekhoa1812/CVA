@@ -7,7 +7,7 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { defaultSearchRequest } from "@/lib/search/schema";
 import { buildApiUrl } from "@/lib/api";
-import { passesPostFilters } from "@/lib/search/server/utils";
+import { passesPostFilters } from "@/lib/search/filters";
 import {
   createInitialSourceProgress,
   EMPLOYMENT_TYPE_OPTIONS,
