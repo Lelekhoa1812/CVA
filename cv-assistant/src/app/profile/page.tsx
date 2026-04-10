@@ -6,6 +6,10 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { buildApiUrl } from "@/lib/api";
+import {
+  sortExperiencesByRecency,
+  type ExperienceOrderingMetadata,
+} from "@/lib/experience-ordering";
 import type { ImportedProfileData } from "@/lib/profile-import";
 
 type Project = {
@@ -29,6 +33,11 @@ type Experience = {
   _needsSummary?: boolean;
   _clientId?: string;
   createdAt?: string;
+  updatedAt?: string;
+  normalizedTimeTo?: ExperienceOrderingMetadata["normalizedTimeTo"];
+  normalizedTimeToSortKey?: ExperienceOrderingMetadata["normalizedTimeToSortKey"];
+  normalizedTimeToIsPresent?: ExperienceOrderingMetadata["normalizedTimeToIsPresent"];
+  normalizedTimeToSource?: ExperienceOrderingMetadata["normalizedTimeToSource"];
 };
 
 type Profile = {
@@ -118,8 +127,8 @@ const timestampFrom = (value?: string) => {
 };
 
 /* Motivation vs Logic:
-   Motivation: newly captured projects and experiences should stay visible at the top of the workspace even after a roundtrip to the API.
-   Logic: persist creation timestamps on each item and always rehydrate the list sorted by that timestamp so the freshest proof points float to the top. */
+   Motivation: project cards still follow creation order, so fresh portfolio work should remain visible at the top after an API roundtrip.
+   Logic: preserve creation timestamps on each project and sort only that collection by `createdAt` during hydration. */
 function sortByCreatedAtDescending<T extends { createdAt?: string }>(items: T[]) {
   return [...items].sort((a, b) => timestampFrom(b.createdAt) - timestampFrom(a.createdAt));
 }
@@ -129,13 +138,21 @@ const hydrateList = <T extends { createdAt?: string; _clientId?: string; _id?: s
   previous?: T[]
 ) => sortByCreatedAtDescending(ensureClientIds(items, previous));
 
+const hydrateExperiences = (
+  items: Experience[] | undefined,
+  previous?: Experience[]
+) => sortExperiencesByRecency(ensureClientIds(items, previous));
+
 /* Root Cause vs Logic:
    Root Cause: using editable strings as React keys caused cards to unmount mid-edit when the key value changed.
    Logic: persist per-card IDs on every project and experience so keyboard input updates the card without the key shifting. */
 function hydrateProfile(profile: Profile | null | undefined, previous?: Profile): Profile {
   const base = profile || emptyProfile;
   const projects = hydrateList(base.projects, previous?.projects);
-  const experiences = hydrateList(base.experiences, previous?.experiences);
+  /* Root Cause vs Logic:
+     Root Cause: the profile page used to reapply a created-at sort during hydration, so a fresh API response could undo backend reindexing and leave Experience 01 tied to save order instead of role recency.
+     Logic: keep project hydration unchanged, but hydrate experiences through the shared recency sorter so the client preserves the same chronology rule the backend persists. */
+  const experiences = hydrateExperiences(base.experiences, previous?.experiences);
   return {
     ...base,
     projects,
@@ -158,10 +175,11 @@ function stripClientIds(profile: Profile): Profile {
 }
 
 function mergeImportedProfile(current: Profile, imported: ImportedProfileData): Profile {
+  const importBaseTime = Date.now();
   const importedProjects = (imported.projects || []).map((item, index) => ({
     name: item.name || "",
     description: item.description || "",
-    createdAt: new Date(Date.now() + index).toISOString(),
+    createdAt: new Date(importBaseTime + index).toISOString(),
     _clientId: createClientId(),
     _needsSummary: true,
   })) as Project[];
@@ -172,7 +190,8 @@ function mergeImportedProfile(current: Profile, imported: ImportedProfileData): 
     timeFrom: item.timeFrom || "",
     timeTo: item.timeTo || "",
     description: item.description || "",
-    createdAt: new Date(Date.now() + index).toISOString(),
+    createdAt: new Date(importBaseTime + index).toISOString(),
+    updatedAt: new Date(importBaseTime + index).toISOString(),
     _clientId: createClientId(),
     _needsSummary: true,
   })) as Experience[];
@@ -194,10 +213,10 @@ function mergeImportedProfile(current: Profile, imported: ImportedProfileData): 
       ...importedProjects,
       ...current.projects,
     ],
-    experiences: [
+    experiences: sortExperiencesByRecency([
       ...importedExperiences,
       ...current.experiences,
-    ],
+    ]),
   };
 }
 
@@ -342,9 +361,10 @@ export default function ProfilePage() {
   }
 
   function addExperience() {
+    const timestamp = new Date().toISOString();
     commitProfile((current) => ({
       ...current,
-      experiences: [
+      experiences: sortExperiencesByRecency([
         {
           companyName: "",
           role: "",
@@ -353,10 +373,11 @@ export default function ProfilePage() {
           description: "",
           _needsSummary: true,
           _clientId: createClientId(),
-          createdAt: new Date().toISOString(),
+          createdAt: timestamp,
+          updatedAt: timestamp,
         },
         ...current.experiences,
-      ],
+      ]),
     }));
   }
 

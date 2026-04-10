@@ -15,6 +15,11 @@ const ExperienceSchema = new Schema({
   description: { type: String, default: '' },
   summary: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  normalizedTimeTo: { type: String, default: '' },
+  normalizedTimeToSortKey: { type: Number, default: null },
+  normalizedTimeToIsPresent: { type: Boolean, default: false },
+  normalizedTimeToSource: { type: String, default: '' },
 });
 
 const ProfileSchema = new Schema({
@@ -45,4 +50,3 @@ export type Profile = InferSchemaType<typeof ProfileSchema>;
 export type User = InferSchemaType<typeof UserSchema>;
 
 export const UserModel: Model<User> = mongoose.models.User || mongoose.model<User>('User', UserSchema);
-

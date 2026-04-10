@@ -1,11 +1,17 @@
 import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
+import {
+  deriveExperienceOrderingMetadata,
+  sortExperiencesByRecency,
+  type ExperienceOrderingMetadata,
+} from '@/lib/experience-ordering';
 import { UserModel, Profile } from '@/lib/models/User';
 import { getAuthFromCookies } from '@/lib/auth';
 import { getModel } from '@/lib/ai';
 
 type WithCreatedAt = { createdAt?: string | Date };
+type WithUpdatedAt = { updatedAt?: string | Date };
 type WithId = { _id?: unknown };
 
 type IncomingProject = WithCreatedAt &
@@ -17,6 +23,8 @@ type IncomingProject = WithCreatedAt &
   };
 
 type IncomingExperience = WithCreatedAt &
+  WithUpdatedAt &
+  Partial<ExperienceOrderingMetadata> &
   WithId & {
     companyName?: string;
     role?: string;
@@ -68,6 +76,11 @@ function toIdString(value: unknown) {
   return '';
 }
 
+function toIsoString(value?: string | Date | null) {
+  if (!value) return '';
+  return new Date(value).toISOString();
+}
+
 function ensureCreatedAt<T extends WithCreatedAt>(items?: T[]) {
   return (items || []).map((item) => ({
     ...item,
@@ -87,13 +100,39 @@ function normalizeTimeline<T extends WithCreatedAt>(items?: T[]) {
   return sortByCreatedAtDescending(ensureCreatedAt(items));
 }
 
-function serializeProfile<T extends SerializableProfile | null | undefined>(profile: T) {
+function normalizeExperienceTimeline<T extends IncomingExperience>(items?: T[]) {
+  return sortExperiencesByRecency(
+    (items || []).map((item) => {
+      const createdAt = item.createdAt ? new Date(item.createdAt) : new Date();
+      const updatedAt = item.updatedAt ? new Date(item.updatedAt) : createdAt;
+      const metadata = deriveExperienceOrderingMetadata(item);
+
+      return {
+        ...item,
+        createdAt,
+        updatedAt,
+        ...metadata,
+      };
+    }),
+  );
+}
+
+function sortProfileCollections<T extends SerializableProfile | null | undefined>(profile: T) {
   if (!profile) return profile;
+
   return {
     ...profile,
     projects: sortByCreatedAtDescending(profile.projects || []),
-    experiences: sortByCreatedAtDescending(profile.experiences || []),
+    experiences: sortExperiencesByRecency(profile.experiences || []),
   };
+}
+
+function serializeProfile<T extends SerializableProfile | null | undefined>(profile: T) {
+  return sortProfileCollections(profile);
+}
+
+function coerceSerializableProfile(value: unknown) {
+  return (value as SerializableProfile | null | undefined) || null;
 }
 
 function createStableHash(value: Record<string, unknown>) {
@@ -136,7 +175,45 @@ function normalizeCollectionInput<T extends WithCreatedAt>(
 ) {
   const hasIncomingField = hasOwnField(profileInput, field);
   const selectedItems = hasIncomingField ? profileInput[field] : existingItems;
-  return normalizeTimeline(Array.isArray(selectedItems) ? selectedItems : []);
+  const items = Array.isArray(selectedItems) ? selectedItems : [];
+
+  if (field === 'experiences') {
+    return normalizeExperienceTimeline(items as IncomingExperience[]) as unknown as T[];
+  }
+
+  return normalizeTimeline(items);
+}
+
+function serializeProjectForHash(item: IncomingProject | (IncomingProject & WithId)) {
+  return {
+    _id: toIdString(item._id),
+    name: cleanString(item.name),
+    description: cleanString(item.description),
+    summary: cleanString(item.summary),
+    createdAt: toIsoString(item.createdAt),
+  };
+}
+
+function serializeExperienceForHash(item: IncomingExperience | (IncomingExperience & WithId)) {
+  return {
+    _id: toIdString(item._id),
+    companyName: cleanString(item.companyName),
+    role: cleanString(item.role),
+    timeFrom: cleanString(item.timeFrom),
+    timeTo: cleanString(item.timeTo),
+    description: cleanString(item.description),
+    summary: cleanString(item.summary),
+    createdAt: toIsoString(item.createdAt),
+    updatedAt: toIsoString(item.updatedAt),
+    normalizedTimeTo: cleanString(item.normalizedTimeTo),
+    normalizedTimeToSortKey:
+      typeof item.normalizedTimeToSortKey === 'number' ? item.normalizedTimeToSortKey : null,
+    normalizedTimeToIsPresent: Boolean(item.normalizedTimeToIsPresent),
+    normalizedTimeToSource:
+      item.normalizedTimeToSource === 'timeTo' || item.normalizedTimeToSource === 'timeFrom'
+        ? item.normalizedTimeToSource
+        : '',
+  };
 }
 
 function profilesMatch(a: SerializableProfile | null | undefined, b: Record<string, unknown>) {
@@ -150,42 +227,14 @@ function profilesMatch(a: SerializableProfile | null | undefined, b: Record<stri
 
   return (
     createStableHash({
-      projects: (a.projects || []).map((item) => ({
-        _id: toIdString((item as WithId)._id),
-        name: cleanString((item as IncomingProject).name),
-        description: cleanString((item as IncomingProject).description),
-        summary: cleanString((item as IncomingProject).summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
-      experiences: (a.experiences || []).map((item) => ({
-        _id: toIdString((item as WithId)._id),
-        companyName: cleanString((item as IncomingExperience).companyName),
-        role: cleanString((item as IncomingExperience).role),
-        timeFrom: cleanString((item as IncomingExperience).timeFrom),
-        timeTo: cleanString((item as IncomingExperience).timeTo),
-        description: cleanString((item as IncomingExperience).description),
-        summary: cleanString((item as IncomingExperience).summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      projects: (a.projects || []).map((item) => serializeProjectForHash(item as IncomingProject & WithId)),
+      experiences: (a.experiences || []).map((item) =>
+        serializeExperienceForHash(item as IncomingExperience & WithId),
+      ),
     }) ===
     createStableHash({
-      projects: (b.projects as IncomingProject[]).map((item) => ({
-        _id: toIdString(item._id),
-        name: cleanString(item.name),
-        description: cleanString(item.description),
-        summary: cleanString(item.summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
-      experiences: (b.experiences as IncomingExperience[]).map((item) => ({
-        _id: toIdString(item._id),
-        companyName: cleanString(item.companyName),
-        role: cleanString(item.role),
-        timeFrom: cleanString(item.timeFrom),
-        timeTo: cleanString(item.timeTo),
-        description: cleanString(item.description),
-        summary: cleanString(item.summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      projects: (b.projects as IncomingProject[]).map((item) => serializeProjectForHash(item)),
+      experiences: (b.experiences as IncomingExperience[]).map((item) => serializeExperienceForHash(item)),
     })
   );
 }
@@ -259,11 +308,25 @@ async function resolveExperiences(
   return Promise.all(
     incomingExperiences.map(async (experience) => {
       const existing = existingById.get(toIdString(experience._id));
+      const contentChanged = getExperienceContentHash(experience) !== getExperienceContentHash(existing || {});
       const shouldRefreshSummary =
         Boolean(experience._needsSummary) ||
         !cleanString(existing?.summary) ||
-        getExperienceContentHash(experience) !== getExperienceContentHash(existing || {});
+        contentChanged;
       const timeframe = `${cleanString(experience.timeFrom)} - ${cleanString(experience.timeTo)}`;
+      const createdAt = experience.createdAt
+        ? new Date(experience.createdAt)
+        : existing?.createdAt
+          ? new Date(existing.createdAt)
+          : new Date();
+      const updatedAt = contentChanged
+        ? new Date()
+        : experience.updatedAt
+          ? new Date(experience.updatedAt)
+          : existing?.updatedAt
+            ? new Date(existing.updatedAt)
+            : createdAt;
+      const orderingMetadata = deriveExperienceOrderingMetadata(experience);
 
       return {
         ...(existing?._id ? { _id: existing._id } : {}),
@@ -272,7 +335,9 @@ async function resolveExperiences(
         timeFrom: cleanString(experience.timeFrom),
         timeTo: cleanString(experience.timeTo),
         description: cleanString(experience.description),
-        createdAt: experience.createdAt ? new Date(experience.createdAt) : existing?.createdAt ? new Date(existing.createdAt) : new Date(),
+        createdAt,
+        updatedAt,
+        ...orderingMetadata,
         summary: shouldRefreshSummary
           ? await summarize(
               `${cleanString(experience.companyName)} - ${cleanString(experience.role)} (${timeframe})\n${cleanString(experience.description)}`,
@@ -289,7 +354,7 @@ export async function GET(req: NextRequest) {
 
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
-  return NextResponse.json({ profile: serializeProfile(user?.profile || null) });
+  return NextResponse.json({ profile: serializeProfile(coerceSerializableProfile(user?.profile)) });
 }
 
 export async function PUT(req: NextRequest) {
@@ -304,7 +369,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const existingProfile = serializeProfile(existingUser.profile || null);
+  const existingProfile = serializeProfile(coerceSerializableProfile(existingUser.profile));
   const scalarFields = normalizeScalarFields(body, existingProfile || null);
   /* Root Cause vs Logic:
      Root Cause: the route normalized missing `projects` or `experiences` fields as empty arrays, so any partial PUT payload
@@ -327,7 +392,7 @@ export async function PUT(req: NextRequest) {
      which made even small edits feel slow and visually disruptive because unchanged items were reprocessed with every save.
      Logic: diff each project and experience against the stored profile using stable content hashes, summarize only the items whose
      meaning changed, and only send Mongo the profile paths whose values actually changed. */
-  const [projects, experiences] = await Promise.all([
+  const [projects, resolvedExperiences] = await Promise.all([
     resolveProjects(normalizedProjects, (existingProfile?.projects || []) as IncomingProject[], summarize),
     resolveExperiences(
       normalizedExperiences,
@@ -335,6 +400,11 @@ export async function PUT(req: NextRequest) {
       summarize,
     ),
   ]);
+
+  /* Motivation vs Logic:
+     Motivation: experience cards should automatically reindex by role recency instead of lingering in save-order, so Experience 01 always reflects the most recent work.
+     Logic: derive sortable end-date metadata on every save, persist it alongside updated timestamps, and let the backend reorder the array before it is stored or returned. */
+  const experiences = sortExperiencesByRecency(resolvedExperiences);
 
   const nextProfile = {
     ...scalarFields,
@@ -356,22 +426,12 @@ export async function PUT(req: NextRequest) {
 
   if (
     createStableHash({
-      projects: (existingProfile?.projects || []).map((item) => ({
-        _id: toIdString((item as WithId)._id),
-        name: cleanString((item as IncomingProject).name),
-        description: cleanString((item as IncomingProject).description),
-        summary: cleanString((item as IncomingProject).summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      projects: (existingProfile?.projects || []).map((item) =>
+        serializeProjectForHash(item as IncomingProject & WithId),
+      ),
     }) !==
     createStableHash({
-      projects: projects.map((item) => ({
-        _id: toIdString(item._id),
-        name: cleanString(item.name),
-        description: cleanString(item.description),
-        summary: cleanString(item.summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      projects: projects.map((item) => serializeProjectForHash(item)),
     })
   ) {
     updateDoc['profile.projects'] = projects;
@@ -379,28 +439,12 @@ export async function PUT(req: NextRequest) {
 
   if (
     createStableHash({
-      experiences: (existingProfile?.experiences || []).map((item) => ({
-        _id: toIdString((item as WithId)._id),
-        companyName: cleanString((item as IncomingExperience).companyName),
-        role: cleanString((item as IncomingExperience).role),
-        timeFrom: cleanString((item as IncomingExperience).timeFrom),
-        timeTo: cleanString((item as IncomingExperience).timeTo),
-        description: cleanString((item as IncomingExperience).description),
-        summary: cleanString((item as IncomingExperience).summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      experiences: (existingProfile?.experiences || []).map((item) =>
+        serializeExperienceForHash(item as IncomingExperience & WithId),
+      ),
     }) !==
     createStableHash({
-      experiences: experiences.map((item) => ({
-        _id: toIdString(item._id),
-        companyName: cleanString(item.companyName),
-        role: cleanString(item.role),
-        timeFrom: cleanString(item.timeFrom),
-        timeTo: cleanString(item.timeTo),
-        description: cleanString(item.description),
-        summary: cleanString(item.summary),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : '',
-      })),
+      experiences: experiences.map((item) => serializeExperienceForHash(item)),
     })
   ) {
     updateDoc['profile.experiences'] = experiences;
@@ -412,5 +456,8 @@ export async function PUT(req: NextRequest) {
     { new: true, upsert: false },
   );
 
-  return NextResponse.json({ ok: true, profile: serializeProfile(updated?.profile || nextProfile) });
+  return NextResponse.json({
+    ok: true,
+    profile: serializeProfile(updated ? coerceSerializableProfile(updated.profile) : nextProfile),
+  });
 }
