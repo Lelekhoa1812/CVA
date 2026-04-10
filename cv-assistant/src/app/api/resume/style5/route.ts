@@ -11,6 +11,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    skills?: string;
     languages?: string;
     studyPeriod?: string;
     projects?: Project[];
@@ -266,7 +268,7 @@ export async function POST(req: NextRequest) {
         contactY -= labelSize + 4;
       }
 
-      let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+      let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
       if (!skillsText) skillsText = 'No skills specified';
       const capabilityItems = splitResumeItems(skillsText);
       const capabilityLines = capabilityItems.length

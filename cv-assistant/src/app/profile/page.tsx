@@ -38,6 +38,7 @@ type Profile = {
   phone: string;
   website?: string;
   linkedin?: string;
+  skills?: string;
   projects: Project[];
   experiences: Experience[];
   languages?: string;
@@ -53,6 +54,7 @@ const emptyProfile: Profile = {
   phone: "",
   website: "",
   linkedin: "",
+  skills: "",
   projects: [],
   experiences: [],
   languages: "",
@@ -106,10 +108,16 @@ function hydrateProfile(profile: Profile | null | undefined, previous?: Profile)
 }
 
 function stripClientIds(profile: Profile): Profile {
+  const withoutClientId = <T extends { _clientId?: string }>(item: T) => {
+    const clone = { ...item };
+    delete clone._clientId;
+    return clone;
+  };
+
   return {
     ...profile,
-    projects: profile.projects.map(({ _clientId, ...rest }) => rest),
-    experiences: profile.experiences.map(({ _clientId, ...rest }) => rest),
+    projects: profile.projects.map(withoutClientId),
+    experiences: profile.experiences.map(withoutClientId),
   };
 }
 
@@ -623,6 +631,34 @@ export default function ProfilePage() {
               placeholder="English, Spanish, French"
               hint="Comma separated"
             />
+          </div>
+
+          {/* Motivation vs Logic:
+              Motivation: Resume generation needed a real profile-level skills source so users can keep languages separate
+              from technical capabilities and still have a sensible default in Resume Lab.
+              Logic: Add one optional long-form skills field below identity, persist it on the profile object, and let
+              downstream resume surfaces hydrate their editable Skills input from this value. */}
+          <div className="mt-8 border-t border-white/10 pt-6">
+            <div className="mb-3">
+              <p className="section-kicker">Skills</p>
+              <h3 className="text-foreground mt-2 text-lg font-semibold">Capabilities you want resumes to reuse</h3>
+              <p className="text-muted-foreground mt-2 text-sm">
+                Optional. Add technical skills, tools, frameworks, and domains you want prefilled in Resume Lab.
+              </p>
+            </div>
+            <label htmlFor="profile-skills" className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-foreground text-sm font-medium">Skills (Optional)</span>
+                <span className="text-muted-foreground text-xs">Comma separated or line separated</span>
+              </div>
+              <textarea
+                id="profile-skills"
+                className="textarea-premium min-h-28"
+                value={profile.skills || ""}
+                placeholder="Python, TypeScript, React, Node.js, Docker, RAG, LLM evaluation"
+                onChange={(event) => up("skills", event.target.value)}
+              />
+            </label>
           </div>
         </GlassPanel>
       </Reveal>

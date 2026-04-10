@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   const user = await UserModel.findById(auth.userId).lean();
   type Project = { name?: string; summary?: string; description?: string };
   type Experience = { companyName?: string; role?: string; summary?: string; description?: string; timeFrom?: string; timeTo?: string };
-  type Profile = { name?: string; major?: string; school?: string; email?: string; phone?: string; website?: string; linkedin?: string; languages?: string; projects?: Project[]; experiences?: Experience[] };
+  type Profile = { name?: string; major?: string; school?: string; email?: string; phone?: string; website?: string; linkedin?: string; skills?: string; languages?: string; projects?: Project[]; experiences?: Experience[] };
   const profile = (user?.profile || {}) as Profile;
 
   // Parse style preferences and enhance content if requested
@@ -602,7 +603,12 @@ export async function POST(req: NextRequest) {
 
   // Skills section - follows Education in Style2
   drawSection('Skills');
-  let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  // Root Cause vs Logic:
+  // Root Cause: The route treated languages as a substitute skills list and then drew Languages again underneath,
+  // which repeated the same entries whenever the user had languages but no explicit skill list.
+  // Logic: Skills now come only from explicit skill inputs, and the dedicated Languages line remains the sole
+  // place where profile.languages is rendered.
+  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
   
   // Fallback if no skills provided
   if (!skillsText) {

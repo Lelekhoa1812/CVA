@@ -6,7 +6,7 @@ import { buildApiUrl } from '@/lib/api';
 
 type Project = { name: string; summary?: string };
 type Experience = { companyName: string; role: string; summary?: string };
-type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; projects: Project[]; experiences: Experience[]; languages?: string };
+type Profile = { name: string; major: string; school: string; studyPeriod?: string; email: string; workEmail?: string; phone: string; website?: string; linkedin?: string; skills?: string; projects: Project[]; experiences: Experience[]; languages?: string };
 type StyleId = 'style1' | 'style2' | 'style3' | 'style4' | 'style5';
 
 // Motivation vs Logic:
@@ -410,6 +410,7 @@ export default function ResumePage() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data.profile || null);
+        setSkills(data.profile?.skills || '');
       }
     })();
   }, []);

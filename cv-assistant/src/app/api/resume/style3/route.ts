@@ -14,6 +14,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import { packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    skills?: string;
     languages?: string;
     studyPeriod?: string;
     projects?: Project[];
@@ -424,7 +426,7 @@ export async function POST(req: NextRequest) {
 
   // Skills
   drawSidebarLabel('Skills');
-  let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
   if (!skillsText) skillsText = '—';
   // Root Cause vs Logic:
   // Root Cause: The sidebar rendered one bullet per skill, so long skill inventories consumed the entire rail and
@@ -438,7 +440,7 @@ export async function POST(req: NextRequest) {
   yLeft -= 10;
 
   // Languages (optional separate field if user also wants it here)
-  if (profile.languages && profile.languages.trim() && profile.languages !== skillsText) {
+  if (profile.languages && profile.languages.trim()) {
     drawSidebarLabel('Languages');
     drawSidebarCompactList(profile.languages, Math.max(fontSize - 2, 8));
     yLeft -= 6;

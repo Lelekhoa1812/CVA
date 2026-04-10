@@ -8,6 +8,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    skills?: string;
     languages?: string;
     studyPeriod?: string;
     projects?: Project[];
@@ -307,7 +309,7 @@ export async function POST(req: NextRequest) {
   const labelSize = Math.max(fontSize, 10);
   y = drawSkillsLabel(y);
 
-  let skillsText = (enhancedSkills || skills || '').trim() || (profile.languages || '');
+  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
   if (!skillsText) skillsText = '—';
   const chipTokens = splitResumeItems(skillsText);
   function drawSkillsLabel(currentY: number, continuation = false) {
@@ -526,6 +528,10 @@ export async function POST(req: NextRequest) {
     const major = profile.major || '';
     const body = major ? major : '';
     nextCol = drawCard(0, school, studyPeriod, body, false);
+  }
+
+  if (profile.languages && profile.languages.trim()) {
+    nextCol = drawCard(nextCol, 'Languages', '', profile.languages.trim(), false);
   }
 
   // ----- EXPERIENCE -----

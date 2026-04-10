@@ -27,6 +27,7 @@ const ProfileSchema = new Schema({
   phone: { type: String, default: '' },
   website: { type: String, default: '' },
   linkedin: { type: String, default: '' },
+  skills: { type: String, default: '' },
   languages: { type: String, default: '' },
   projects: { type: [ProjectSchema], default: [] },
   experiences: { type: [ExperienceSchema], default: [] },
@@ -44,5 +45,4 @@ export type Profile = InferSchemaType<typeof ProfileSchema>;
 export type User = InferSchemaType<typeof UserSchema>;
 
 export const UserModel: Model<User> = mongoose.models.User || mongoose.model<User>('User', UserSchema);
-
 
