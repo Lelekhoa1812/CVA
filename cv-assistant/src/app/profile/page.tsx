@@ -96,6 +96,20 @@ const PROFILE_SCALAR_FIELDS = [
 
 const cleanString = (value: string | undefined | null) => value?.trim() || "";
 
+function isBlankProjectDraft(project: Project) {
+  return !cleanString(project.name) && !cleanString(project.description);
+}
+
+function isBlankExperienceDraft(experience: Experience) {
+  return (
+    !cleanString(experience.companyName) &&
+    !cleanString(experience.role) &&
+    !cleanString(experience.timeFrom) &&
+    !cleanString(experience.timeTo) &&
+    !cleanString(experience.description)
+  );
+}
+
 function getListIdentity<T extends { _id?: string; createdAt?: string }>(item: T, index: number) {
   if (item._id) return `id:${item._id}`;
   if (item.createdAt) return `created:${item.createdAt}`;
@@ -142,6 +156,39 @@ const hydrateExperiences = (
   items: Experience[] | undefined,
   previous?: Experience[]
 ) => sortExperiencesByRecency(ensureClientIds(items, previous));
+
+/* Motivation vs Logic:
+   Motivation: clicking "Add Experience" or "Add Project" should surface the fresh blank editor card at the top immediately, even when the saved list has its own chronology rules.
+   Logic: keep the persisted ordering untouched, but temporarily pin newly created blank drafts above the rest of the list during rendering until the user starts filling them in. */
+function prioritizeFreshDraftEntries<T extends { _clientId?: string }>(
+  items: T[],
+  pinnedDraftIds: string[],
+  isBlankDraft: (item: T) => boolean
+) {
+  const entries = items.map((item, index) => ({ item, index }));
+
+  if (pinnedDraftIds.length === 0) {
+    return entries;
+  }
+
+  const draftOrder = new Map(pinnedDraftIds.map((id, index) => [id, index] as const));
+  const pinnedEntries = entries
+    .filter(({ item }) => item._clientId && draftOrder.has(item._clientId) && isBlankDraft(item))
+    .sort(
+      (left, right) =>
+        draftOrder.get(left.item._clientId || "")! - draftOrder.get(right.item._clientId || "")!
+    );
+
+  if (pinnedEntries.length === 0) {
+    return entries;
+  }
+
+  const pinnedIds = new Set(pinnedEntries.map(({ item }) => item._clientId));
+  return [
+    ...pinnedEntries,
+    ...entries.filter(({ item }) => !item._clientId || !pinnedIds.has(item._clientId)),
+  ];
+}
 
 /* Root Cause vs Logic:
    Root Cause: using editable strings as React keys caused cards to unmount mid-edit when the key value changed.
@@ -297,6 +344,8 @@ export default function ProfilePage() {
   const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
   const [copiedProject, setCopiedProject] = useState<number | null>(null);
   const [copiedExperience, setCopiedExperience] = useState<number | null>(null);
+  const [newProjectDraftIds, setNewProjectDraftIds] = useState<string[]>([]);
+  const [newExperienceDraftIds, setNewExperienceDraftIds] = useState<string[]>([]);
 
   function commitProfile(updater: Profile | ((current: Profile) => Profile)) {
     setProfile((current) => {
@@ -345,6 +394,7 @@ export default function ProfilePage() {
   }
 
   function addProject() {
+    const clientId = createClientId();
     commitProfile((current) => ({
       ...current,
       projects: [
@@ -352,16 +402,18 @@ export default function ProfilePage() {
           name: "",
           description: "",
           _needsSummary: true,
-          _clientId: createClientId(),
+          _clientId: clientId,
           createdAt: new Date().toISOString(),
         },
         ...current.projects,
       ],
     }));
+    setNewProjectDraftIds((current) => [clientId, ...current.filter((id) => id !== clientId)]);
   }
 
   function addExperience() {
     const timestamp = new Date().toISOString();
+    const clientId = createClientId();
     commitProfile((current) => ({
       ...current,
       experiences: sortExperiencesByRecency([
@@ -372,13 +424,14 @@ export default function ProfilePage() {
           timeTo: "",
           description: "",
           _needsSummary: true,
-          _clientId: createClientId(),
+          _clientId: clientId,
           createdAt: timestamp,
           updatedAt: timestamp,
         },
         ...current.experiences,
       ]),
     }));
+    setNewExperienceDraftIds((current) => [clientId, ...current.filter((id) => id !== clientId)]);
   }
 
   function deleteProject(index: number) {
@@ -653,6 +706,21 @@ export default function ProfilePage() {
     return Math.round((filled / keyValues.length) * 100);
   }, [profile]);
 
+  const visibleProjects = useMemo(
+    () => prioritizeFreshDraftEntries(profile.projects, newProjectDraftIds, isBlankProjectDraft),
+    [newProjectDraftIds, profile.projects]
+  );
+
+  const visibleExperiences = useMemo(
+    () =>
+      prioritizeFreshDraftEntries(
+        profile.experiences,
+        newExperienceDraftIds,
+        isBlankExperienceDraft
+      ),
+    [newExperienceDraftIds, profile.experiences]
+  );
+
   if (loading) {
     return (
       <div className="page-shell flex min-h-[70vh] items-center justify-center">
@@ -912,12 +980,14 @@ export default function ProfilePage() {
               </GlassPanel>
             ) : null}
 
-            {profile.experiences.map((experience, index) => (
+            {visibleExperiences.map(({ item: experience, index }, renderIndex) => (
               <StaggerItem key={experience._id ?? experience._clientId ?? `${experience.companyName}-${experience.role}-${index}`}>
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="section-kicker">Experience {String(index + 1).padStart(2, "0")}</p>
+                      <p className="section-kicker">
+                        Experience {String(renderIndex + 1).padStart(2, "0")}
+                      </p>
                       <h3 className="text-foreground mt-2 text-lg font-semibold">
                         {experience.companyName || "Company"} · {experience.role || "Role"}
                       </h3>
@@ -1037,12 +1107,14 @@ export default function ProfilePage() {
               </GlassPanel>
             ) : null}
 
-            {profile.projects.map((project, index) => (
+            {visibleProjects.map(({ item: project, index }, renderIndex) => (
               <StaggerItem key={project._id ?? project._clientId ?? `${project.name}-${index}`}>
                 <div className="interactive-card space-y-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="section-kicker">Project {String(index + 1).padStart(2, "0")}</p>
+                      <p className="section-kicker">
+                        Project {String(renderIndex + 1).padStart(2, "0")}
+                      </p>
                       <h3 className="text-foreground mt-2 text-lg font-semibold">
                         {project.name || "Untitled Project"}
                       </h3>
