@@ -96,20 +96,6 @@ const PROFILE_SCALAR_FIELDS = [
 
 const cleanString = (value: string | undefined | null) => value?.trim() || "";
 
-function isBlankProjectDraft(project: Project) {
-  return !cleanString(project.name) && !cleanString(project.description);
-}
-
-function isBlankExperienceDraft(experience: Experience) {
-  return (
-    !cleanString(experience.companyName) &&
-    !cleanString(experience.role) &&
-    !cleanString(experience.timeFrom) &&
-    !cleanString(experience.timeTo) &&
-    !cleanString(experience.description)
-  );
-}
-
 function getListIdentity<T extends { _id?: string; createdAt?: string }>(item: T, index: number) {
   if (item._id) return `id:${item._id}`;
   if (item.createdAt) return `created:${item.createdAt}`;
@@ -157,26 +143,25 @@ const hydrateExperiences = (
   previous?: Experience[]
 ) => sortExperiencesByRecency(ensureClientIds(items, previous));
 
-/* Motivation vs Logic:
-   Motivation: clicking "Add Experience" or "Add Project" should surface the fresh blank editor card at the top immediately, even when the saved list has its own chronology rules.
-   Logic: keep the persisted ordering untouched, but temporarily pin newly created blank drafts above the rest of the list during rendering until the user starts filling them in. */
-function prioritizeFreshDraftEntries<T extends { _clientId?: string }>(
+/* Root Cause vs Logic:
+   Root Cause: newly added cards were only pinned while completely blank, so the first keystroke dropped them back into the persisted sort order and made the editor jump to the bottom mid-entry.
+   Logic: keep fresh local cards pinned by client ID during rendering until a successful save clears that temporary pin, preserving the stable editing surface without mutating the stored order. */
+function prioritizeFreshEntries<T extends { _clientId?: string }>(
   items: T[],
-  pinnedDraftIds: string[],
-  isBlankDraft: (item: T) => boolean
+  pinnedEntryIds: string[]
 ) {
   const entries = items.map((item, index) => ({ item, index }));
 
-  if (pinnedDraftIds.length === 0) {
+  if (pinnedEntryIds.length === 0) {
     return entries;
   }
 
-  const draftOrder = new Map(pinnedDraftIds.map((id, index) => [id, index] as const));
+  const pinnedOrder = new Map(pinnedEntryIds.map((id, index) => [id, index] as const));
   const pinnedEntries = entries
-    .filter(({ item }) => item._clientId && draftOrder.has(item._clientId) && isBlankDraft(item))
+    .filter(({ item }) => item._clientId && pinnedOrder.has(item._clientId))
     .sort(
       (left, right) =>
-        draftOrder.get(left.item._clientId || "")! - draftOrder.get(right.item._clientId || "")!
+        pinnedOrder.get(left.item._clientId || "")! - pinnedOrder.get(right.item._clientId || "")!
     );
 
   if (pinnedEntries.length === 0) {
@@ -435,17 +420,25 @@ export default function ProfilePage() {
   }
 
   function deleteProject(index: number) {
+    const removedClientId = profile.projects[index]?._clientId;
     commitProfile((current) => ({
       ...current,
       projects: current.projects.filter((_, itemIndex) => itemIndex !== index),
     }));
+    if (removedClientId) {
+      setNewProjectDraftIds((current) => current.filter((id) => id !== removedClientId));
+    }
   }
 
   function deleteExperience(index: number) {
+    const removedClientId = profile.experiences[index]?._clientId;
     commitProfile((current) => ({
       ...current,
       experiences: current.experiences.filter((_, itemIndex) => itemIndex !== index),
     }));
+    if (removedClientId) {
+      setNewExperienceDraftIds((current) => current.filter((id) => id !== removedClientId));
+    }
   }
 
   /* Motivation: users need one-click enhancement and one-click copy-to-paste output without duplicating formatting logic across cards.
@@ -624,6 +617,8 @@ export default function ProfilePage() {
         }
 
         commitProfile((current) => hydrateProfile(data.profile || current, current));
+        setNewProjectDraftIds([]);
+        setNewExperienceDraftIds([]);
         return;
       }
     } finally {
@@ -707,16 +702,15 @@ export default function ProfilePage() {
   }, [profile]);
 
   const visibleProjects = useMemo(
-    () => prioritizeFreshDraftEntries(profile.projects, newProjectDraftIds, isBlankProjectDraft),
+    () => prioritizeFreshEntries(profile.projects, newProjectDraftIds),
     [newProjectDraftIds, profile.projects]
   );
 
   const visibleExperiences = useMemo(
     () =>
-      prioritizeFreshDraftEntries(
+      prioritizeFreshEntries(
         profile.experiences,
-        newExperienceDraftIds,
-        isBlankExperienceDraft
+        newExperienceDraftIds
       ),
     [newExperienceDraftIds, profile.experiences]
   );

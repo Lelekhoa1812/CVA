@@ -131,8 +131,21 @@ function serializeProfile<T extends SerializableProfile | null | undefined>(prof
   return sortProfileCollections(profile);
 }
 
+/* Root Cause vs Logic:
+   Root Cause: the save route returned `updated.profile` straight from a live Mongoose document, and spreading that subdocument into the API response dropped scalar identity fields even though Mongo had already saved them.
+   Logic: coerce any hydrated Mongoose profile document into a plain serializable object before sorting or responding so post-save UI hydration sees the same complete shape as a fresh lean fetch. */
 function coerceSerializableProfile(value: unknown) {
-  return (value as SerializableProfile | null | undefined) || null;
+  if (!value) return null;
+
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { toObject?: () => unknown }).toObject === 'function'
+  ) {
+    return (value as { toObject: () => SerializableProfile }).toObject();
+  }
+
+  return value as SerializableProfile;
 }
 
 function createStableHash(value: Record<string, unknown>) {
