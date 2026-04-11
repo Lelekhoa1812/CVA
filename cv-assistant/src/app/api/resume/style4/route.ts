@@ -8,6 +8,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildJustifiedTextLines, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    profileSummary?: string;
     skills?: string;
     languages?: string;
     studyPeriod?: string;
@@ -296,8 +298,8 @@ export async function POST(req: NextRequest) {
   // Skills paragraph row (under banner)
   let y = top - bannerH - 16;
   const labelSize = Math.max(fontSize, 10);
-  function drawSkillsLabel(currentY: number, continuation = false) {
-    page.drawText(continuation ? 'SKILLS (CONT.)' : 'SKILLS', { x: contentLeft, y: currentY, size: labelSize, font: helvBold, color: ACCENT });
+  function drawSectionLabel(label: string, currentY: number, continuation = false) {
+    page.drawText(continuation ? `${label} (CONT.)` : label, { x: contentLeft, y: currentY, size: labelSize, font: helvBold, color: ACCENT });
     return currentY - labelSize - 7;
   }
   function drawJustifiedLineAt(words: string[], text: string, x: number, yPos: number, size: number, maxWidth: number, justify: boolean) {
@@ -324,24 +326,24 @@ export async function POST(req: NextRequest) {
       }
     }
   }
-  function drawSkillsParagraph(text: string, startY: number) {
+  function drawNarrativeSection(label: string, text: string, startY: number) {
     const skillsSize = Math.max(fontSize - 2, 9);
     const lineGap = 5;
     const bottomBuffer = bottom + 40;
     const maxWidth = contentRight - contentLeft;
     const lines = buildJustifiedTextLines(text, helv, skillsSize, maxWidth);
-    let currentY = drawSkillsLabel(startY);
+    let currentY = drawSectionLabel(label, startY);
 
     // Motivation vs Logic:
-    // Motivation: Users wanted the skills area to read more like the richer experience/project copy and less like a
-    // full-size strip of chips, while still fitting the card-grid layout cleanly.
-    // Logic: Replace chips with a smaller justified paragraph block that paginates under the same section heading, so
-    // long skill inventories stay polished and aligned without forcing the rest of the template to change.
+    // Motivation: The banner row now needs to support both Profile and Skills as smaller editorial paragraphs without
+    // falling back to loud chip-like treatments or empty headers.
+    // Logic: Reuse one paginated narrative drawer for each optional section so both labels and justified body copy stay
+    // aligned across page breaks.
     for (const line of lines) {
       if (currentY - skillsSize < bottomBuffer) {
         page = pdf.addPage([612, 792]);
         ({ width, height } = page.getSize());
-        currentY = drawSkillsLabel(height - margin, true);
+        currentY = drawSectionLabel(label, height - margin, true);
       }
       drawJustifiedLineAt(line.words, line.text, contentLeft, currentY, skillsSize, maxWidth, line.justify);
       currentY -= skillsSize + lineGap;
@@ -349,10 +351,16 @@ export async function POST(req: NextRequest) {
 
     return currentY - 10;
   }
-  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
-  if (!skillsText) skillsText = '—';
-  const skillsParagraph = formatResumeSkillsParagraph(skillsText) || skillsText;
-  y = drawSkillsParagraph(skillsParagraph, y);
+  const profileText = formatResumeProfileParagraph(resolveResumeProfileText(profile.profileSummary));
+  if (profileText) {
+    y = drawNarrativeSection('PROFILE', profileText, y);
+  }
+
+  const skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
+  if (skillsText) {
+    const skillsParagraph = formatResumeSkillsParagraph(skillsText) || skillsText;
+    y = drawNarrativeSection('SKILLS', skillsParagraph, y);
+  }
 
   // Two-column grid for cards
   const gutter = 18;

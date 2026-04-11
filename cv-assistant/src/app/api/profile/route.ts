@@ -55,6 +55,7 @@ const PROFILE_SCALAR_FIELDS = [
   'phone',
   'website',
   'linkedin',
+  'profileSummary',
   'skills',
   'languages',
 ] as const;

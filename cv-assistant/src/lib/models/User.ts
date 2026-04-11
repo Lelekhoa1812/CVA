@@ -32,6 +32,7 @@ const ProfileSchema = new Schema({
   phone: { type: String, default: '' },
   website: { type: String, default: '' },
   linkedin: { type: String, default: '' },
+  profileSummary: { type: String, default: '' },
   skills: { type: String, default: '' },
   languages: { type: String, default: '' },
   projects: { type: [ProjectSchema], default: [] },

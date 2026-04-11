@@ -14,6 +14,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    profileSummary?: string;
     skills?: string;
     languages?: string;
     studyPeriod?: string;
@@ -452,21 +454,34 @@ export async function POST(req: NextRequest) {
   
   yLeft -= 10;
 
-  // Skills
-  drawSidebarLabel('Skills');
-  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
-  if (!skillsText) skillsText = '—';
-  // Root Cause vs Logic:
-  // Root Cause: The sidebar packed skills into terse list rows, which made the section feel visually louder than the
-  // body content and left ragged text edges unlike the polished narrative blocks elsewhere in the resume.
-  // Logic: Normalize skills into one paragraph, shrink the text slightly, and justify each wrapped line inside the
-  // sidebar width so the section stays compact without abandoning the template's two-column structure.
-  const skillsParagraph = formatResumeSkillsParagraph(skillsText);
-  drawSidebarJustifiedParagraph(skillsParagraph || skillsText, Math.max(fontSize - 3, 8));
+  function drawSidebarNarrativeSection(label: string, text: string) {
+    if (!text) return;
 
-  yLeft -= 6;
-  page.drawLine({ start: { x: leftX, y: yLeft }, end: { x: leftRightX, y: yLeft }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
-  yLeft -= 10;
+    drawSidebarLabel(label);
+    drawSidebarJustifiedParagraph(text, Math.max(fontSize - 3, 8));
+    yLeft -= 6;
+    page.drawLine({ start: { x: leftX, y: yLeft }, end: { x: leftRightX, y: yLeft }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+    yLeft -= 10;
+  }
+
+  const profileText = formatResumeProfileParagraph(resolveResumeProfileText(profile.profileSummary));
+  // Motivation vs Logic:
+  // Motivation: The sidebar now carries an optional narrative Profile above Skills, but the template should stay tidy
+  // when one or both sections are blank.
+  // Logic: Route both sections through one sidebar paragraph helper so labels, justification, and separators stay
+  // consistent while empty sections quietly drop out.
+  drawSidebarNarrativeSection('Profile', profileText);
+
+  const skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
+  if (skillsText) {
+    const skillsParagraph = formatResumeSkillsParagraph(skillsText);
+    // Root Cause vs Logic:
+    // Root Cause: The sidebar packed skills into terse list rows, which made the section feel visually louder than the
+    // body content and left ragged text edges unlike the polished narrative blocks elsewhere in the resume.
+    // Logic: Normalize skills into one paragraph, shrink the text slightly, and justify each wrapped line inside the
+    // sidebar width so the section stays compact without abandoning the template's two-column structure.
+    drawSidebarNarrativeSection('Skills', skillsParagraph || skillsText);
+  }
 
   // Languages (optional separate field if user also wants it here)
   if (profile.languages && profile.languages.trim()) {

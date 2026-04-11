@@ -24,6 +24,7 @@ export type ImportedProfileData = {
   phone?: string;
   website?: string;
   linkedin?: string;
+  profileSummary?: string;
   skills?: string;
   languages?: string;
   projects?: ImportedProject[];
@@ -41,6 +42,7 @@ const PROFILE_IMPORT_PROMPT = `You are a resume/profile parser. Extract the cand
   "phone": string,
   "website": string,
   "linkedin": string,
+  "profileSummary": string,
   "skills": string,
   "languages": string,
   "projects": [{"name": string, "description": string}],
@@ -73,6 +75,7 @@ function normalizeImportedProfile(payload: unknown): ImportedProfileData {
     phone: cleanText(source.phone),
     website: cleanText(source.website),
     linkedin: cleanText(source.linkedin),
+    profileSummary: cleanText(source.profileSummary),
     skills: cleanText(source.skills),
     languages: cleanText(source.languages),
     projects: projects

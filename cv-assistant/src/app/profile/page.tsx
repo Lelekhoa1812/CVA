@@ -50,6 +50,7 @@ type Profile = {
   phone: string;
   website?: string;
   linkedin?: string;
+  profileSummary?: string;
   skills?: string;
   projects: Project[];
   experiences: Experience[];
@@ -66,6 +67,7 @@ const emptyProfile: Profile = {
   phone: "",
   website: "",
   linkedin: "",
+  profileSummary: "",
   skills: "",
   projects: [],
   experiences: [],
@@ -90,6 +92,7 @@ const PROFILE_SCALAR_FIELDS = [
   "phone",
   "website",
   "linkedin",
+  "profileSummary",
   "skills",
   "languages",
 ] as const satisfies ReadonlyArray<keyof Profile>;
@@ -329,6 +332,8 @@ export default function ProfilePage() {
   const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
   const [copiedProject, setCopiedProject] = useState<number | null>(null);
   const [copiedExperience, setCopiedExperience] = useState<number | null>(null);
+  const [enhancingTextSection, setEnhancingTextSection] = useState<"profileSummary" | "skills" | null>(null);
+  const [copiedTextSection, setCopiedTextSection] = useState<"profileSummary" | "skills" | null>(null);
   const [newProjectDraftIds, setNewProjectDraftIds] = useState<string[]>([]);
   const [newExperienceDraftIds, setNewExperienceDraftIds] = useState<string[]>([]);
 
@@ -443,6 +448,64 @@ export default function ProfilePage() {
 
   /* Motivation: users need one-click enhancement and one-click copy-to-paste output without duplicating formatting logic across cards.
      Logic: build the formatted text in shared helpers and keep clipboard feedback local to each card type. */
+  function getTextSectionContent(field: "profileSummary" | "skills") {
+    return (profile[field] || "").trim();
+  }
+
+  async function copyTextSection(field: "profileSummary" | "skills") {
+    const formatted = getTextSectionContent(field);
+    if (!formatted) {
+      setError(`Please add ${field === "profileSummary" ? "profile" : "skills"} details before copying`);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatted);
+      setError(null);
+      setCopiedTextSection(field);
+      window.setTimeout(() => {
+        setCopiedTextSection((current) => (current === field ? null : current));
+      }, 1500);
+    } catch {
+      setError(`Failed to copy ${field === "profileSummary" ? "profile" : "skills"} details`);
+    }
+  }
+
+  async function enhanceTextSection(field: "profileSummary" | "skills") {
+    const content = getTextSectionContent(field);
+    if (!content) {
+      setError(`Please add ${field === "profileSummary" ? "profile" : "skills"} details before enhancing`);
+      return;
+    }
+
+    setEnhancingTextSection(field);
+    setError(null);
+
+    try {
+      const res = await fetch(buildApiUrl("/api/enhance"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: field === "profileSummary" ? "profile" : "skills",
+          name: field === "profileSummary" ? "Profile" : "Skills",
+          description: content,
+        }),
+      });
+
+      if (!res.ok) {
+        setError(`Failed to enhance ${field === "profileSummary" ? "profile" : "skills"} content`);
+        return;
+      }
+
+      const data = await res.json();
+      up(field, data.enhancedDescription);
+    } catch {
+      setError(`Failed to enhance ${field === "profileSummary" ? "profile" : "skills"} content`);
+    } finally {
+      setEnhancingTextSection(null);
+    }
+  }
+
   function formatProjectForCopy(project: Project) {
     return [
       project.name.trim() ? `Project: ${project.name.trim()}` : null,
@@ -920,10 +983,49 @@ export default function ProfilePage() {
           </div>
 
           {/* Motivation vs Logic:
-              Motivation: Resume generation needed a real profile-level skills source so users can keep languages separate
-              from technical capabilities and still have a sensible default in Resume Lab.
-              Logic: Add one optional long-form skills field below identity, persist it on the profile object, and let
-              downstream resume surfaces hydrate their editable Skills input from this value. */}
+              Motivation: Resume generation needs optional narrative and capability sections that users can refine in one
+              place, then reuse downstream without rebuilding the same copy on every screen.
+              Logic: Persist both long-form Profile and Skills fields on the profile object, and keep their enhance/copy
+              actions on shared helpers so both sections follow the same editing workflow. */}
+          <div className="mt-8 border-t border-white/10 pt-6">
+            <div className="mb-3">
+              <p className="section-kicker">Profile</p>
+              <h3 className="text-foreground mt-2 text-lg font-semibold">Context you want resumes to carry forward</h3>
+              <p className="text-muted-foreground mt-2 text-sm">
+                Optional. Add a short professional profile, personal positioning, or any context that helps explain who you are.
+              </p>
+            </div>
+            <label htmlFor="profile-summary" className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-foreground text-sm font-medium">Profile (Optional)</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => enhanceTextSection("profileSummary")}
+                    className="button-secondary"
+                    disabled={enhancingTextSection === "profileSummary"}
+                  >
+                    {enhancingTextSection === "profileSummary" ? "Enhancing..." : "Enhance"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => copyTextSection("profileSummary")}
+                    className="button-secondary"
+                  >
+                    {copiedTextSection === "profileSummary" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+              <textarea
+                id="profile-summary"
+                className="textarea-premium min-h-[12rem]"
+                value={profile.profileSummary || ""}
+                placeholder="Product-minded software engineer with experience shipping AI-assisted workflows, translating ambiguity into systems, and collaborating across design, product, and engineering."
+                onChange={(event) => up("profileSummary", event.target.value)}
+              />
+            </label>
+          </div>
+
           <div className="mt-8 border-t border-white/10 pt-6">
             <div className="mb-3">
               <p className="section-kicker">Skills</p>
@@ -938,7 +1040,20 @@ export default function ProfilePage() {
             <label htmlFor="profile-skills" className="space-y-2">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-foreground text-sm font-medium">Skills (Optional)</span>
-                <span className="text-muted-foreground text-xs">Comma separated or line separated</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted-foreground text-xs">Comma separated or line separated</span>
+                  <button
+                    type="button"
+                    onClick={() => enhanceTextSection("skills")}
+                    className="button-secondary"
+                    disabled={enhancingTextSection === "skills"}
+                  >
+                    {enhancingTextSection === "skills" ? "Enhancing..." : "Enhance"}
+                  </button>
+                  <button type="button" onClick={() => copyTextSection("skills")} className="button-secondary">
+                    {copiedTextSection === "skills" ? "Copied" : "Copy"}
+                  </button>
+                </div>
               </div>
               <textarea
                 id="profile-skills"

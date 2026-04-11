@@ -11,6 +11,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     website?: string;
     linkedin?: string;
+    profileSummary?: string;
     skills?: string;
     languages?: string;
     studyPeriod?: string;
@@ -268,33 +270,54 @@ export async function POST(req: NextRequest) {
         contactY -= labelSize + 4;
       }
 
-      let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
-      if (!skillsText) skillsText = 'No skills specified';
-      // Motivation vs Logic:
-      // Motivation: The ledger header needed a quieter skills treatment that still aligns like polished body copy
-      // instead of a full-size utility list.
-      // Logic: Normalize the skills inventory into one paragraph, reduce the font size slightly, and justify the
-      // wrapped lines inside the capabilities band so the section stays refined without changing the overall layout.
-      const capabilitiesText = formatResumeSkillsParagraph(skillsText) || skillsText;
       const capabilitySize = Math.max(fontSize - 2, 9);
-      const capabilityLines = buildJustifiedTextLines(capabilitiesText, helv, capabilitySize, right - left - 24);
       const capabilityLineHeight = capabilitySize + 5;
-      const capabilitiesHeight = 16 + capabilityLines.length * capabilityLineHeight + 14;
-      const bandTop = contactY - 10;
-      const bandBottom = bandTop - capabilitiesHeight;
+      const bandWidth = right - left - 24;
+      const sectionGap = 10;
+      const profileText = formatResumeProfileParagraph(resolveResumeProfileText(profile.profileSummary));
+      const skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
+      const capabilitySections = [
+        profileText ? { label: 'PROFILE', lines: buildJustifiedTextLines(profileText, helv, capabilitySize, bandWidth) } : null,
+        skillsText ? { label: 'SKILLS', lines: buildJustifiedTextLines(formatResumeSkillsParagraph(skillsText) || skillsText, helv, capabilitySize, bandWidth) } : null,
+      ].filter(Boolean) as Array<{ label: string; lines: ReturnType<typeof buildJustifiedTextLines> }>;
 
-      page.drawRectangle({ x: left, y: bandBottom, width: right - left, height: capabilitiesHeight, color: accentSoft, borderColor: rule, borderWidth: 0.8 });
-      page.drawText('CAPABILITIES', { x: left + 12, y: bandTop - 14, size: labelSize, font: helvBold, color: accentDark });
-      let capabilityY = bandTop - 30;
-      for (const line of capabilityLines) {
-        drawJustifiedLineAt(line.words, line.text, left + 12, capabilityY, capabilitySize, right - left - 24, line.justify);
-        capabilityY -= capabilityLineHeight;
+      if (capabilitySections.length > 0) {
+        // Motivation vs Logic:
+        // Motivation: Ledger now supports an optional Profile paragraph above Skills, and neither section should reserve
+        // visual space when blank.
+        // Logic: Build the capabilities band from the populated sections only, then stack each label and justified
+        // paragraph with one shared measurement pass so the band height stays exact.
+        const capabilitiesHeight =
+          16 +
+          capabilitySections.reduce((total, section, index) => {
+            const sectionHeight = labelSize + 8 + section.lines.length * capabilityLineHeight;
+            return total + sectionHeight + (index < capabilitySections.length - 1 ? sectionGap : 0);
+          }, 0) +
+          14;
+        const bandTop = contactY - 10;
+        const bandBottom = bandTop - capabilitiesHeight;
+
+        page.drawRectangle({ x: left, y: bandBottom, width: right - left, height: capabilitiesHeight, color: accentSoft, borderColor: rule, borderWidth: 0.8 });
+        let capabilityY = bandTop - 14;
+        for (const [index, section] of capabilitySections.entries()) {
+          page.drawText(section.label, { x: left + 12, y: capabilityY, size: labelSize, font: helvBold, color: accentDark });
+          capabilityY -= labelSize + 8;
+
+          for (const line of section.lines) {
+            drawJustifiedLineAt(line.words, line.text, left + 12, capabilityY, capabilitySize, bandWidth, line.justify);
+            capabilityY -= capabilityLineHeight;
+          }
+
+          if (index < capabilitySections.length - 1) {
+            capabilityY -= sectionGap;
+          }
+        }
+
+        contentStartY = bandBottom - 18;
+        yMain = contentStartY;
+        yRail = contentStartY;
+        return;
       }
-
-      contentStartY = bandBottom - 18;
-      yMain = contentStartY;
-      yRail = contentStartY;
-      return;
     }
 
     const miniName = profile.name || 'Your Name';

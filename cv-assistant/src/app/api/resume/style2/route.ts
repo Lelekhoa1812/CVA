@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/lib/db';
 import { UserModel } from '@/lib/models/User';
 import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
+import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import { buildJustifiedTextLines, wrapTextLines } from '@/app/api/resume/pdf-layout';
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   const user = await UserModel.findById(auth.userId).lean();
   type Project = { name?: string; summary?: string; description?: string };
   type Experience = { companyName?: string; role?: string; summary?: string; description?: string; timeFrom?: string; timeTo?: string };
-  type Profile = { name?: string; major?: string; school?: string; email?: string; phone?: string; website?: string; linkedin?: string; skills?: string; languages?: string; projects?: Project[]; experiences?: Experience[] };
+  type Profile = { name?: string; major?: string; school?: string; email?: string; phone?: string; website?: string; linkedin?: string; profileSummary?: string; skills?: string; languages?: string; projects?: Project[]; experiences?: Experience[] };
   const profile = (user?.profile || {}) as Profile;
 
   // Parse style preferences and enhance content if requested
@@ -606,29 +607,29 @@ export async function POST(req: NextRequest) {
     y -= 8;
   }
 
-  // Skills section - follows Education in Style2
-  drawSection('Skills');
+  const skillsSize = Math.max(fontSize - 2, 8);
+  const profileText = formatResumeProfileParagraph(resolveResumeProfileText(profile.profileSummary));
+  // Motivation vs Logic:
+  // Motivation: Style2 now needs to support an optional Profile narrative before Skills without printing empty section
+  // headers when the user leaves either field blank.
+  // Logic: Reuse the same compact justified paragraph sizing for both sections and render each heading only when its
+  // normalized content exists.
+  if (profileText) {
+    drawSection('Profile');
+    drawJustifiedParagraph(profileText, skillsSize);
+  }
+
   // Root Cause vs Logic:
   // Root Cause: The route treated languages as a substitute skills list and then drew Languages again underneath,
   // which repeated the same entries whenever the user had languages but no explicit skill list.
   // Logic: Skills now come only from explicit skill inputs, and the dedicated Languages line remains the sole
   // place where profile.languages is rendered.
-  let skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
-  
-  // Fallback if no skills provided
-  if (!skillsText) {
-    skillsText = 'No skills specified';
+  const skillsText = resolveResumeSkillsText(enhancedSkills, skills, profile.skills);
+  if (skillsText) {
+    const skillsParagraph = formatResumeSkillsParagraph(skillsText);
+    drawSection('Skills');
+    drawJustifiedParagraph(skillsParagraph || skillsText, skillsSize);
   }
-  
-  // Handle skills with proper wrapping to prevent overlap
-  // Root Cause vs Logic:
-  // Root Cause: This route still rendered Skills as compact list text, so it visually outweighed other sections and
-  // never lined up with the more editorial paragraph rhythm used for the rest of the resume content.
-  // Logic: Normalize skills into a single paragraph, render it one size smaller than the surrounding body copy, and
-  // feed the wrapped lines through the same justification flow that keeps long content neatly aligned to both edges.
-  const skillsParagraph = formatResumeSkillsParagraph(skillsText);
-  const skillsSize = Math.max(fontSize - 2, 8);
-  drawJustifiedParagraph(skillsParagraph || skillsText, skillsSize);
   
   // Add Languages section if user has language data
   if (profile.languages && profile.languages.trim()) {
