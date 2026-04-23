@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
@@ -9,16 +7,8 @@ import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, rgb, type RGB } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
+import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
 import { buildJustifiedTextLines, wrapTextLines } from '@/app/api/resume/pdf-layout';
-
-const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts');
-const NOTO_SANS_REGULAR = fs.readFileSync(path.join(FONTS_DIR, 'NotoSans-Regular.ttf'));
-const NOTO_SANS_BOLD = fs.readFileSync(path.join(FONTS_DIR, 'NotoSans-Bold.ttf'));
-
-// Root Cause vs Logic:
-// Root Cause: Helvetica is a WinAnsi font and pdf-lib cannot encode characters such as "ệ".
-// Logic: Preload a Unicode-friendly font (Noto Sans) so text measurement/drawing never hits WinAnsi limits.
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -175,14 +165,9 @@ export async function POST(req: NextRequest) {
   }
 
   const pdf = await PDFDocument.create();
-  // Motivation vs Logic:
-  // Motivation: Embedding custom font binaries requires fontkit so glyph outlines decode properly.
-  // Logic: Register a shared fontkit instance before any custom fonts are embedded.
-  pdf.registerFontkit(fontkit);
   let page = pdf.addPage([612, 792]); // Letter size
   let { width, height } = page.getSize();
-  const notoSans = await pdf.embedFont(NOTO_SANS_REGULAR);
-  const notoSansBold = await pdf.embedFont(NOTO_SANS_BOLD);
+  const { regular: notoSans, bold: notoSansBold } = await embedNotoSansFonts(pdf);
 
   const margin = 72; // 1 inch on all sides
   const left = margin;

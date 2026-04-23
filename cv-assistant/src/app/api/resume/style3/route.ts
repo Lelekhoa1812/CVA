@@ -1,6 +1,6 @@
 // app/api/resume/style3/route.ts
 // Distinct from style1 & style2:
-// - Serif (Times) typography
+// - Classic editorial typography (embedded Noto Sans for Unicode; visually similar dense body)
 // - Left shaded sidebar for Contact/Skills/Links
 // - Right-column main content (Education, Experience, Projects)
 // - En-dash bullets, right-aligned dates, clean rules
@@ -16,7 +16,8 @@ import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
-import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
+import { PDFDocument, rgb, type RGB } from 'pdf-lib';
+import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
 import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
@@ -184,9 +185,7 @@ export async function POST(req: NextRequest) {
   let page = pdf.addPage([612, 792]); // Letter
   let { width, height } = page.getSize();
 
-  // Harvardish serif look
-  const times = await pdf.embedFont(StandardFonts.TimesRoman);
-  const timesBold = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const { regular: times, bold: timesBold } = await embedNotoSansFonts(pdf);
 
   // Layout constants
   const margin = 54; // 0.75"

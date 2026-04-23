@@ -2,66 +2,71 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromCookies } from '@/lib/auth';
 import { getModel } from '@/lib/ai';
 import { buildHighImpactRewritePrompt, normalizeHighImpactBulletOutput } from '@/lib/resume/high-impact-rewrite';
-
-function buildTextSectionPrompt(type: string, content: string) {
-  if (type === 'skills') {
-    return `You are an expert resume editor.
-
-Rewrite this skills section into a concise, polished skills list for a resume.
-
-Rules:
-- Preserve only information grounded in the source text.
-- Remove duplicates and normalize tool/framework names.
-- Keep it compact and professional.
-- Return only the improved skills list as plain text.
-- Prefer one comma-separated line unless line breaks clearly improve readability.
-
-Skills source:
-${content}`;
-  }
-
-  if (type === 'profile') {
-    return `You are an expert resume editor.
-
-Rewrite this candidate profile into a concise professional summary suitable for a resume.
-
-Rules:
-- Preserve only information grounded in the source text.
-- Keep the tone factual, polished, and specific.
-- Write a short paragraph, not bullet points.
-- Avoid first-person pronouns.
-- Return only the improved summary text.
-
-Profile source:
-${content}`;
-  }
-
-  return '';
-}
+import {
+  buildTextSectionPrompt,
+  hasTextSectionExploreEvidence,
+  normalizeTextSectionOutput,
+  type TextSectionExploreContext,
+} from '@/lib/resume/text-section-prompts';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   
-  const { type, name, description } = await req.json();
-  if (!type || !name || !description) {
+  const {
+    type,
+    name,
+    description,
+    mode,
+    context,
+  }: {
+    type?: string;
+    name?: string;
+    description?: string;
+    mode?: 'enhance' | 'explore';
+    context?: TextSectionExploreContext;
+  } = await req.json();
+
+  if (!type || !name) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
   try {
     const model = getModel('hard');
     if (type === 'skills' || type === 'profile') {
-      const prompt = buildTextSectionPrompt(type, description);
+      const textSectionMode = mode === 'explore' ? 'explore' : 'enhance';
+
+      if (textSectionMode === 'explore' && !hasTextSectionExploreEvidence(context)) {
+        return NextResponse.json({ error: 'Missing education, project, or experience context' }, { status: 400 });
+      }
+
+      if (textSectionMode === 'enhance' && !description) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+
+      const prompt = buildTextSectionPrompt({
+        type,
+        content: description,
+        mode: textSectionMode,
+        context,
+      });
       const res = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }]
       });
 
-      const enhancedDescription = res.response.text().trim() || description;
+      const enhancedDescription = normalizeTextSectionOutput(
+        res.response.text(),
+        description?.trim() || '',
+      );
 
       return NextResponse.json({
         enhancedDescription,
-        message: `${type} content enhanced successfully`
+        message: `${type} content ${textSectionMode === 'explore' ? 'generated' : 'enhanced'} successfully`
       });
+    }
+
+    if (!description) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const prompt = buildHighImpactRewritePrompt({

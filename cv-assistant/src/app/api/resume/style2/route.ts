@@ -6,7 +6,8 @@ import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
-import { PDFDocument, StandardFonts, rgb, type RGB } from 'pdf-lib';
+import { PDFDocument, rgb, type RGB } from 'pdf-lib';
+import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
 import { buildJustifiedTextLines, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
@@ -166,8 +167,7 @@ export async function POST(req: NextRequest) {
   const pdf = await PDFDocument.create();
   let page = pdf.addPage([612, 792]); // Letter size
   let { width, height } = page.getSize();
-  const helv = await pdf.embedFont(StandardFonts.Helvetica);
-  const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const { regular: notoSans, bold: notoSansBold } = await embedNotoSansFonts(pdf);
 
   // Style2: Even margins on all sides for perfectly aligned text blocks
   const leftMargin = 64;
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
     lineGap = 6
   ) {
     if (!lines.length) return;
-    const font = bold ? helvBold : helv;
+    const font = bold ? notoSansBold : notoSans;
     const color: RGB = colorOverride || rgb(0, 0, 0);
     for (const line of lines) {
       ensureSpace(size + lineGap);
@@ -220,18 +220,18 @@ export async function POST(req: NextRequest) {
   }
 
   function drawWrappedTextBlock(text: string, size = 11, bold = false, colorOverride?: RGB) {
-    const lines = wrapTextLines(text, bold ? helvBold : helv, size, contentWidth);
+    const lines = wrapTextLines(text, bold ? notoSansBold : notoSans, size, contentWidth);
     drawWrappedLines(lines, left, size, bold, colorOverride);
   }
 
   function drawJustifiedParagraph(text: string, size = 10) {
-    const lines = buildJustifiedTextLines(text, helv, size, contentWidth);
+    const lines = buildJustifiedTextLines(text, notoSans, size, contentWidth);
     for (const line of lines) {
       ensureSpace(size + 6);
       if (line.justify) {
         drawJustifiedLine(line.words, left, size, true);
       } else {
-        page.drawText(line.text, { x: left, y, size, font: helv });
+        page.drawText(line.text, { x: left, y, size, font: notoSans });
       }
       y -= size + 6;
     }
@@ -241,14 +241,14 @@ export async function POST(req: NextRequest) {
     const cleanValue = value.trim();
     if (!cleanValue) return;
     const labelText = `${label}:`;
-    const labelWidth = helvBold.widthOfTextAtSize(`${labelText} `, size);
+    const labelWidth = notoSansBold.widthOfTextAtSize(`${labelText} `, size);
     const firstLineMaxWidth = Math.max(contentWidth - labelWidth, 60);
-    const valueLines = wrapTextLines(cleanValue, helv, size, firstLineMaxWidth);
+    const valueLines = wrapTextLines(cleanValue, notoSans, size, firstLineMaxWidth);
     if (!valueLines.length) return;
 
     ensureSpace(size + 6);
-    page.drawText(`${labelText} `, { x: left, y, size, font: helvBold });
-    page.drawText(valueLines[0], { x: left + labelWidth, y, size, font: helv });
+    page.drawText(`${labelText} `, { x: left, y, size, font: notoSansBold });
+    page.drawText(valueLines[0], { x: left + labelWidth, y, size, font: notoSans });
     y -= size + 6;
 
     if (valueLines.length > 1) {
@@ -262,12 +262,12 @@ export async function POST(req: NextRequest) {
     if (!normalizedLeft && !normalizedRight) return;
 
     const gap = 18;
-    const rightWidth = normalizedRight ? helv.widthOfTextAtSize(normalizedRight, rightSize) : 0;
+    const rightWidth = normalizedRight ? notoSans.widthOfTextAtSize(normalizedRight, rightSize) : 0;
     const sameRowMaxWidth = normalizedRight
       ? Math.max(contentWidth - rightWidth - gap, contentWidth * 0.55)
       : contentWidth;
     const sameRowLines = normalizedLeft
-      ? wrapTextLines(normalizedLeft, useBold ? helvBold : helv, leftSize, sameRowMaxWidth)
+      ? wrapTextLines(normalizedLeft, useBold ? notoSansBold : notoSans, leftSize, sameRowMaxWidth)
       : [];
 
     if (normalizedLeft && (!normalizedRight || sameRowLines.length === 1)) {
@@ -276,7 +276,7 @@ export async function POST(req: NextRequest) {
         x: left,
         y,
         size: leftSize,
-        font: useBold ? helvBold : helv,
+        font: useBold ? notoSansBold : notoSans,
         color: colorOverride || getAccentColor()
       });
       if (normalizedRight) {
@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
           x: right - rightWidth,
           y,
           size: rightSize,
-          font: helv,
+          font: notoSans,
           color: rgb(0, 0, 0)
         });
       }
@@ -296,11 +296,11 @@ export async function POST(req: NextRequest) {
       drawWrappedTextBlock(normalizedLeft, leftSize, useBold, colorOverride || getAccentColor());
     }
     if (normalizedRight) {
-      const rightLines = wrapTextLines(normalizedRight, helv, rightSize, contentWidth);
+      const rightLines = wrapTextLines(normalizedRight, notoSans, rightSize, contentWidth);
       for (const line of rightLines) {
-        const lineWidth = helv.widthOfTextAtSize(line, rightSize);
+        const lineWidth = notoSans.widthOfTextAtSize(line, rightSize);
         ensureSpace(rightSize + 6);
-        page.drawText(line, { x: right - lineWidth, y, size: rightSize, font: helv });
+        page.drawText(line, { x: right - lineWidth, y, size: rightSize, font: notoSans });
         y -= rightSize + 6;
       }
     }
@@ -351,7 +351,7 @@ export async function POST(req: NextRequest) {
       const maxWidth = right - left;
       let line: Token[] = [];
       let lineWidth = 0;
-      const widthOf = (t: Token) => (t.bold ? helvBold : helv).widthOfTextAtSize(t.text, finalSize);
+      const widthOf = (t: Token) => (t.bold ? notoSansBold : notoSans).widthOfTextAtSize(t.text, finalSize);
       const isSpace = (t: Token) => /^\s+$/.test(t.text);
 
       const flushLine = (justify: boolean) => {
@@ -361,7 +361,7 @@ export async function POST(req: NextRequest) {
           // Left draw
           let cx = x;
           for (const tk of line) {
-            const f = tk.bold ? helvBold : helv;
+            const f = tk.bold ? notoSansBold : notoSans;
             page.drawText(tk.text, { x: cx, y, size: finalSize, font: f });
             cx += widthOf(tk);
           }
@@ -373,7 +373,7 @@ export async function POST(req: NextRequest) {
           const extraPerSpace = spaces.length > 0 ? extra / spaces.length : 0;
           let cx = x;
           for (const tk of line) {
-            const f = tk.bold ? helvBold : helv;
+            const f = tk.bold ? notoSansBold : notoSans;
             page.drawText(tk.text, { x: cx, y, size: finalSize, font: f });
             let add = widthOf(tk);
             if (extraPerSpace && isSpace(tk)) add += extraPerSpace;
@@ -420,7 +420,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    const font = useBold ? helvBold : helv;
+    const font = useBold ? notoSansBold : notoSans;
     const titleUpper = title.toUpperCase();
     const titleWidth = font.widthOfTextAtSize(titleUpper, titleSize);
     // Center the title within the content area (between left and right margins)
@@ -435,19 +435,19 @@ export async function POST(req: NextRequest) {
 
   function drawJustifiedLine(words: string[], x: number, size: number, justify: boolean) {
     const maxWidth = right - left;
-    const spaceWidth = helv.widthOfTextAtSize(' ', size);
-    const textWidth = helv.widthOfTextAtSize(words.join(' '), size);
+    const spaceWidth = notoSans.widthOfTextAtSize(' ', size);
+    const textWidth = notoSans.widthOfTextAtSize(words.join(' '), size);
     if (!justify || words.length <= 1 || textWidth >= maxWidth) {
-      page.drawText(words.join(' '), { x, y, size, font: helv });
+      page.drawText(words.join(' '), { x, y, size, font: notoSans });
       return;
     }
     const extra = (maxWidth - textWidth) / (words.length - 1);
     let cursor = x;
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
-      page.drawText(w, { x: cursor, y, size, font: helv });
+      page.drawText(w, { x: cursor, y, size, font: notoSans });
       if (i < words.length - 1) {
-        cursor += helv.widthOfTextAtSize(w, size) + spaceWidth + extra;
+        cursor += notoSans.widthOfTextAtSize(w, size) + spaceWidth + extra;
       }
     }
   }
@@ -478,9 +478,9 @@ export async function POST(req: NextRequest) {
       page.drawRectangle({ x: left, y: bulletY, width: bulletBox, height: bulletBox, color: getAccentColor() });
       let lineWords: string[] = [];
       let lineWidth = 0;
-      const spaceWidth = helv.widthOfTextAtSize(' ', size);
+      const spaceWidth = notoSans.widthOfTextAtSize(' ', size);
       for (const w of words) {
-        const wWidth = helv.widthOfTextAtSize(w, size);
+        const wWidth = notoSans.widthOfTextAtSize(w, size);
         const nextWidth = lineWords.length === 0 ? wWidth : lineWidth + spaceWidth + wWidth;
         if (nextWidth > maxWidth) {
           // Draw justified line for bullet text
@@ -498,7 +498,7 @@ export async function POST(req: NextRequest) {
       }
       if (lineWords.length) {
         // Last line of bullet not justified
-        page.drawText(lineWords.join(' '), { x: left + bulletIndent, y, size, font: helv });
+        page.drawText(lineWords.join(' '), { x: left + bulletIndent, y, size, font: notoSans });
         y -= size + 6; // Style2: More space after bullet
       }
     }
@@ -531,7 +531,7 @@ export async function POST(req: NextRequest) {
   ensureSpace(32); // Style2: Different spacing
   const nameText = profile.name || 'Your Name';
   let nameSize = 20; // Style2: Larger name
-  let nameFont = helvBold;
+  let nameFont = notoSansBold;
   
   // Apply styling preferences to name
   if (stylePreferences) {
@@ -542,7 +542,7 @@ export async function POST(req: NextRequest) {
       }
     }
     if (stylePreferences.useBold !== undefined) {
-      nameFont = stylePreferences.useBold ? helvBold : helv;
+      nameFont = stylePreferences.useBold ? notoSansBold : notoSans;
     }
   }
   
@@ -571,22 +571,22 @@ export async function POST(req: NextRequest) {
   
   // Draw first contact line
   if (contactLine1) {
-    const contactLine1Lines = wrapTextLines(contactLine1, helv, contactSize, contentWidth);
+    const contactLine1Lines = wrapTextLines(contactLine1, notoSans, contactSize, contentWidth);
     for (const line of contactLine1Lines) {
-      const contact1Width = helv.widthOfTextAtSize(line, contactSize);
+      const contact1Width = notoSans.widthOfTextAtSize(line, contactSize);
       const contact1X = (width - contact1Width) / 2;
-      page.drawText(line, { x: contact1X, y, size: contactSize, font: helv });
+      page.drawText(line, { x: contact1X, y, size: contactSize, font: notoSans });
       y -= contactSize + 4;
     }
   }
   
   // Draw second contact line
   if (contactLine2) {
-    const contactLine2Lines = wrapTextLines(contactLine2, helv, contactSize, contentWidth);
+    const contactLine2Lines = wrapTextLines(contactLine2, notoSans, contactSize, contentWidth);
     for (const line of contactLine2Lines) {
-      const contact2Width = helv.widthOfTextAtSize(line, contactSize);
+      const contact2Width = notoSans.widthOfTextAtSize(line, contactSize);
       const contact2X = (width - contact2Width) / 2;
-      page.drawText(line, { x: contact2X, y, size: contactSize, font: helv });
+      page.drawText(line, { x: contact2X, y, size: contactSize, font: notoSans });
       y -= contactSize + 4;
     }
     y -= contactSize + 12; // Style2: More space after contact

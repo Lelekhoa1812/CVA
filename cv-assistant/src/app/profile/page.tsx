@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import HoverTooltip from "@/components/ui/HoverTooltip";
 import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
@@ -57,6 +58,26 @@ type Profile = {
   languages?: string;
 };
 
+type TextSectionField = "profileSummary" | "skills";
+type TextSectionAction = "enhance" | "explore";
+
+const TEXT_SECTION_META = {
+  profileSummary: {
+    apiType: "profile" as const,
+    name: "Profile",
+    label: "profile",
+    exploreTooltip:
+      "Explore drafts a resume-ready profile from your education, projects, experience, and saved skills so the summary stays specific to your background.",
+  },
+  skills: {
+    apiType: "skills" as const,
+    name: "Skills",
+    label: "skills",
+    exploreTooltip:
+      "Explore derives the strongest employer-friendly skills from your education, projects, and experience so this section stays concise, focused, and ATS-friendly.",
+  },
+} as const;
+
 const emptyProfile: Profile = {
   name: "",
   major: "",
@@ -98,6 +119,59 @@ const PROFILE_SCALAR_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof Profile>;
 
 const cleanString = (value: string | undefined | null) => value?.trim() || "";
+
+/* Motivation vs Logic:
+   Motivation: Explore should build Profile and Skills copy from evidence the user already entered elsewhere instead of making them restate the same story manually.
+   Logic: normalize education, projects, experiences, and optional saved skills into one shared payload so both text sections can reuse the same request shape. */
+function getTextSectionExploreContext(profile: Profile, field: TextSectionField) {
+  const projects = profile.projects
+    .map((project) => ({
+      name: cleanString(project.name),
+      description: cleanString(project.description),
+      summary: cleanString(project.summary),
+    }))
+    .filter((project) => project.name || project.description || project.summary);
+
+  const experiences = profile.experiences
+    .map((experience) => ({
+      companyName: cleanString(experience.companyName),
+      role: cleanString(experience.role),
+      timeFrom: cleanString(experience.timeFrom),
+      timeTo: cleanString(experience.timeTo),
+      description: cleanString(experience.description),
+      summary: cleanString(experience.summary),
+    }))
+    .filter(
+      (experience) =>
+        experience.companyName ||
+        experience.role ||
+        experience.timeFrom ||
+        experience.timeTo ||
+        experience.description ||
+        experience.summary
+    );
+
+  return {
+    major: cleanString(profile.major),
+    school: cleanString(profile.school),
+    studyPeriod: cleanString(profile.studyPeriod),
+    skills: field === "profileSummary" ? cleanString(profile.skills) : "",
+    projects,
+    experiences,
+  };
+}
+
+function hasTextSectionExploreEvidence(profile: Profile) {
+  const context = getTextSectionExploreContext(profile, "skills");
+
+  return Boolean(
+    context.major ||
+      context.school ||
+      context.studyPeriod ||
+      context.projects.length ||
+      context.experiences.length
+  );
+}
 
 function getListIdentity<T extends { _id?: string; createdAt?: string }>(item: T, index: number) {
   if (item._id) return `id:${item._id}`;
@@ -317,6 +391,56 @@ function TextareaField({
   );
 }
 
+type TextSectionActionButtonsProps = {
+  field: TextSectionField;
+  helperText?: string;
+  activeAction: TextSectionAction | null;
+  copied: boolean;
+  onExplore: () => void;
+  onEnhance: () => void;
+  onCopy: () => void;
+};
+
+function TextSectionActionButtons({
+  field,
+  helperText,
+  activeAction,
+  copied,
+  onExplore,
+  onEnhance,
+  onCopy,
+}: TextSectionActionButtonsProps) {
+  const meta = TEXT_SECTION_META[field];
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {helperText ? <span className="text-muted-foreground text-xs">{helperText}</span> : null}
+      <HoverTooltip message={meta.exploreTooltip}>
+        <button
+          type="button"
+          onClick={onExplore}
+          className="button-secondary"
+          disabled={activeAction !== null}
+          title={meta.exploreTooltip}
+        >
+          {activeAction === "explore" ? "Exploring..." : "Explore"}
+        </button>
+      </HoverTooltip>
+      <button
+        type="button"
+        onClick={onEnhance}
+        className="button-secondary"
+        disabled={activeAction !== null}
+      >
+        {activeAction === "enhance" ? "Enhancing..." : "Enhance"}
+      </button>
+      <button type="button" onClick={onCopy} className="button-secondary">
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile>(hydrateProfile(emptyProfile));
   const profileRef = useRef(profile);
@@ -332,8 +456,11 @@ export default function ProfilePage() {
   const [enhancingExperience, setEnhancingExperience] = useState<number | null>(null);
   const [copiedProject, setCopiedProject] = useState<number | null>(null);
   const [copiedExperience, setCopiedExperience] = useState<number | null>(null);
-  const [enhancingTextSection, setEnhancingTextSection] = useState<"profileSummary" | "skills" | null>(null);
-  const [copiedTextSection, setCopiedTextSection] = useState<"profileSummary" | "skills" | null>(null);
+  const [activeTextSectionAction, setActiveTextSectionAction] = useState<{
+    field: TextSectionField;
+    action: TextSectionAction;
+  } | null>(null);
+  const [copiedTextSection, setCopiedTextSection] = useState<TextSectionField | null>(null);
   const [newProjectDraftIds, setNewProjectDraftIds] = useState<string[]>([]);
   const [newExperienceDraftIds, setNewExperienceDraftIds] = useState<string[]>([]);
 
@@ -446,16 +573,21 @@ export default function ProfilePage() {
     }
   }
 
-  /* Motivation: users need one-click enhancement and one-click copy-to-paste output without duplicating formatting logic across cards.
-     Logic: build the formatted text in shared helpers and keep clipboard feedback local to each card type. */
-  function getTextSectionContent(field: "profileSummary" | "skills") {
+  /* Motivation: users need one-click explore, enhancement, and copy-to-paste output without duplicating formatting logic across cards.
+     Logic: share the text-section metadata and handlers so both narrative fields follow the same editing workflow. */
+  function getTextSectionAction(field: TextSectionField) {
+    return activeTextSectionAction?.field === field ? activeTextSectionAction.action : null;
+  }
+
+  function getTextSectionContent(field: TextSectionField) {
     return (profile[field] || "").trim();
   }
 
-  async function copyTextSection(field: "profileSummary" | "skills") {
+  async function copyTextSection(field: TextSectionField) {
     const formatted = getTextSectionContent(field);
+    const meta = TEXT_SECTION_META[field];
     if (!formatted) {
-      setError(`Please add ${field === "profileSummary" ? "profile" : "skills"} details before copying`);
+      setError(`Please add ${meta.label} details before copying`);
       return;
     }
 
@@ -467,18 +599,25 @@ export default function ProfilePage() {
         setCopiedTextSection((current) => (current === field ? null : current));
       }, 1500);
     } catch {
-      setError(`Failed to copy ${field === "profileSummary" ? "profile" : "skills"} details`);
+      setError(`Failed to copy ${meta.label} details`);
     }
   }
 
-  async function enhanceTextSection(field: "profileSummary" | "skills") {
+  async function rewriteTextSection(field: TextSectionField, action: TextSectionAction) {
     const content = getTextSectionContent(field);
-    if (!content) {
-      setError(`Please add ${field === "profileSummary" ? "profile" : "skills"} details before enhancing`);
+    const meta = TEXT_SECTION_META[field];
+
+    if (action === "enhance" && !content) {
+      setError(`Please add ${meta.label} details before enhancing`);
       return;
     }
 
-    setEnhancingTextSection(field);
+    if (action === "explore" && !hasTextSectionExploreEvidence(profile)) {
+      setError(`Please add education, project, or experience details before exploring ${meta.label}`);
+      return;
+    }
+
+    setActiveTextSectionAction({ field, action });
     setError(null);
 
     try {
@@ -486,23 +625,27 @@ export default function ProfilePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: field === "profileSummary" ? "profile" : "skills",
-          name: field === "profileSummary" ? "Profile" : "Skills",
+          type: meta.apiType,
+          name: meta.name,
           description: content,
+          mode: action,
+          context: action === "explore" ? getTextSectionExploreContext(profile, field) : undefined,
         }),
       });
 
       if (!res.ok) {
-        setError(`Failed to enhance ${field === "profileSummary" ? "profile" : "skills"} content`);
+        setError(`Failed to ${action} ${meta.label} content`);
         return;
       }
 
       const data = await res.json();
       up(field, data.enhancedDescription);
     } catch {
-      setError(`Failed to enhance ${field === "profileSummary" ? "profile" : "skills"} content`);
+      setError(`Failed to ${action} ${meta.label} content`);
     } finally {
-      setEnhancingTextSection(null);
+      setActiveTextSectionAction((current) =>
+        current?.field === field && current.action === action ? null : current
+      );
     }
   }
 
@@ -985,7 +1128,7 @@ export default function ProfilePage() {
           {/* Motivation vs Logic:
               Motivation: Resume generation needs optional narrative and capability sections that users can refine in one
               place, then reuse downstream without rebuilding the same copy on every screen.
-              Logic: Persist both long-form Profile and Skills fields on the profile object, and keep their enhance/copy
+              Logic: Persist both long-form Profile and Skills fields on the profile object, and keep their explore/enhance/copy
               actions on shared helpers so both sections follow the same editing workflow. */}
           <div className="mt-8 border-t border-white/10 pt-6">
             <div className="mb-3">
@@ -998,23 +1141,14 @@ export default function ProfilePage() {
             <label htmlFor="profile-summary" className="space-y-2">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-foreground text-sm font-medium">Profile (Optional)</span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => enhanceTextSection("profileSummary")}
-                    className="button-secondary"
-                    disabled={enhancingTextSection === "profileSummary"}
-                  >
-                    {enhancingTextSection === "profileSummary" ? "Enhancing..." : "Enhance"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => copyTextSection("profileSummary")}
-                    className="button-secondary"
-                  >
-                    {copiedTextSection === "profileSummary" ? "Copied" : "Copy"}
-                  </button>
-                </div>
+                <TextSectionActionButtons
+                  field="profileSummary"
+                  activeAction={getTextSectionAction("profileSummary")}
+                  copied={copiedTextSection === "profileSummary"}
+                  onExplore={() => rewriteTextSection("profileSummary", "explore")}
+                  onEnhance={() => rewriteTextSection("profileSummary", "enhance")}
+                  onCopy={() => copyTextSection("profileSummary")}
+                />
               </div>
               <textarea
                 id="profile-summary"
@@ -1040,20 +1174,15 @@ export default function ProfilePage() {
             <label htmlFor="profile-skills" className="space-y-2">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-foreground text-sm font-medium">Skills (Optional)</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground text-xs">Comma separated or line separated</span>
-                  <button
-                    type="button"
-                    onClick={() => enhanceTextSection("skills")}
-                    className="button-secondary"
-                    disabled={enhancingTextSection === "skills"}
-                  >
-                    {enhancingTextSection === "skills" ? "Enhancing..." : "Enhance"}
-                  </button>
-                  <button type="button" onClick={() => copyTextSection("skills")} className="button-secondary">
-                    {copiedTextSection === "skills" ? "Copied" : "Copy"}
-                  </button>
-                </div>
+                <TextSectionActionButtons
+                  field="skills"
+                  helperText="Comma separated or line separated"
+                  activeAction={getTextSectionAction("skills")}
+                  copied={copiedTextSection === "skills"}
+                  onExplore={() => rewriteTextSection("skills", "explore")}
+                  onEnhance={() => rewriteTextSection("skills", "enhance")}
+                  onCopy={() => copyTextSection("skills")}
+                />
               </div>
               <textarea
                 id="profile-skills"

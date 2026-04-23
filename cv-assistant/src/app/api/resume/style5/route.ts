@@ -13,7 +13,8 @@ import { getModel } from '@/lib/ai';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/resume/profile';
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
+import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
 import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
@@ -180,8 +181,7 @@ export async function POST(req: NextRequest) {
   const pdf = await PDFDocument.create();
   let page = pdf.addPage([612, 792]);
   let { width, height } = page.getSize();
-  const helv = await pdf.embedFont(StandardFonts.Helvetica);
-  const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const { regular: helv, bold: helvBold } = await embedNotoSansFonts(pdf);
 
   const margin = 42;
   const left = margin;
