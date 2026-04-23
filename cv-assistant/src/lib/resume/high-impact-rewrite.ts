@@ -56,11 +56,11 @@ export function buildHighImpactRewritePrompt({
   const mode = resolveRewriteMode(requestedFormat);
   const bulletRange = getBulletRange(mode);
 
-  // Motivation vs Logic:
-  // Motivation: Resume rewriting now needs one consistently high-caliber prompt across profile editing and
-  // targeted resume enhancement so users get the same executive-grade, metric-heavy output regardless of entry point.
-  // Logic: This helper centralizes the role framing, bullet-count policy, and rewrite rules while still allowing
-  // per-request controls like concise/preserve/enhance and user-specified modification notes.
+  // Root Cause vs Logic:
+  // Root Cause: the prior prompt asked the model to infer realistic placeholder metrics when source evidence was
+  // missing, which made automated tailoring vulnerable to unsupported or misleading resume claims.
+  // Logic: keep the executive rewrite style, but require every metric and claim to be grounded in the supplied source
+  // text; if a metric is absent, the model must use concrete non-numeric scope rather than inventing a number.
   return `Role: You are an expert Executive Resume Writer and Career Coach specialising in quantifiable achievements and technical precision.
 
 Objective: Rewrite the user's selected ${itemType} description. Move away from passive responsibilities and toward high-impact outcomes.
@@ -77,7 +77,8 @@ User preferences:
 Strict requirements:
 - ${bulletRange.instruction}
 - Every bullet must start with a strong, diverse action verb.
-- Every bullet must include quantifiable impact. If the source lacks a metric, infer a realistic placeholder or use a credible high-magnitude descriptor.
+- Every bullet must preserve factual truth. Use only metrics, numbers, tools, domains, and outcomes that are explicitly present in the source content or user preferences.
+- When the source lacks a metric, describe the concrete scope, system, stakeholder, or business effect without inventing numbers, placeholders, or high-magnitude claims.
 - Emphasize technical, operational, or financial depth using concrete terminology from the source wherever possible.
 - Lead with the result first, then explain the mechanism.
 - Prefer advanced tools, frameworks, systems, methods, and business outcomes that are supported by the source content.

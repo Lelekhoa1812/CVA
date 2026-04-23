@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:unit": "sucrase-node tests/career/run-tests.ts",
+    "verify:career": "npm run lint && npm run test:unit"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

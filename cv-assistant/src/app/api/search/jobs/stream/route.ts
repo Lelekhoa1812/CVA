@@ -1,7 +1,13 @@
 import { getAuthFromCookies } from "@/lib/auth";
+import { connectToDatabase } from "@/lib/db";
+import {
+  completePersistedSearchCampaign,
+  createPersistedSearchCampaign,
+  recordSearchLead,
+} from "@/lib/career/search-persistence";
 import { searchRequestSchema } from "@/lib/search/schema";
 import { streamSearchJobs } from "@/lib/search/server/stream";
-import type { ErrorEvent } from "@/lib/search/types";
+import type { ErrorEvent, SearchSource } from "@/lib/search/types";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -34,10 +40,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  await connectToDatabase();
+  const campaign = await createPersistedSearchCampaign(auth.userId, parsedBody.data);
+
   return new Response(
     new ReadableStream<Uint8Array>({
       async start(controller) {
         let isClosed = false;
+        let persistedResultCount = 0;
+        const blockedSources = new Set<SearchSource>();
+        let finalized = false;
 
         // Motivation vs Logic:
         // Motivation: Vercel can run this feature only if the crawl stays inside the Node.js runtime rather than
@@ -64,24 +76,72 @@ export async function POST(req: NextRequest) {
           }
         };
 
+        const finalizeCampaign = async (args?: {
+          status?: "completed" | "failed" | "canceled";
+          errorMessage?: string;
+          totalResults?: number;
+        }) => {
+          if (finalized) return;
+          finalized = true;
+
+          await completePersistedSearchCampaign(campaign._id.toString(), {
+            totalResults: args?.totalResults ?? persistedResultCount,
+            blockedSources: [...blockedSources],
+            errorMessage: args?.errorMessage,
+            status: args?.status || "completed",
+          });
+        };
+
         try {
           for await (const event of streamSearchJobs(parsedBody.data, { signal: req.signal })) {
             if (req.signal.aborted) {
+              await finalizeCampaign({ status: "canceled" });
               safeClose();
               return;
             }
+
+            if (event.type === "source-progress" && event.status === "blocked") {
+              blockedSources.add(event.source);
+            }
+
+            if (event.type === "result") {
+              await recordSearchLead(auth.userId, campaign._id.toString(), event.result);
+              persistedResultCount += 1;
+            }
+
+            if (event.type === "complete") {
+              event.blockedSources.forEach((source) => blockedSources.add(source));
+              persistedResultCount = event.totalResults;
+              await finalizeCampaign({
+                status: "completed",
+                totalResults: event.totalResults,
+              });
+            }
+
             safeEnqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
           }
         } catch (error) {
           if (!req.signal.aborted) {
+            await finalizeCampaign({
+              status: "failed",
+              errorMessage:
+                error instanceof Error ? error.message : "Search worker exited unexpectedly.",
+            });
             safeEnqueue(
               errorLine(
                 error instanceof Error ? error.message : "Search worker exited unexpectedly.",
                 true,
               ),
             );
+          } else {
+            await finalizeCampaign({ status: "canceled" });
           }
         } finally {
+          if (!finalized) {
+            await finalizeCampaign({
+              status: req.signal.aborted ? "canceled" : "completed",
+            });
+          }
           safeClose();
         }
       },

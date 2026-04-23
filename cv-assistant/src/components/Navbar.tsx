@@ -13,6 +13,7 @@ const links = [
   { href: "/resume", label: "Resume Lab", short: "Resume" },
   { href: "/generate", label: "Cover Letter", short: "Cv" },
   { href: "/search", label: "Job Search", short: "Search" },
+  { href: "/control-room", label: "Control Room", short: "Ops" },
 ];
 
 export default function Navbar() {
