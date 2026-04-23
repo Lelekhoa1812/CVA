@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { connectToDatabase } from "@/lib/db";
 import { UserModel } from "@/lib/models/User";
 import { UserContextModel } from "@/lib/models/UserContext";
-import type { UserContextSnapshot } from "@/lib/career/types";
+import type { ControlRoomPreferenceState, UserContextSnapshot } from "@/lib/career/types";
 import { cleanText, splitList, tokenize, uniqueStrings } from "@/lib/career/utils";
 
 type StoredProfile = {
@@ -136,6 +136,26 @@ function deriveStoryBank(profile: StoredProfile) {
   ].filter((story) => story.title && (story.action || story.result));
 }
 
+const DEFAULT_CONTROL_ROOM_PREFERENCES: ControlRoomPreferenceState = {
+  scoreFloor: "65",
+  salaryFloor: "0",
+  targetMin: "0",
+  targetMax: "0",
+  jobTitles: "",
+  locations: "",
+  preferredLocations: "",
+  avoidLocations: "",
+  remoteOnly: false,
+};
+
+function normalizeControlRoomPreferences(overrides?: Partial<ControlRoomPreferenceState>): ControlRoomPreferenceState {
+  return {
+    ...DEFAULT_CONTROL_ROOM_PREFERENCES,
+    ...overrides,
+    remoteOnly: Boolean(overrides?.remoteOnly ?? DEFAULT_CONTROL_ROOM_PREFERENCES.remoteOnly),
+  };
+}
+
 function createEmptySnapshot(): UserContextSnapshot {
   return {
     targetRoles: [],
@@ -162,6 +182,7 @@ function createEmptySnapshot(): UserContextSnapshot {
     outreachPreferences: { channels: ["email", "linkedin"], tone: "confident" },
     candidateFacts: [],
     storyBank: [],
+  controlRoomPreferences: DEFAULT_CONTROL_ROOM_PREFERENCES,
   };
 }
 
@@ -201,6 +222,7 @@ function toSnapshot(value: unknown): UserContextSnapshot {
     outreachPreferences: plain.outreachPreferences || { channels: ["email", "linkedin"], tone: "confident" },
     candidateFacts: plain.candidateFacts || [],
     storyBank: plain.storyBank || [],
+    controlRoomPreferences: normalizeControlRoomPreferences(plain.controlRoomPreferences),
   } satisfies UserContextSnapshot;
 }
 
@@ -254,6 +276,9 @@ export async function loadUserContextSnapshot(userId: string) {
     outreachPreferences: { channels: ["email", "linkedin"], tone: "confident" },
     candidateFacts: deriveCandidateFacts(profile),
     storyBank: deriveStoryBank(profile).slice(0, 12),
+    controlRoomPreferences: normalizeControlRoomPreferences({
+      jobTitles: deriveTargetRoles(profile).join(", "),
+    }),
   });
 
   return toSnapshot(seeded);
@@ -277,6 +302,7 @@ export async function updateUserContextSnapshot(
     proofPoints: string[];
     learnedExclusions: string[];
     scoreFloor: number;
+    controlRoomPreferences: ControlRoomPreferenceState;
   }>,
 ) {
   await connectToDatabase();
@@ -321,6 +347,9 @@ export async function updateUserContextSnapshot(
   if (patch.proofPoints) nextUpdate.proofPoints = uniqueStrings(patch.proofPoints);
   if (patch.learnedExclusions) nextUpdate.learnedExclusions = uniqueStrings(patch.learnedExclusions);
   if (typeof patch.scoreFloor === "number") nextUpdate.scoreFloor = patch.scoreFloor;
+  if (patch.controlRoomPreferences) {
+    nextUpdate.controlRoomPreferences = normalizeControlRoomPreferences(patch.controlRoomPreferences);
+  }
 
   const updated = await UserContextModel.findOneAndUpdate(
     { userId },

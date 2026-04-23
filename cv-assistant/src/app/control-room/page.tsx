@@ -19,11 +19,13 @@ type OverviewResponse = {
   pipelineCounts: Array<{ state: string; count: number }>;
   blockerHeatmap: Array<{
     label: string;
+    code?: string;
     count: number;
     severity?: string;
     detail?: string;
     mitigation?: string;
   }>;
+  heatmapExcludesLegacyHeuristic?: boolean;
   recommendations: Array<{ title: string; body: string; tone: string }>;
   campaigns: Array<{
     _id?: string;
@@ -41,6 +43,8 @@ type LeadRecord = {
   title: string;
   company: string;
   location: string;
+  displayCompany?: string;
+  displayLocation?: string;
   source: string;
   fitScore: number;
   recommendation: string;
@@ -54,6 +58,14 @@ type LeadRecord = {
   updatedAt?: string;
 };
 
+function getCompanyLabel(record: Pick<LeadRecord, "displayCompany" | "company">) {
+  return record.displayCompany || record.company || "Company TBD";
+}
+
+function getLocationLabel(record: Pick<LeadRecord, "displayLocation" | "location">) {
+  return record.displayLocation || record.location || "Location TBD";
+}
+
 type LeadDetailResponse = {
   lead: LeadRecord & {
     canonicalJobDescription?: string;
@@ -65,8 +77,18 @@ type LeadDetailResponse = {
     recommendation: string;
     reasoningSummary: string;
     nextActions: string[];
+    analysisSource?: string;
+    analysisVersion?: number;
+    model?: string;
     dimensionScores: Array<{ key: string; label: string; score: number; reason: string }>;
-    gapMap: Array<{ title: string; severity: string; detail: string; mitigation: string }>;
+    gapMap: Array<{
+      code?: string;
+      title: string;
+      severity: string;
+      detail: string;
+      mitigation: string;
+      supportingRequirements?: string[];
+    }>;
     matchedRequirements: Array<{
       requirement: string;
       coverage: string;
@@ -275,16 +297,22 @@ function isApiError(value: unknown): value is { error?: string } {
 }
 
 function createContextForm(context: UserContextSnapshot): ContextFormState {
+  const stored = context.controlRoomPreferences;
+  const fallbackRemoteOnly = Boolean(
+    context.workPreferences.remoteOnly || context.searchPreferences.remoteOnly,
+  );
+
   return {
-    scoreFloor: String(context.scoreFloor || 65),
-    salaryFloor: String(context.compensation.salaryFloor || 0),
-    targetMin: String(context.compensation.targetMin || 0),
-    targetMax: String(context.compensation.targetMax || 0),
-    jobTitles: context.searchPreferences.jobTitles.join(", "),
-    locations: context.searchPreferences.locations.join(", "),
-    preferredLocations: context.workPreferences.preferredLocations.join(", "),
-    avoidLocations: context.workPreferences.avoidLocations.join(", "),
-    remoteOnly: Boolean(context.workPreferences.remoteOnly || context.searchPreferences.remoteOnly),
+    scoreFloor: stored?.scoreFloor ?? String(context.scoreFloor || 65),
+    salaryFloor: stored?.salaryFloor ?? String(context.compensation.salaryFloor || 0),
+    targetMin: stored?.targetMin ?? String(context.compensation.targetMin || 0),
+    targetMax: stored?.targetMax ?? String(context.compensation.targetMax || 0),
+    jobTitles: stored?.jobTitles ?? context.searchPreferences.jobTitles.join(", "),
+    locations: stored?.locations ?? context.searchPreferences.locations.join(", "),
+    preferredLocations: stored?.preferredLocations ?? context.workPreferences.preferredLocations.join(", "),
+    avoidLocations: stored?.avoidLocations ?? context.workPreferences.avoidLocations.join(", "),
+    remoteOnly:
+      typeof stored?.remoteOnly === "boolean" ? stored.remoteOnly : fallbackRemoteOnly,
   };
 }
 
@@ -414,6 +442,17 @@ export default function ControlRoomPage() {
             visaStatus: overview?.context.workPreferences.visaStatus || "",
             remoteOnly: contextForm.remoteOnly,
           },
+          controlRoomPreferences: {
+            scoreFloor: contextForm.scoreFloor,
+            salaryFloor: contextForm.salaryFloor,
+            targetMin: contextForm.targetMin,
+            targetMax: contextForm.targetMax,
+            jobTitles: contextForm.jobTitles,
+            locations: contextForm.locations,
+            preferredLocations: contextForm.preferredLocations,
+            avoidLocations: contextForm.avoidLocations,
+            remoteOnly: contextForm.remoteOnly,
+          },
         }),
       });
 
@@ -463,6 +502,9 @@ export default function ControlRoomPage() {
     }
   }
 
+  const detailCompanyLabel = detail ? getCompanyLabel(detail.lead) : "Company TBD";
+  const detailLocationLabel = detail ? getLocationLabel(detail.lead) : "Location TBD";
+
   return (
     <ModuleShell
       eyebrow="Control Room"
@@ -477,7 +519,7 @@ export default function ControlRoomPage() {
         <div className="space-y-6">
           <div className="space-y-3">
             <p className="section-kicker">System State</p>
-            <h2 className="text-foreground font-display text-3xl">Explainable by default.</h2>
+            <h2 className="text-foreground font-display text-2xl sm:text-3xl">Explainable by default.</h2>
             <p className="text-muted-foreground text-sm leading-7">
               Every lead carries liveness, fit reasoning, ATS coverage, and artifact lineage so the product can
               improve over time instead of regenerating from scratch on every click.
@@ -658,7 +700,7 @@ export default function ControlRoomPage() {
           <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(overview?.pipelineCounts || []).map((item) => (
               <div key={item.state} className="surface-subtle rounded-[1.35rem] p-4">
-                <div className="text-foreground text-2xl font-semibold">{item.count}</div>
+                    <div className="text-foreground text-xl sm:text-2xl font-semibold">{item.count}</div>
                 <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.2em]">
                   {item.state.replace(/_/g, " ")}
                 </div>
@@ -702,12 +744,27 @@ export default function ControlRoomPage() {
             description="The most common reasons a lead gets held back before generation begins."
           />
 
+          {overview?.heatmapExcludesLegacyHeuristic && !(overview?.blockerHeatmap || []).length ? (
+            <p className="text-muted-foreground mt-4 text-xs leading-5">
+              {/* Motivation vs Logic:
+                  Motivation: Old token-based gap rows should not block the dashboard from showing v2 AI themes.
+                  Logic: After upgrading, re-run orchestration on saved leads so v2 evaluations populate this heatmap. */}
+              Gap themes are shown for AI-scored evaluations (v2) only. Re-run the specialist workflow on leads to
+              refresh scores and populate this view.
+            </p>
+          ) : null}
+
           <div className="mt-6 space-y-3">
             {(overview?.blockerHeatmap || []).map((item) => (
               <div key={item.label} className="surface-subtle rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
+                      {item.code ? (
+                        <span className="text-muted-foreground font-mono text-[0.6rem] uppercase tracking-wider" title="Stable theme id">
+                          {item.code}
+                        </span>
+                      ) : null}
                       <span className="text-foreground text-sm font-semibold">
                         {humanizeBlockerLabel(item.label)}
                       </span>
@@ -728,7 +785,7 @@ export default function ControlRoomPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="text-foreground text-2xl font-semibold">{item.count}</div>
+                    <div className="text-foreground text-xl sm:text-2xl font-semibold">{item.count}</div>
                     <div className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.3em]">
                       Leads
                     </div>
@@ -760,6 +817,8 @@ export default function ControlRoomPage() {
         <div className="mt-8 grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
           <div className="space-y-3">
             {(overview?.leads || []).map((lead) => {
+              const companyLabel = getCompanyLabel(lead);
+              const locationLabel = getLocationLabel(lead);
               const leadId = getLeadId(lead);
               const isSelected = selectedLeadId === leadId;
               return (
@@ -781,12 +840,15 @@ export default function ControlRoomPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-foreground font-medium break-words">{lead.title}</div>
-                  {/* Motivation vs Logic:
-                      Motivation: The control room should always show company and location metadata even when the source omits them so the layout stays consistent.
-                      Logic: Fall back to explicit placeholder text for both fields so the separator and badge spacing do not disappear unexpectedly. */}
-                  <div className="text-muted-foreground mt-1 text-sm break-words">
-                    {lead.company || "Company TBD"} • {lead.location || "Location TBD"}
-                  </div>
+                      {/* Motivation vs Logic:
+                          Motivation: The control room should always show company and location metadata even when the source omits them so the layout stays consistent.
+                          Logic: Fall back to explicit placeholder text for both fields so the separator and badge spacing do not disappear unexpectedly. */}
+                      <div className="text-muted-foreground mt-1 text-sm break-words">
+                        {/* Motivation vs Logic:
+                            Motivation: Company/location placeholders often leak through when the crawler misses values.
+                            Logic: Prefer the normalized display labels emitted by the API (which filter "TBD"/"Show more") before falling back to safe captions. */}
+                        {companyLabel} • {locationLabel}
+                      </div>
                     </div>
                     <div
                       className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${recommendationClasses(
@@ -827,9 +889,12 @@ export default function ControlRoomPage() {
                   <div className="surface-subtle rounded-[1.5rem] p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-foreground font-display text-3xl break-words">{detail.lead.title}</h3>
+                        <h3 className="text-foreground font-display text-2xl sm:text-3xl break-words">{detail.lead.title}</h3>
                         <p className="text-muted-foreground mt-2 text-sm leading-7 break-words">
-                          {detail.lead.company || "Company TBD"} • {detail.lead.location || "Location TBD"} • {detail.lead.remotePolicy || "Work mode pending"}
+                          {/* Motivation vs Logic:
+                              Motivation: The job hero should not shrink because the backend returned "Unknown" or "Show more".
+                              Logic: Reuse the normalized display labels from the API (with the same filters as the cards) before falling back to a safe caption. */}
+                          {detailCompanyLabel} • {detailLocationLabel} • {detail.lead.remotePolicy || "Work mode pending"}
                         </p>
                       </div>
                       <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${recommendationClasses(detail.lead.recommendation)}`}>
@@ -845,7 +910,7 @@ export default function ControlRoomPage() {
                         { label: "Last update", value: formatDate(detail.lead.updatedAt) },
                       ].map((item) => (
                         <div key={item.label} className="rounded-2xl border border-border/70 bg-background/70 px-4 py-4">
-                          <div className="text-foreground text-lg font-semibold">{item.value}</div>
+                          <div className="text-foreground text-base sm:text-lg font-semibold">{item.value}</div>
                           <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.22em]">
                             {item.label}
                           </div>
@@ -853,6 +918,13 @@ export default function ControlRoomPage() {
                       ))}
                     </div>
 
+                    {detail.evaluation?.analysisSource ? (
+                      <p className="text-muted-foreground mt-2 text-xs">
+                        Strategist: {detail.evaluation.analysisSource}
+                        {detail.evaluation.analysisVersion != null ? ` (v${detail.evaluation.analysisVersion})` : ""}
+                        {detail.evaluation.model ? ` · ${detail.evaluation.model}` : ""}
+                      </p>
+                    ) : null}
                     {detail.evaluation?.reasoningSummary ? (
                       <p className="text-muted-foreground mt-5 text-sm leading-7">{detail.evaluation.reasoningSummary}</p>
                     ) : null}
@@ -939,10 +1011,18 @@ export default function ControlRoomPage() {
                     />
                     <div className="mt-6 space-y-3">
                       {(detail.evaluation?.gapMap || []).map((gap) => (
-                        <div key={`${gap.title}-${gap.severity}`} className="surface-subtle rounded-2xl p-4">
+                        <div key={`${gap.code || gap.title}-${gap.severity}`} className="surface-subtle rounded-2xl p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
+                              {gap.code ? (
+                                <div className="text-muted-foreground font-mono text-[0.65rem] tracking-wide">{gap.code}</div>
+                              ) : null}
                               <div className="text-foreground font-medium break-words">{gap.title}</div>
+                              {gap.supportingRequirements?.length ? (
+                                <div className="text-muted-foreground mt-1 text-xs break-words">
+                                  Related: {gap.supportingRequirements.join(" · ")}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="text-muted-foreground text-xs uppercase tracking-[0.18em]">
                               {gap.severity}
@@ -1083,7 +1163,7 @@ export default function ControlRoomPage() {
                       description="The semantic draft stays available for future template engines and diffing."
                     />
                     <div className="mt-6 surface-subtle rounded-[1.5rem] p-5">
-                      <div className="text-foreground text-xl font-semibold">
+                      <div className="text-foreground text-lg sm:text-xl font-semibold">
                         {detail.tailoringRun?.resumeDraft?.headline || "Draft pending"}
                       </div>
                       <p className="text-muted-foreground mt-3 text-sm leading-7">

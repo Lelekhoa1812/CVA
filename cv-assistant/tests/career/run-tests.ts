@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { validateResumeDraft } from "../../src/lib/career/ats";
 import { scoreLeadFit } from "../../src/lib/career/career-strategist";
+
+// Deterministic tests: avoid flaking on live LLM output when API keys are present
+process.env.CONTROL_ROOM_STRATEGIST_MODE = "heuristic";
 import { classifyLeadLiveness } from "../../src/lib/career/liveness";
 import type { ResumeDraft, UserContextSnapshot } from "../../src/lib/career/types";
 
 type TestCase = {
   name: string;
-  run: () => void;
+  run: () => void | Promise<void>;
 };
 
 const context: UserContextSnapshot = {
@@ -159,8 +162,8 @@ const tests: TestCase[] = [
   },
   {
     name: "strategist prioritizes high-fit remote roles with covered evidence",
-    run: () => {
-      const result = scoreLeadFit(
+    run: async () => {
+      const result = await scoreLeadFit(
         {
           title: "Software Engineer",
           location: "Remote Australia",
@@ -188,8 +191,8 @@ const tests: TestCase[] = [
   },
   {
     name: "strategist skips roles that violate remote-only constraints",
-    run: () => {
-      const result = scoreLeadFit(
+    run: async () => {
+      const result = await scoreLeadFit(
         {
           title: "Software Engineer",
           location: "Sydney office",
@@ -212,26 +215,30 @@ const tests: TestCase[] = [
       );
 
       assert.equal(result.recommendation, "skip");
-      assert.ok(result.gapMap.some((gap) => gap.title === "Work-mode mismatch"));
+      assert.ok(result.gapMap.some((gap) => gap.title === "Work-mode mismatch" || gap.code === "work_mode_mismatch"));
     },
   },
 ];
 
-let failures = 0;
+async function runTests() {
+  let failures = 0;
 
-for (const testCase of tests) {
-  try {
-    testCase.run();
-    console.log(`✓ ${testCase.name}`);
-  } catch (error) {
-    failures += 1;
-    console.error(`✗ ${testCase.name}`);
-    console.error(error);
+  for (const testCase of tests) {
+    try {
+      await testCase.run();
+      console.log(`✓ ${testCase.name}`);
+    } catch (error) {
+      failures += 1;
+      console.error(`✗ ${testCase.name}`);
+      console.error(error);
+    }
+  }
+
+  if (failures > 0) {
+    process.exitCode = 1;
+  } else {
+    console.log(`All ${tests.length} career unit tests passed.`);
   }
 }
 
-if (failures > 0) {
-  process.exitCode = 1;
-} else {
-  console.log(`All ${tests.length} career unit tests passed.`);
-}
+void runTests();

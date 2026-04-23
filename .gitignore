@@ -18,6 +18,7 @@ node_modules/
 
 # Python virtual environments
 venv/
+.env.local
 .env
 
 # IDE files

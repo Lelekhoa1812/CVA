@@ -28,6 +28,18 @@ export type SearchPreferenceState = {
   remoteOnly: boolean;
 };
 
+export type ControlRoomPreferenceState = {
+  scoreFloor: string;
+  salaryFloor: string;
+  targetMin: string;
+  targetMax: string;
+  jobTitles: string;
+  locations: string;
+  preferredLocations: string;
+  avoidLocations: string;
+  remoteOnly: boolean;
+};
+
 export type UserContextSnapshot = {
   targetRoles: string[];
   archetypes: string[];
@@ -49,6 +61,7 @@ export type UserContextSnapshot = {
     channels: string[];
     tone: string;
   };
+  controlRoomPreferences?: ControlRoomPreferenceState;
   candidateFacts: Array<{
     kind: string;
     title: string;
@@ -73,8 +86,25 @@ export type UserContextSnapshot = {
 
 export type PersistedSearchCampaignInput = SearchRequest;
 
+/** LLM (or fallback) structured extraction from a job posting — replaces raw word frequency as the strategist input. */
+export type JobUnderstanding = {
+  roleSummary: string;
+  mustHaveRequirements: string[];
+  preferredRequirements: string[];
+  responsibilityThemes: string[];
+  workMode: string;
+  seniority: string;
+  companySignals: string[];
+  disqualifiedNoiseTokens: string[];
+};
+
+export type AnalysisSource = "heuristic" | "llm" | "fallback";
+
+export const CONTROL_ROOM_ANALYSIS_VERSION = 2 as const;
+
 export type EnrichedLeadFacts = {
   canonicalJobDescription: string;
+  jobUnderstanding: JobUnderstanding | null;
   extractedKeywords: string[];
   salaryText: string;
   remotePolicy: string;
@@ -91,10 +121,13 @@ export type StrategistDimensionScore = {
 };
 
 export type StrategistGap = {
+  /** Stable id for analytics/heatmap, e.g. `missing_evidence_tech` */
+  code?: string;
   title: string;
   severity: GapSeverity;
   detail: string;
   mitigation: string;
+  supportingRequirements?: string[];
 };
 
 export type RequirementMatch = {
@@ -112,6 +145,11 @@ export type JobEvaluationResult = {
   reasoningSummary: string;
   nextActions: string[];
   telemetrySnapshot: Record<string, unknown>;
+  /** v2 strategist: how this evaluation was produced. */
+  analysisSource: AnalysisSource;
+  analysisVersion: number;
+  model: string;
+  jobUnderstanding: JobUnderstanding | null;
 };
 
 export type ResumeDraft = {

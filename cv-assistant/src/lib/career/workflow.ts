@@ -47,7 +47,7 @@ export async function orchestrateLead(userId: string, leadId: string) {
   const profile = ((user?.profile || {}) as StoredProfile) || {};
 
   const { lead } = await enrichLead(userId, leadId);
-  const evaluationResult = scoreLeadFit(lead, context, telemetry);
+  const evaluationResult = await scoreLeadFit(lead, context, telemetry);
 
   const evaluation = await JobEvaluationModel.create({
     userId,

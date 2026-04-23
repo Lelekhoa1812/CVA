@@ -27,6 +27,8 @@ const JobLeadSchema = new Schema(
       default: "unknown",
     },
     canonicalJobDescription: { type: String, default: "" },
+    /** LLM-extracted job understanding (v2). Legacy leads may omit this. */
+    jobUnderstanding: { type: Schema.Types.Mixed, default: null },
     extractedKeywords: { type: [String], default: [] },
     salaryText: { type: String, default: "" },
     remotePolicy: { type: String, default: "" },

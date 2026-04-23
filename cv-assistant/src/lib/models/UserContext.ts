@@ -49,6 +49,21 @@ const OutreachPreferencesSchema = new Schema(
   { _id: false },
 );
 
+const ControlRoomPreferencesSchema = new Schema(
+  {
+    scoreFloor: { type: String, default: "" },
+    salaryFloor: { type: String, default: "" },
+    targetMin: { type: String, default: "" },
+    targetMax: { type: String, default: "" },
+    jobTitles: { type: String, default: "" },
+    locations: { type: String, default: "" },
+    preferredLocations: { type: String, default: "" },
+    avoidLocations: { type: String, default: "" },
+    remoteOnly: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
 const CalibrationSchema = new Schema(
   {
     lastFeedbackAt: { type: Date, default: null },
@@ -74,6 +89,7 @@ const UserContextSchema = new Schema(
     outreachPreferences: { type: OutreachPreferencesSchema, default: () => ({}) },
     candidateFacts: { type: [CandidateFactSchema], default: [] },
     storyBank: { type: [StoryBankItemSchema], default: [] },
+  controlRoomPreferences: { type: ControlRoomPreferencesSchema, default: () => ({}) },
     calibration: { type: CalibrationSchema, default: () => ({}) },
   },
   { timestamps: true },

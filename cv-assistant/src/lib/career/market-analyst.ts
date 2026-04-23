@@ -1,5 +1,10 @@
 import { load } from "cheerio";
 import { classifyLeadLiveness } from "@/lib/career/liveness";
+import {
+  buildFallbackJobUnderstanding,
+  extractJobUnderstandingWithLlm,
+  mergeKeywordsForAts,
+} from "@/lib/career/job-understanding";
 import type { EnrichedLeadFacts } from "@/lib/career/types";
 import {
   cleanText,
@@ -7,7 +12,6 @@ import {
   inferEmploymentType,
   inferRemotePolicy,
   parseSalaryRange,
-  topKeywords,
   uniqueStrings,
 } from "@/lib/career/utils";
 import { ApplicationEventModel } from "@/lib/models/ApplicationEvent";
@@ -15,6 +19,9 @@ import { JobLeadModel } from "@/lib/models/JobLead";
 
 function extractReadableText(html: string) {
   const $ = load(html);
+  // Root Cause: Script/style and hydration blobs were being tokenized as "keywords" and gap titles.
+  // Logic: Remove non-human-readable subtrees before taking text, then fall back to the same candidate selectors.
+  $("script, style, noscript, svg, template, [aria-hidden='true']").remove();
   const candidates = [
     "main",
     "article",
@@ -96,11 +103,29 @@ export async function enrichLead(userId: string, leadId: string) {
       : "";
   const remotePolicy = inferRemotePolicy(description, lead.location);
   const employmentType = inferEmploymentType(description);
-  const extractedKeywords = topKeywords(`${lead.title} ${lead.snippet} ${description}`, 14);
-  const companySignals = deriveCompanySignals(description, salaryText, remotePolicy);
+
+  let jobUnderstanding = await extractJobUnderstandingWithLlm({
+    title: lead.title,
+    company: lead.company,
+    location: lead.location,
+    description,
+  });
+  if (!jobUnderstanding) {
+    jobUnderstanding = buildFallbackJobUnderstanding({
+      title: lead.title,
+      snippet: lead.snippet,
+      description,
+    });
+  }
+  const extractedKeywords = mergeKeywordsForAts(jobUnderstanding, 14);
+  const companySignals = uniqueStrings([
+    ...deriveCompanySignals(description, salaryText, remotePolicy),
+    ...jobUnderstanding.companySignals,
+  ]);
 
   const enriched: EnrichedLeadFacts = {
     canonicalJobDescription: description,
+    jobUnderstanding,
     extractedKeywords,
     salaryText,
     remotePolicy,
@@ -110,6 +135,7 @@ export async function enrichLead(userId: string, leadId: string) {
   };
 
   lead.canonicalJobDescription = description;
+  lead.jobUnderstanding = jobUnderstanding;
   lead.extractedKeywords = extractedKeywords;
   lead.salaryText = salaryText;
   lead.remotePolicy = remotePolicy;

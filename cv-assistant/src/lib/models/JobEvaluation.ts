@@ -12,10 +12,12 @@ const DimensionScoreSchema = new Schema(
 
 const GapSchema = new Schema(
   {
+    code: { type: String, default: "" },
     title: { type: String, required: true },
     severity: { type: String, enum: ["critical", "moderate", "minor"], default: "minor" },
     detail: { type: String, default: "" },
     mitigation: { type: String, default: "" },
+    supportingRequirements: { type: [String], default: [] },
   },
   { _id: false },
 );
@@ -45,6 +47,15 @@ const JobEvaluationSchema = new Schema(
     nextActions: { type: [String], default: [] },
     matchedRequirements: { type: [RequirementCoverageSchema], default: [] },
     telemetrySnapshot: { type: Schema.Types.Mixed, default: {} },
+    // LLM-first strategist provenance (v2). Omitted on legacy documents.
+    analysisSource: {
+      type: String,
+      enum: ["heuristic", "llm", "fallback"],
+      default: "heuristic",
+    },
+    analysisVersion: { type: Number, default: 0 },
+    model: { type: String, default: "" },
+    jobUnderstanding: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );
