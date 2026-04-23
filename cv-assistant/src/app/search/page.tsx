@@ -759,9 +759,11 @@ export default function SearchPage() {
 
                   <div className="mt-5 space-y-2">
                     <h3 className="text-foreground font-display text-2xl">{result.title}</h3>
+                    {/* Motivation vs Logic:
+                        Motivation: Search result cards should not shift when source data is missing so users can scan faster.
+                        Logic: Always render placeholder text for both company and location (with the separator) so each card stays visually consistent. */}
                     <p className="text-muted-foreground text-sm">
-                      {result.company || "Unknown company"}
-                      {result.location ? ` · ${result.location}` : ""}
+                      {result.company || "Company TBD"} • {result.location || "Location TBD"}
                     </p>
                     <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">
                       {result.postedText || "Posted time unavailable"}

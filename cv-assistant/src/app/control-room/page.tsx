@@ -17,7 +17,13 @@ type OverviewResponse = {
     artifactCount: number;
   };
   pipelineCounts: Array<{ state: string; count: number }>;
-  blockerHeatmap: Array<{ label: string; count: number }>;
+  blockerHeatmap: Array<{
+    label: string;
+    count: number;
+    severity?: string;
+    detail?: string;
+    mitigation?: string;
+  }>;
   recommendations: Array<{ title: string; body: string; tone: string }>;
   campaigns: Array<{
     _id?: string;
@@ -172,6 +178,96 @@ function coverageClasses(coverage: string) {
   if (coverage === "covered") return "text-emerald-700 dark:text-emerald-100";
   if (coverage === "partial") return "text-amber-700 dark:text-amber-100";
   return "text-rose-700 dark:text-rose-100";
+}
+
+type EventDetailStat = {
+  label: string;
+  value: string;
+};
+
+type EventHighlights = {
+  triggers: string[];
+  stats: EventDetailStat[];
+  detail?: string;
+};
+
+const EVENT_FIELD_CONFIG: Array<{ key: string; label: string; formatter?: (value: unknown) => string }> = [
+  { key: "fitScore", label: "Fit score", formatter: (value) => `${Math.round(Number(value) || 0)}` },
+  { key: "recommendation", label: "Recommendation", formatter: (value) => String(value) },
+  { key: "evidenceCount", label: "Evidence items", formatter: (value) => `${Number(value)}` },
+  { key: "keywordCoverage", label: "Keyword coverage", formatter: (value) => `${Math.round(Number(value) || 0)}%` },
+  { key: "artifactCount", label: "Generated variants", formatter: (value) => `${Number(value)}` },
+];
+
+function decodeReason(value: string) {
+  return value.replace(/_/g, " ").replace(/u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+// Root Cause: The heatmap was surfacing raw gap identifiers that look like telemetry codes.
+// Logic: Decode unicode escapes, replace underscores, and title-case the result so every blocker reads as a plain-English reason.
+function humanizeBlockerLabel(value?: string) {
+  if (!value) return "Unknown reason";
+  const decoded = decodeReason(value)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Za-z])(?=[0-9])/g, "$1 ")
+    .replace(/([0-9])(?=[A-Za-z])/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = decoded
+    .split(" ")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`);
+
+  return words.join(" ") || "Other reason";
+}
+
+const BLOCKER_SEVERITY_LABELS: Record<string, string> = {
+  critical: "Critical",
+  moderate: "Moderate",
+  minor: "Minor",
+};
+
+const BLOCKER_SEVERITY_CLASSES: Record<string, string> = {
+  critical: "border-rose-400/50 bg-rose-500/10 text-rose-600 dark:text-rose-200",
+  moderate: "border-amber-400/50 bg-amber-500/10 text-amber-600 dark:text-amber-100",
+  minor: "border-emerald-400/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-100",
+};
+
+function getEventHighlights(payload?: Record<string, unknown>): EventHighlights | null {
+  if (!payload) return null;
+  const triggers =
+    Array.isArray(payload.reasons) && payload.reasons.length > 0
+      ? payload.reasons
+          .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => decodeReason(item))
+      : [];
+
+  const stats = EVENT_FIELD_CONFIG.reduce<EventDetailStat[]>((acc, config) => {
+    const rawValue = payload[config.key];
+    if (typeof rawValue === "undefined" || rawValue === null) return acc;
+    const formatted = config.formatter ? config.formatter(rawValue) : String(rawValue);
+    if (formatted) {
+      acc.push({ label: config.label, value: formatted });
+    }
+    return acc;
+  }, []);
+
+  const detail =
+    typeof payload.summary === "string"
+      ? payload.summary
+      : typeof payload.message === "string"
+      ? payload.message
+      : typeof payload.detail === "string"
+      ? payload.detail
+      : undefined;
+
+  if (!triggers.length && !stats.length && !detail) return null;
+
+  // Motivation vs Logic:
+  // Motivation: Workflow history should feel approachable without dumping raw telemetry.
+  // Logic: Surface curated chips, stat tiles, and human-readable notes derived from trusted payload keys.
+  return { triggers, stats, detail };
 }
 
 function isApiError(value: unknown): value is { error?: string } {
@@ -430,7 +526,7 @@ export default function ControlRoomPage() {
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Strategist score floor</span>
+              <span className="text-foreground text-sm font-medium">Score Floor</span>
               <input
                 className="input-premium"
                 value={contextForm.scoreFloor}
@@ -441,7 +537,7 @@ export default function ControlRoomPage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Salary floor</span>
+              <span className="text-foreground text-sm font-medium">Salary Floor</span>
               <input
                 className="input-premium"
                 value={contextForm.salaryFloor}
@@ -452,7 +548,7 @@ export default function ControlRoomPage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Target salary minimum</span>
+              <span className="text-foreground text-sm font-medium">Minimum salary</span>
               <input
                 className="input-premium"
                 value={contextForm.targetMin}
@@ -463,7 +559,7 @@ export default function ControlRoomPage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Target salary maximum</span>
+              <span className="text-foreground text-sm font-medium">Maximum salary</span>
               <input
                 className="input-premium"
                 value={contextForm.targetMax}
@@ -609,9 +705,34 @@ export default function ControlRoomPage() {
           <div className="mt-6 space-y-3">
             {(overview?.blockerHeatmap || []).map((item) => (
               <div key={item.label} className="surface-subtle rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-foreground text-sm font-medium">{item.label}</span>
-                  <span className="text-muted-foreground text-sm">{item.count}</span>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-foreground text-sm font-semibold">
+                        {humanizeBlockerLabel(item.label)}
+                      </span>
+                      {item.severity ? (
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.3em] ${
+                            BLOCKER_SEVERITY_CLASSES[item.severity] ?? "border-border/70 bg-[hsl(var(--surface-2)/0.6)] text-muted-foreground"
+                          }`}
+                        >
+                          {BLOCKER_SEVERITY_LABELS[item.severity] ?? item.severity}
+                        </span>
+                      ) : null}
+                    </div>
+                    {(item.detail || item.mitigation) && (
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {item.detail || item.mitigation}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-foreground text-2xl font-semibold">{item.count}</div>
+                    <div className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.3em]">
+                      Leads
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -655,14 +776,23 @@ export default function ControlRoomPage() {
                       : "border-border/80 bg-[hsl(var(--surface-1)/0.78)] hover:border-primary/25"
                   }`}
                 >
+                  {/* Root Cause: The lead summary row treated the title block as inflexible so long names pushed the panel beyond the grid.
+                      Logic: Make the heading column shrinkable (min-w-0) and break words so the badge can settle alongside without forcing horizontal scroll. */}
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-foreground font-medium">{lead.title}</div>
-                      <div className="text-muted-foreground mt-1 text-sm">
-                        {lead.company} • {lead.location || "Location TBD"}
-                      </div>
+                    <div className="min-w-0">
+                      <div className="text-foreground font-medium break-words">{lead.title}</div>
+                  {/* Motivation vs Logic:
+                      Motivation: The control room should always show company and location metadata even when the source omits them so the layout stays consistent.
+                      Logic: Fall back to explicit placeholder text for both fields so the separator and badge spacing do not disappear unexpectedly. */}
+                  <div className="text-muted-foreground mt-1 text-sm break-words">
+                    {lead.company || "Company TBD"} • {lead.location || "Location TBD"}
+                  </div>
                     </div>
-                    <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${recommendationClasses(lead.recommendation)}`}>
+                    <div
+                      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${recommendationClasses(
+                        lead.recommendation,
+                      )}`}
+                    >
                       {lead.recommendation}
                     </div>
                   </div>
@@ -696,10 +826,10 @@ export default function ControlRoomPage() {
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
                   <div className="surface-subtle rounded-[1.5rem] p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-foreground font-display text-3xl">{detail.lead.title}</h3>
-                        <p className="text-muted-foreground mt-2 text-sm leading-7">
-                          {detail.lead.company} • {detail.lead.location || "Location TBD"} • {detail.lead.remotePolicy || "Work mode pending"}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-foreground font-display text-3xl break-words">{detail.lead.title}</h3>
+                        <p className="text-muted-foreground mt-2 text-sm leading-7 break-words">
+                          {detail.lead.company || "Company TBD"} • {detail.lead.location || "Location TBD"} • {detail.lead.remotePolicy || "Work mode pending"}
                         </p>
                       </div>
                       <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${recommendationClasses(detail.lead.recommendation)}`}>
@@ -786,9 +916,9 @@ export default function ControlRoomPage() {
                       {(detail.evaluation?.matchedRequirements || detail.tailoringRun?.resumeDraft?.requirementCoverage || []).map((match) => (
                         <div key={match.requirement} className="surface-subtle rounded-2xl p-4">
                           <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <div className="text-foreground font-medium">{match.requirement}</div>
-                              <div className="text-muted-foreground mt-1 text-sm">
+                            <div className="min-w-0">
+                              <div className="text-foreground font-medium break-words">{match.requirement}</div>
+                              <div className="text-muted-foreground mt-1 text-sm break-words">
                                 {match.matchedFacts.join(", ") || "No direct evidence connected yet"}
                               </div>
                             </div>
@@ -811,7 +941,9 @@ export default function ControlRoomPage() {
                       {(detail.evaluation?.gapMap || []).map((gap) => (
                         <div key={`${gap.title}-${gap.severity}`} className="surface-subtle rounded-2xl p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-foreground font-medium">{gap.title}</div>
+                            <div className="min-w-0">
+                              <div className="text-foreground font-medium break-words">{gap.title}</div>
+                            </div>
                             <div className="text-muted-foreground text-xs uppercase tracking-[0.18em]">
                               {gap.severity}
                             </div>
@@ -982,11 +1114,48 @@ export default function ControlRoomPage() {
                               {formatDate(event.createdAt)}
                             </div>
                           </div>
-                          {event.payload ? (
-                            <pre className="text-muted-foreground mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6">
-                              {JSON.stringify(event.payload, null, 2)}
-                            </pre>
-                          ) : null}
+                          {(() => {
+                            const highlights = getEventHighlights(event.payload);
+                            if (!highlights) {
+                              return (
+                                <p className="text-muted-foreground mt-3 text-sm">
+                                  No additional details recorded.
+                                </p>
+                              );
+                            }
+
+                            return (
+                              <div className="mt-3 space-y-3">
+                                {highlights.triggers.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {highlights.triggers.map((trigger) => (
+                                      <span
+                                        key={trigger}
+                                        className="rounded-full border border-border/70 px-3 py-1 text-[0.65rem] uppercase tracking-[0.22em] text-muted-foreground"
+                                      >
+                                        {trigger}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {highlights.stats.length > 0 && (
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    {highlights.stats.map((stat) => (
+                                      <div key={stat.label} className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm">
+                                        <div className="text-muted-foreground text-[0.55rem] uppercase tracking-[0.22em]">
+                                          {stat.label}
+                                        </div>
+                                        <div className="text-foreground text-base font-semibold">{stat.value}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {highlights.detail ? (
+                                  <p className="text-muted-foreground text-sm leading-6">{highlights.detail}</p>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>

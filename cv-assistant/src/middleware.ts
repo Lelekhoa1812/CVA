@@ -5,16 +5,21 @@ export function middleware(req: NextRequest) {
   try {
     const token = req.cookies.get('auth_token')?.value;
     const { pathname } = req.nextUrl;
+    const basePath = req.nextUrl.basePath || "";
+    const relativePath = pathname.startsWith(basePath) ? pathname.slice(basePath.length) || "/" : pathname;
 
-    // Allow the login page always
-    if (pathname.startsWith('/login')) return NextResponse.next();
+    // Root Cause vs Logic:
+    // Root Cause: deployments mounted under a scoped basePath hit this middleware with prefixed URLs,
+    // so the unmatched hard-coded `/login`/`/api` checks redirected legitimate routes to NEXT’s 404.
+    // Logic: strip the basePath before evaluating guards and reinstate it when issuing redirects.
+    if (relativePath.startsWith('/login')) return NextResponse.next();
 
     // Only guard app pages; exclude all API routes from middleware
-    if (pathname.startsWith('/api')) return NextResponse.next();
+    if (relativePath.startsWith('/api')) return NextResponse.next();
 
     if (!token) {
       const url = req.nextUrl.clone();
-      url.pathname = '/login';
+      url.pathname = `${basePath}/login`;
       return NextResponse.redirect(url);
     }
     return NextResponse.next();

@@ -78,10 +78,22 @@ export async function getControlRoomOverview(userId: string) {
     }, {}),
   ).map(([state, count]) => ({ state, count }));
 
+  type BlockerAggregate = {
+    count: number;
+    severity?: string;
+    detail?: string;
+    mitigation?: string;
+  };
+
   const blockerHeatmap = evaluations
     .flatMap((evaluation) => evaluation.gapMap || [])
-    .reduce<Record<string, number>>((counts, gap) => {
-      counts[gap.title] = (counts[gap.title] || 0) + 1;
+    .reduce<Record<string, BlockerAggregate>>((counts, gap) => {
+      const existing = counts[gap.title] || { count: 0 };
+      existing.count += 1;
+      if (!existing.severity && gap.severity) existing.severity = gap.severity;
+      if (!existing.detail && gap.detail) existing.detail = gap.detail;
+      if (!existing.mitigation && gap.mitigation) existing.mitigation = gap.mitigation;
+      counts[gap.title] = existing;
       return counts;
     }, {});
 
@@ -98,9 +110,15 @@ export async function getControlRoomOverview(userId: string) {
     campaigns: serialize(campaigns),
     leads: serialize(leads),
     blockerHeatmap: Object.entries(blockerHeatmap)
-      .sort((a, b) => b[1] - a[1])
+      .sort(([, a], [, b]) => b.count - a.count)
       .slice(0, 8)
-      .map(([label, count]) => ({ label, count })),
+      .map(([label, aggregate]) => ({
+        label,
+        count: aggregate.count,
+        severity: aggregate.severity,
+        detail: aggregate.detail,
+        mitigation: aggregate.mitigation,
+      })),
     recommendations: buildStrategistRecommendations({ telemetry, leads }),
   };
 }
