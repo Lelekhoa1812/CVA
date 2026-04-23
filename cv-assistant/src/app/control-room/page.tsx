@@ -519,7 +519,7 @@ export default function ControlRoomPage() {
         <div className="space-y-6">
           <div className="space-y-3">
             <p className="section-kicker">System State</p>
-            <h2 className="text-foreground font-display text-2xl sm:text-3xl">Explainable by default.</h2>
+            <h2 className="text-foreground font-display text-xl sm:text-2xl">Explainable by default.</h2>
             <p className="text-muted-foreground text-sm leading-7">
               Every lead carries liveness, fit reasoning, ATS coverage, and artifact lineage so the product can
               improve over time instead of regenerating from scratch on every click.
@@ -700,7 +700,7 @@ export default function ControlRoomPage() {
           <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(overview?.pipelineCounts || []).map((item) => (
               <div key={item.state} className="surface-subtle rounded-[1.35rem] p-4">
-                    <div className="text-foreground text-xl sm:text-2xl font-semibold">{item.count}</div>
+                    <div className="text-foreground text-lg sm:text-xl font-semibold">{item.count}</div>
                 <div className="text-muted-foreground mt-1 text-xs uppercase tracking-[0.2em]">
                   {item.state.replace(/_/g, " ")}
                 </div>
@@ -716,23 +716,28 @@ export default function ControlRoomPage() {
             />
 
             <div className="mt-5 space-y-3">
-              {(overview?.campaigns || []).map((campaign) => (
-                <div key={campaign._id || `${campaign.query?.jobTitle}-${campaign.createdAt}`} className="surface-subtle rounded-2xl p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-foreground font-medium">
-                        {campaign.query?.jobTitle || "Untitled search"} • {campaign.query?.location || "Any location"}
+              {/* Motivation vs Logic:
+                  Motivation: Zero-result crawls read like broken noise in "Recent searches" and distract from actionable runs.
+                  Logic: Render only campaigns with at least one result so every row represents a searchable lead set. */}
+              {(overview?.campaigns || [])
+                .filter((campaign) => (campaign.totalResults || 0) > 0)
+                .map((campaign) => (
+                  <div key={campaign._id || `${campaign.query?.jobTitle}-${campaign.createdAt}`} className="surface-subtle rounded-2xl p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-foreground font-medium">
+                          {campaign.query?.jobTitle || "Untitled search"} • {campaign.query?.location || "Any location"}
+                        </div>
+                        <div className="text-muted-foreground mt-1 text-sm">
+                          {campaign.totalResults || 0} results • {campaign.blockedSources?.length || 0} blocked sources
+                        </div>
                       </div>
-                      <div className="text-muted-foreground mt-1 text-sm">
-                        {campaign.totalResults || 0} results • {campaign.blockedSources?.length || 0} blocked sources
+                      <div className="text-muted-foreground text-xs uppercase tracking-[0.22em]">
+                        {campaign.status}
                       </div>
-                    </div>
-                    <div className="text-muted-foreground text-xs uppercase tracking-[0.22em]">
-                      {campaign.status}
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         </GlassPanel>
@@ -755,44 +760,47 @@ export default function ControlRoomPage() {
           ) : null}
 
           <div className="mt-6 space-y-3">
-            {(overview?.blockerHeatmap || []).map((item) => (
-              <div key={item.label} className="surface-subtle rounded-2xl p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      {item.code ? (
-                        <span className="text-muted-foreground font-mono text-[0.6rem] uppercase tracking-wider" title="Stable theme id">
-                          {item.code}
+            {(overview?.blockerHeatmap || []).map((item) => {
+              // Root Cause vs Logic:
+              // Root Cause: Long snake_case telemetry identifiers were rendered in-line, forcing row overflow and label overlap.
+              // Logic: Render only the humanized reason text and keep the count column fixed so cards stay readable at narrow widths.
+              const readableReason = humanizeBlockerLabel(item.label || item.code);
+
+              return (
+                <div key={item.label} className="surface-subtle rounded-2xl p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-foreground text-sm font-semibold break-words">
+                          {readableReason}
                         </span>
-                      ) : null}
-                      <span className="text-foreground text-sm font-semibold">
-                        {humanizeBlockerLabel(item.label)}
-                      </span>
-                      {item.severity ? (
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.3em] ${
-                            BLOCKER_SEVERITY_CLASSES[item.severity] ?? "border-border/70 bg-[hsl(var(--surface-2)/0.6)] text-muted-foreground"
-                          }`}
-                        >
-                          {BLOCKER_SEVERITY_LABELS[item.severity] ?? item.severity}
-                        </span>
-                      ) : null}
+                        {item.severity ? (
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.3em] ${
+                              BLOCKER_SEVERITY_CLASSES[item.severity] ??
+                              "border-border/70 bg-[hsl(var(--surface-2)/0.6)] text-muted-foreground"
+                            }`}
+                          >
+                            {BLOCKER_SEVERITY_LABELS[item.severity] ?? item.severity}
+                          </span>
+                        ) : null}
+                      </div>
+                      {(item.detail || item.mitigation) && (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground break-words">
+                          {item.detail || item.mitigation}
+                        </p>
+                      )}
                     </div>
-                    {(item.detail || item.mitigation) && (
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {item.detail || item.mitigation}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-foreground text-xl sm:text-2xl font-semibold">{item.count}</div>
-                    <div className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.3em]">
-                      Leads
+                    <div className="shrink-0 text-right">
+                      <div className="text-foreground text-lg sm:text-xl font-semibold">{item.count}</div>
+                      <div className="text-muted-foreground text-[0.65rem] uppercase tracking-[0.3em]">
+                        Leads
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </GlassPanel>
       </div>
@@ -889,7 +897,7 @@ export default function ControlRoomPage() {
                   <div className="surface-subtle rounded-[1.5rem] p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-foreground font-display text-2xl sm:text-3xl break-words">{detail.lead.title}</h3>
+                        <h3 className="text-foreground font-display text-xl sm:text-2xl break-words">{detail.lead.title}</h3>
                         <p className="text-muted-foreground mt-2 text-sm leading-7 break-words">
                           {/* Motivation vs Logic:
                               Motivation: The job hero should not shrink because the backend returned "Unknown" or "Show more".
@@ -1014,9 +1022,13 @@ export default function ControlRoomPage() {
                         <div key={`${gap.code || gap.title}-${gap.severity}`} className="surface-subtle rounded-2xl p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              {gap.code ? (
-                                <div className="text-muted-foreground font-mono text-[0.65rem] tracking-wide">{gap.code}</div>
-                              ) : null}
+                              {/* {gap.code ? (
+                                // Root Cause: Blocker codes were rendered raw, which could expose telemetry formatting.
+                                // Logic: Humanize the identifier before presenting it so users see a readable reason.
+                                <div className="text-muted-foreground font-mono text-[0.65rem] tracking-wide">
+                                  {humanizeBlockerLabel(gap.code)}
+                                </div>
+                              ) : null} */}
                               <div className="text-foreground font-medium break-words">{gap.title}</div>
                               {gap.supportingRequirements?.length ? (
                                 <div className="text-muted-foreground mt-1 text-xs break-words">
@@ -1163,7 +1175,7 @@ export default function ControlRoomPage() {
                       description="The semantic draft stays available for future template engines and diffing."
                     />
                     <div className="mt-6 surface-subtle rounded-[1.5rem] p-5">
-                      <div className="text-foreground text-lg sm:text-xl font-semibold">
+                      <div className="text-foreground text-base sm:text-lg font-semibold">
                         {detail.tailoringRun?.resumeDraft?.headline || "Draft pending"}
                       </div>
                       <p className="text-muted-foreground mt-3 text-sm leading-7">
