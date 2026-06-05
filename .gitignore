@@ -21,6 +21,9 @@ venv/
 .env.local
 .env
 
+.cache/
+.codoptic*
+
 # IDE files
 .vscode/
 .idea/
