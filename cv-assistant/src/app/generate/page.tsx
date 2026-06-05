@@ -34,6 +34,7 @@ export default function GeneratePage() {
     experiences: [],
   });
   const [enableManualSelection, setEnableManualSelection] = useState(false);
+  const [showManualEvidence, setShowManualEvidence] = useState(true);
 
   async function selectRelevant() {
     setError(null);
@@ -285,8 +286,11 @@ export default function GeneratePage() {
                     checked={enableManualSelection}
                     onChange={(event) => {
                       setEnableManualSelection(event.target.checked);
-                      if (!event.target.checked) {
+                      if (event.target.checked) {
+                        setShowManualEvidence(true);
+                      } else {
                         setManualSelection({ projects: [], experiences: [] });
+                        setShowManualEvidence(true);
                       }
                     }}
                     className="mt-1 h-4 w-4"
@@ -301,65 +305,82 @@ export default function GeneratePage() {
               </div>
 
               {enableManualSelection && profile ? (
-                <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                  <div className="interactive-card space-y-3">
-                    <p className="text-foreground text-sm font-semibold">Projects</p>
-                    <div className="space-y-2">
-                      {profile.projects?.length ? (
-                        profile.projects.map((project, idx) => (
-                          <label key={`${project.name}-${idx}`} className="surface-subtle flex gap-3 rounded-2xl p-3">
-                            <input
-                              type="checkbox"
-                              checked={manualSelection.projects.includes(idx)}
-                              onChange={() => toggleProject(idx)}
-                              className="mt-1 h-4 w-4"
-                            />
-                            <div>
-                              <div className="text-foreground text-sm font-medium">
-                                {project.name || "Untitled Project"}
-                              </div>
-                              {project.summary ? (
-                                <div className="text-muted-foreground mt-1 text-xs leading-6">{project.summary}</div>
-                              ) : null}
-                            </div>
-                          </label>
-                        ))
-                      ) : (
-                        <p className="text-muted-foreground text-xs">No projects added yet.</p>
-                      )}
-                    </div>
+                <div className="mt-6 space-y-4">
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowManualEvidence((current) => !current)}
+                      className="text-sm font-medium text-sky-600 underline-offset-4 transition hover:underline dark:text-sky-300"
+                    >
+                      {showManualEvidence ? "hide" : "show"}
+                    </button>
                   </div>
 
-                  <div className="interactive-card space-y-3">
-                    <p className="text-foreground text-sm font-semibold">Experiences</p>
-                    <div className="space-y-2">
-                      {profile.experiences?.length ? (
-                        profile.experiences.map((experience, idx) => (
-                          <label
-                            key={`${experience.companyName}-${experience.role}-${idx}`}
-                            className="surface-subtle flex gap-3 rounded-2xl p-3"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={manualSelection.experiences.includes(idx)}
-                              onChange={() => toggleExperience(idx)}
-                              className="mt-1 h-4 w-4"
-                            />
-                            <div>
-                              <div className="text-foreground text-sm font-medium">
-                                {experience.companyName} · {experience.role}
-                              </div>
-                              {experience.summary ? (
-                                <div className="text-muted-foreground mt-1 text-xs leading-6">{experience.summary}</div>
-                              ) : null}
-                            </div>
-                          </label>
-                        ))
-                      ) : (
-                        <p className="text-muted-foreground text-xs">No experiences added yet.</p>
-                      )}
+                  {/* Motivation vs Logic:
+                      Motivation: Manual curation should foreground work history before side projects and let users collapse long evidence lists without leaving selection mode.
+                      Logic: Render experiences ahead of projects and keep a small local visibility toggle so selections persist while the list is hidden. */}
+                  {showManualEvidence ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="interactive-card space-y-3">
+                        <p className="text-foreground text-sm font-semibold">Experiences</p>
+                        <div className="space-y-2">
+                          {profile.experiences?.length ? (
+                            profile.experiences.map((experience, idx) => (
+                              <label
+                                key={`${experience.companyName}-${experience.role}-${idx}`}
+                                className="surface-subtle flex gap-3 rounded-2xl p-3"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={manualSelection.experiences.includes(idx)}
+                                  onChange={() => toggleExperience(idx)}
+                                  className="mt-1 h-4 w-4"
+                                />
+                                <div>
+                                  <div className="text-foreground text-sm font-medium">
+                                    {experience.companyName} · {experience.role}
+                                  </div>
+                                  {experience.summary ? (
+                                    <div className="text-muted-foreground mt-1 text-xs leading-6">{experience.summary}</div>
+                                  ) : null}
+                                </div>
+                              </label>
+                            ))
+                          ) : (
+                            <p className="text-muted-foreground text-xs">No experiences added yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="interactive-card space-y-3">
+                        <p className="text-foreground text-sm font-semibold">Projects</p>
+                        <div className="space-y-2">
+                          {profile.projects?.length ? (
+                            profile.projects.map((project, idx) => (
+                              <label key={`${project.name}-${idx}`} className="surface-subtle flex gap-3 rounded-2xl p-3">
+                                <input
+                                  type="checkbox"
+                                  checked={manualSelection.projects.includes(idx)}
+                                  onChange={() => toggleProject(idx)}
+                                  className="mt-1 h-4 w-4"
+                                />
+                                <div>
+                                  <div className="text-foreground text-sm font-medium">
+                                    {project.name || "Untitled Project"}
+                                  </div>
+                                  {project.summary ? (
+                                    <div className="text-muted-foreground mt-1 text-xs leading-6">{project.summary}</div>
+                                  ) : null}
+                                </div>
+                              </label>
+                            ))
+                          ) : (
+                            <p className="text-muted-foreground text-xs">No projects added yet.</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               ) : null}
 

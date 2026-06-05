@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "sucrase-node tests/career/run-tests.ts",
+    "test:unit": "node -r tsconfig-paths/register -r sucrase/register/ts tests/career/run-tests.ts",
     "verify:career": "npm run lint && npm run test:unit"
   },
   "dependencies": {
@@ -21,6 +21,7 @@
     "mongoose": "^8.17.2",
     "next": "15.5.15",
     "pdf-lib": "^1.17.1",
+    "playwright": "^1.60.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "zod": "^4.0.17"
@@ -37,6 +38,7 @@
     "eslint-config-next": "15.5.15",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5"
   }
 }

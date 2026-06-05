@@ -8,6 +8,7 @@ type InputPart = {
   inlineData?: {
     data: string;
     mimeType: string;
+    detail?: 'low' | 'high' | 'auto' | 'original';
   };
 };
 type GenerateContentPayload = {
@@ -15,6 +16,11 @@ type GenerateContentPayload = {
     role: ContentRole;
     parts: InputPart[];
   }>;
+  modelOverride?: string;
+  previousResponseId?: string;
+  tools?: Array<Record<string, unknown>>;
+  extraInputItems?: Array<Record<string, unknown>>;
+  reasoning?: Record<string, unknown>;
 };
 type GenerateContentResult = {
   response: {
@@ -27,6 +33,7 @@ const DEFAULT_TIMEOUT_S = 360;
 const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_HARD_MODEL = 'gpt-5.4-mini';
 const DEFAULT_EASY_MODEL = 'gpt-5-nano';
+const DEFAULT_AUTO_APPLY_SUPERVISOR_MODEL = 'gpt-5.4';
 
 let cachedDotEnvValues: Record<string, string> | null = null;
 
@@ -122,15 +129,19 @@ function getMaxOutputTokens(): number {
     : DEFAULT_MAX_TOKENS;
 }
 
-function resolveModelName(preset: ModelPreset): string {
+export function resolveModelName(preset: ModelPreset): string {
   // Motivation vs Logic:
   // Motivation: We want one global Azure model switch that preserves the app's old "lightweight vs stronger"
   // behavior without scattering provider-specific choices across routes.
-  // Logic: `easy` is pinned to `gpt-5-nano`, `hard` reads the configured Azure model with a
-  // `gpt-5.4-mini` fallback, and document-heavy OCR/PDF extraction always stays on `gpt-5.4-mini`.
+  // Logic: `easy` is pinned to `gpt-5-nano`, `hard` and document-heavy extraction stay on
+  // `gpt-5.4-mini`, and Auto Apply supervisor calls opt into `gpt-5.4` through a separate helper.
   if (preset === 'easy') return DEFAULT_EASY_MODEL;
   if (preset === 'document') return DEFAULT_HARD_MODEL;
-  return getConfigValue('AZURE_AI_FOUNDRY_MODEL') || DEFAULT_HARD_MODEL;
+  return DEFAULT_HARD_MODEL;
+}
+
+export function resolveAutoApplySupervisorModelName(): string {
+  return getConfigValue('AUTO_APPLY_SUPERVISOR_MODEL') || DEFAULT_AUTO_APPLY_SUPERVISOR_MODEL;
 }
 
 function mapRole(role: ContentRole): 'user' | 'assistant' | 'system' {
@@ -154,6 +165,7 @@ function mapPart(part: InputPart) {
     return {
       type: 'input_image' as const,
       image_url: `data:${mimeType};base64,${data}`,
+      detail: part.inlineData.detail || 'auto',
     };
   }
 
@@ -202,11 +214,17 @@ async function createResponse(
       'api-key': apiKey,
     },
     body: JSON.stringify({
-      model: resolveModelName(preset),
-      input: payload.contents.map((content) => ({
-        role: mapRole(content.role),
-        content: content.parts.map(mapPart),
-      })),
+      model: payload.modelOverride || resolveModelName(preset),
+      input: [
+        ...payload.contents.map((content) => ({
+          role: mapRole(content.role),
+          content: content.parts.map(mapPart),
+        })),
+        ...(payload.extraInputItems || []),
+      ],
+      ...(payload.previousResponseId ? { previous_response_id: payload.previousResponseId } : {}),
+      ...(payload.tools ? { tools: payload.tools } : {}),
+      ...(payload.reasoning ? { reasoning: payload.reasoning } : {}),
       max_output_tokens: getMaxOutputTokens(),
     }),
     signal: AbortSignal.timeout(getTimeoutMs()),
@@ -236,6 +254,16 @@ async function createResponse(
 export function getModel(preset: ModelPreset) {
   return {
     generateContent: (payload: GenerateContentPayload) => createResponse(preset, payload),
+  };
+}
+
+export function getAutoApplySupervisorModel() {
+  return {
+    generateContent: (payload: GenerateContentPayload) =>
+      createResponse('hard', {
+        ...payload,
+        modelOverride: payload.modelOverride || resolveAutoApplySupervisorModelName(),
+      }),
   };
 }
 

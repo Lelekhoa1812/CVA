@@ -1,0 +1,1 @@
+PASS navbar-no-framer-motion-import.test.js

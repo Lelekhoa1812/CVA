@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { buildApiUrl } from "@/lib/api";
@@ -13,6 +12,7 @@ const links = [
   { href: "/resume", label: "Resume Lab", short: "Resume" },
   { href: "/generate", label: "Cover Letter", short: "Cv" },
   { href: "/search", label: "Job Search", short: "Search" },
+  { href: "/auto-apply", label: "Auto Apply", short: "Apply" },
   { href: "/control-room", label: "Control Room", short: "Ops" },
 ];
 
@@ -65,12 +65,11 @@ export default function Navbar() {
                   active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
+                {/* Root Cause vs Logic:
+                    Root Cause: Navbar imported framer-motion for a purely decorative active pill, so environments missing that package failed the whole build.
+                    Logic: replace the animated span with a static element that preserves the active-state styling without requiring the optional animation runtime. */}
                 {active ? (
-                  <motion.span
-                    layoutId="active-nav-pill"
-                    className="absolute inset-0 rounded-full border border-primary/25 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.94),hsl(var(--surface-3)/0.78))]"
-                    transition={{ type: "spring", stiffness: 320, damping: 28 }}
-                  />
+                  <span className="absolute inset-0 rounded-full border border-primary/25 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.94),hsl(var(--surface-3)/0.78))]" />
                 ) : null}
                 <span className="relative z-10">{link.label}</span>
               </Link>

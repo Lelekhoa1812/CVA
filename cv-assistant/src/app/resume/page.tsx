@@ -765,36 +765,6 @@ export default function ResumePage() {
 
             <div className="bg-card border rounded-xl p-6">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold">Projects</h2>
-                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {aiCoachingEnabled ? 'Auto-ranked on generate' : `${manualSelectionCount}/${MAX_RESUME_ITEMS} selected`}
-                </span>
-              </div>
-              <div className="space-y-2 max-h-80 overflow-auto pr-2">
-                {profile.projects?.map((p, i) => (
-                  <label key={i} className={`group flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
-                    selectedProjects.includes(i) 
-                      ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
-                      : 'hover:bg-accent'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={selectedProjects.includes(i)}
-                      disabled={aiCoachingEnabled}
-                      onChange={() => toggle(i, selectedProjects, setSelectedProjects)}
-                    />
-                    <div>
-                      <div className="font-medium text-foreground group-hover:text-white">{p.name || 'Untitled Project'}</div>
-                      <div className="text-sm text-muted-foreground whitespace-pre-wrap group-hover:text-white">{p.summary || ''}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-card border rounded-xl p-6">
-              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-semibold">Experiences</h2>
                 <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>
                   {aiCoachingEnabled ? 'Auto-ranked on generate' : `${manualSelectionCount}/${MAX_RESUME_ITEMS} selected`}
@@ -826,6 +796,36 @@ export default function ResumePage() {
                   You can include at most {MAX_RESUME_ITEMS} items. Please deselect some.
                 </div>
               )}
+            </div>
+
+            <div className="bg-card border rounded-xl p-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold">Projects</h2>
+                <span className={`text-sm ${limitReached ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {aiCoachingEnabled ? 'Auto-ranked on generate' : `${manualSelectionCount}/${MAX_RESUME_ITEMS} selected`}
+                </span>
+              </div>
+              <div className="space-y-2 max-h-80 overflow-auto pr-2">
+                {profile.projects?.map((p, i) => (
+                  <label key={i} className={`group flex items-start space-x-3 p-2 rounded cursor-pointer transition-all duration-200 ${
+                    selectedProjects.includes(i) 
+                      ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
+                      : 'hover:bg-accent'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={selectedProjects.includes(i)}
+                      disabled={aiCoachingEnabled}
+                      onChange={() => toggle(i, selectedProjects, setSelectedProjects)}
+                    />
+                    <div>
+                      <div className="font-medium text-foreground group-hover:text-white">{p.name || 'Untitled Project'}</div>
+                      <div className="text-sm text-muted-foreground whitespace-pre-wrap group-hover:text-white">{p.summary || ''}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
 
             {/* Coaching Status Indicator */}
@@ -1075,45 +1075,6 @@ export default function ResumePage() {
                             Select up to 3 projects or experiences to enhance (maximum 3):
                           </div>
                           
-                          {/* Projects */}
-                          {profile.projects && selectedProjects.length > 0 && (
-                            <div className="space-y-2">
-                              <div className="text-xs font-medium text-gray-300">Projects:</div>
-                              {selectedProjects.map((idx) => {
-                                const p = profile.projects[idx];
-                                if (!p) return null;
-                                const itemKey = `project-${idx}`;
-                                const isSelected = contentSelectedItems.some(item => item.type === 'project' && item.index === idx);
-                                
-                                return (
-                                  <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          if (contentSelectedItems.length < 3) {
-                                            console.log('Project checkbox checked - adding to selection');
-                                            setContentSelectedItems(prev => [...prev, { type: 'project', index: idx, name: p.name || 'Untitled Project' }]);
-                                            console.log('Project selected, contentEnhancementStarted should remain false:', !contentEnhancementStarted);
-                                          }
-                                        } else {
-                                          console.log('Project checkbox unchecked - removing from selection');
-                                          setContentSelectedItems(prev => prev.filter(item => !(item.type === 'project' && item.index === idx)));
-                                        }
-                                      }}
-                                      disabled={!isSelected && contentSelectedItems.length >= 3}
-                                      className="w-4 h-4"
-                                    />
-                                    <div className="text-sm text-gray-100">
-                                      <div className="font-medium">{p.name || 'Untitled Project'}</div>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                          
                           {/* Experiences */}
                           {profile.experiences && selectedExperiences.length > 0 && (
                             <div className="space-y-2">
@@ -1147,6 +1108,45 @@ export default function ResumePage() {
                                     />
                                     <div className="text-sm text-gray-100">
                                       <div className="font-medium">{ex.companyName || 'Company'} - {ex.role || 'Role'}</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Projects */}
+                          {profile.projects && selectedProjects.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-medium text-gray-300">Projects:</div>
+                              {selectedProjects.map((idx) => {
+                                const p = profile.projects[idx];
+                                if (!p) return null;
+                                const itemKey = `project-${idx}`;
+                                const isSelected = contentSelectedItems.some(item => item.type === 'project' && item.index === idx);
+                                
+                                return (
+                                  <label key={itemKey} className="flex items-center space-x-3 p-2 rounded cursor-pointer hover:bg-gray-700/50">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          if (contentSelectedItems.length < 3) {
+                                            console.log('Project checkbox checked - adding to selection');
+                                            setContentSelectedItems(prev => [...prev, { type: 'project', index: idx, name: p.name || 'Untitled Project' }]);
+                                            console.log('Project selected, contentEnhancementStarted should remain false:', !contentEnhancementStarted);
+                                          }
+                                        } else {
+                                          console.log('Project checkbox unchecked - removing from selection');
+                                          setContentSelectedItems(prev => prev.filter(item => !(item.type === 'project' && item.index === idx)));
+                                        }
+                                      }}
+                                      disabled={!isSelected && contentSelectedItems.length >= 3}
+                                      className="w-4 h-4"
+                                    />
+                                    <div className="text-sm text-gray-100">
+                                      <div className="font-medium">{p.name || 'Untitled Project'}</div>
                                     </div>
                                   </label>
                                 );

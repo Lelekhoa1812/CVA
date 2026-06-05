@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import { resolveAutoApplySupervisorModelName, resolveModelName } from "../../src/lib/ai";
+import { answerEmployerQuestionFromGroundTruth } from "../../src/lib/auto-apply/answering";
+import { toComputerScreenshotOutput, toResponsesImagePart } from "../../src/lib/auto-apply/browser";
+import { suggestGroundTruthSelection } from "../../src/lib/auto-apply/ground-truth";
+import { rankAutoApplyCandidates } from "../../src/lib/auto-apply/ranking";
+import { saveAnswerSchema, submitApplicationSchema } from "../../src/lib/auto-apply/types";
 import { validateResumeDraft } from "../../src/lib/career/ats";
 import { scoreLeadFit } from "../../src/lib/career/career-strategist";
 
@@ -104,6 +110,159 @@ const baseDraft: ResumeDraft = {
 };
 
 const tests: TestCase[] = [
+  {
+    name: "auto apply model routing preserves global presets",
+    run: () => {
+      const previousSupervisor = process.env.AUTO_APPLY_SUPERVISOR_MODEL;
+      delete process.env.AUTO_APPLY_SUPERVISOR_MODEL;
+
+      assert.equal(resolveModelName("hard"), process.env.AZURE_AI_FOUNDRY_MODEL || "gpt-5.4-mini");
+      assert.equal(resolveModelName("easy"), "gpt-5-nano");
+      assert.equal(resolveModelName("document"), "gpt-5.4-mini");
+      assert.equal(resolveAutoApplySupervisorModelName(), "gpt-5.4");
+
+      if (previousSupervisor) process.env.AUTO_APPLY_SUPERVISOR_MODEL = previousSupervisor;
+    },
+  },
+  {
+    name: "auto apply screenshot maps to Responses image input",
+    run: () => {
+      const part = toResponsesImagePart({
+        base64: Buffer.from("png").toString("base64"),
+        detail: "original",
+      });
+
+      assert.equal(part.type, "input_image");
+      assert.equal(part.detail, "original");
+      assert.ok(part.image_url.startsWith("data:image/png;base64,"));
+    },
+  },
+  {
+    name: "auto apply computer screenshot maps to computer call output",
+    run: () => {
+      const output = toComputerScreenshotOutput({
+        callId: "call_123",
+        base64: Buffer.from("png").toString("base64"),
+      });
+
+      assert.equal(output.type, "computer_call_output");
+      assert.equal(output.call_id, "call_123");
+      assert.equal(output.output.type, "computer_screenshot");
+      assert.equal(output.output.detail, "original");
+    },
+  },
+  {
+    name: "auto apply ranking dedupes jobs and flags restricted sources",
+    run: () => {
+      const ranked = rankAutoApplyCandidates({
+        prompt: "Senior AI Engineer RAG LLM Melbourne",
+        groundTruthSnapshot: {
+          items: [
+            {
+              title: "AI Platform",
+              summary: "Built LLM and RAG systems with TypeScript and healthcare AI workflows.",
+              evidence: ["LLM", "RAG", "healthcare AI"],
+            },
+          ],
+        },
+        mustHaveKeywords: ["LLM"],
+        excludeKeywords: ["door to door"],
+        companyBlacklist: ["BadCo"],
+        jobs: [
+          {
+            source: "seek",
+            title: "Senior AI Engineer",
+            company: "GoodCo",
+            location: "Melbourne",
+            descriptionText: "LLM RAG healthcare AI role.",
+            dedupeKey: "same",
+          },
+          {
+            source: "seek",
+            title: "Senior AI Engineer",
+            company: "GoodCo",
+            location: "Melbourne",
+            descriptionText: "Duplicate.",
+            dedupeKey: "same",
+          },
+          {
+            source: "linkedin",
+            title: "AI Engineer",
+            company: "AnotherCo",
+            location: "Remote Australia",
+            descriptionText: "LLM platform role.",
+          },
+        ],
+      });
+
+      assert.equal(ranked.length, 2);
+      assert.ok(ranked[0].fitScore >= 70);
+      assert.ok(ranked.some((job) => job.riskFlags.includes("restricted_source_manual_guidance")));
+    },
+  },
+  {
+    name: "auto apply ground truth suggestion prefers relevant profile evidence",
+    run: () => {
+      const profileDraft = {
+        experiences: [
+          {
+            companyName: "MedSwin",
+            role: "AI Engineer",
+            summary: "Built LLM and RAG systems for healthcare workflows.",
+          },
+        ],
+        projects: [
+          {
+            name: "Enterprise AI Platform",
+            summary: "Deployed agentic systems and semantic search.",
+          },
+        ],
+        skills: "LLM, RAG, healthcare AI",
+      } as any;
+
+      const ids = suggestGroundTruthSelection(
+        profileDraft,
+        "Senior AI/ML Engineer with LLM and RAG focus",
+      );
+
+      assert.ok(ids.length > 0);
+      assert.ok(ids.some((id) => id.startsWith("experience:") || id.startsWith("project:")));
+    },
+  },
+  {
+    name: "auto apply answerer requires user input for unsupported sensitive questions",
+    run: () => {
+      const result = answerEmployerQuestionFromGroundTruth({
+        question: "What is your visa status and work rights?",
+        groundTruthSnapshot: {
+          items: [{ title: "Project", summary: "Built RAG systems.", evidence: ["RAG"] }],
+        },
+      });
+
+      assert.equal(result.requiresUserReview, true);
+      assert.equal(result.answer, "");
+      assert.ok(result.reason.includes("sensitive"));
+    },
+  },
+  {
+    name: "auto apply reusable memory requires explicit consent",
+    run: () => {
+      const parsed = saveAnswerSchema.parse({
+        questionPattern: "Notice period",
+        answer: "Available in four weeks.",
+        scope: "reusable_profile",
+      });
+
+      assert.equal(parsed.explicitReusableConsent, false);
+    },
+  },
+  {
+    name: "auto apply submit schema requires explicit confirmation",
+    run: () => {
+      assert.equal(submitApplicationSchema.parse({ confirmSubmit: false }).confirmSubmit, false);
+      assert.equal(submitApplicationSchema.parse({ confirmSubmit: true }).confirmSubmit, true);
+    },
+  },
   {
     name: "liveness marks closed listings as expired",
     run: () => {

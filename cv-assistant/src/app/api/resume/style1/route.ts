@@ -614,34 +614,6 @@ export async function POST(req: NextRequest) {
     drawLabelValueLine('Languages', profile.languages.trim(), fontSize - 1);
   }
 
-  // Projects
-  if (Array.isArray(profile.projects) && selectedProjects.length) {
-    drawSection('Projects');
-    console.log('Drawing projects:', selectedProjects.length, 'projects');
-    for (const idx of selectedProjects) {
-      const p = profile.projects[idx];
-      if (!p) continue;
-      console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
-      drawWrappedTextBlock(p.name || 'Untitled Project', fontSize, useBold, getAccentColor());
-      // Use original content + enhanced summary if available
-      const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
-      const enhancedContent = enhancedProjectSummaries[idx];
-      const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
-      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
-      
-      if (finalContent) {
-        if (finalContent.includes('**') || finalContent.includes('*')) {
-          drawMarkdownText(finalContent, left, fontSize - 1);
-        } else {
-          drawBulletBlock(finalContent);
-        }
-      } else {
-        console.warn('No content for project:', p.name);
-      }
-      y -= 4;
-    }
-  }
-
   // Experience
   if (Array.isArray(profile.experiences) && selectedExperiences.length) {
     drawSection('Experience');
@@ -670,6 +642,34 @@ export async function POST(req: NextRequest) {
         }
       }
       y -= 4; // Same spacing as projects
+    }
+  }
+
+  // Projects
+  if (Array.isArray(profile.projects) && selectedProjects.length) {
+    drawSection('Projects');
+    console.log('Drawing projects:', selectedProjects.length, 'projects');
+    for (const idx of selectedProjects) {
+      const p = profile.projects[idx];
+      if (!p) continue;
+      console.log('Project:', p.name, 'Content length:', (p.description || p.summary || '').length);
+      drawWrappedTextBlock(p.name || 'Untitled Project', fontSize, useBold, getAccentColor());
+      // Use original content + enhanced summary if available
+      const originalContent = (p as { description?: string; summary?: string }).description || p.summary || '';
+      const enhancedContent = enhancedProjectSummaries[idx];
+      const targetedEnhancedContent = contentEnhancementData?.[`project-${idx}`];
+      const finalContent = targetedEnhancedContent || enhancedContent || originalContent;
+      
+      if (finalContent) {
+        if (finalContent.includes('**') || finalContent.includes('*')) {
+          drawMarkdownText(finalContent, left, fontSize - 1);
+        } else {
+          drawBulletBlock(finalContent);
+        }
+      } else {
+        console.warn('No content for project:', p.name);
+      }
+      y -= 4;
     }
   }
 
