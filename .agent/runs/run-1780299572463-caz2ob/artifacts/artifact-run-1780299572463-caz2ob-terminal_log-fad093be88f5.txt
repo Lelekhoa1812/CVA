@@ -1,1 +1,0 @@
-Prepare empty test files so edit_file can populate them without modifying source files.

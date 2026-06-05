@@ -1,1 +1,0 @@
-PASS navbar-static-active-pill.test.js

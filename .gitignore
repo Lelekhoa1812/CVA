@@ -23,13 +23,14 @@ venv/
 
 .cache/
 .codoptic*
+.codeoptic-cache/
+.agent/
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
-EOF
 
 # notes
 cv-assistant/idea
