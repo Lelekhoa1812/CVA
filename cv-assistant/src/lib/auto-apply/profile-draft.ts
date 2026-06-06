@@ -52,49 +52,26 @@ function profileSummary(profile?: Partial<Profile> | null) {
   };
 }
 
-function heuristicDraft(profile?: Partial<Profile> | null, current?: Partial<AutoApplyProfileDraft>) {
-  const summary = profileSummary(profile);
-  const skillText = `${summary.skills} ${summary.projects.map((item) => item.summary || item.description).join(" ")} ${summary.experiences.map((item) => item.summary || item.description).join(" ")}`.toLowerCase();
-  const aiFocused = /llm|rag|agent|ai|ml|machine learning|data|mlops|nlp|vision|health/.test(skillText);
-
-  const prompt =
-    current?.prompt?.trim() ||
-    (aiFocused
-      ? "Find senior AI/ML roles focused on LLMs, RAG, agentic systems, healthcare AI, and enterprise AI platforms."
-      : "Find roles that match my strongest experience, projects, and technical skills.");
-
-  const keywords = Array.from(
-    new Set(
-      [
-        ...(summary.skills ? summary.skills.split(/[,\n/|]+/).map((item) => item.trim()) : []),
-        ...(aiFocused ? ["LLM", "RAG", "agentic systems", "MLOps", "AI"] : []),
-      ].filter(Boolean),
-    ),
-  )
-    .slice(0, 8)
-    .filter((item) => item.length > 1);
-
-  const selectedGroundTruthIds = suggestGroundTruthSelection(profile, prompt);
+function fallbackDraft(profile?: Partial<Profile> | null, current?: Partial<AutoApplyProfileDraft>) {
+  const prompt = cleanText(current?.prompt);
+  const selectedGroundTruthIds = prompt ? suggestGroundTruthSelection(profile, prompt) : [];
 
   return profileDraftSchema.parse({
     prompt,
     location: current?.location || "",
     workplaceMode: current?.workplaceMode || "any",
     employmentType: current?.employmentType || "any",
-    seniority:
-      current?.seniority?.trim() ||
-      (summary.experiences.length >= 3 ? "Senior" : summary.experiences.length >= 1 ? "Mid-level" : ""),
+    seniority: current?.seniority || "",
     salaryMin: current?.salaryMin || "",
     salaryMax: current?.salaryMax || "",
     workRights: current?.workRights || "",
-    mustHaveKeywords: current?.mustHaveKeywords?.length ? current.mustHaveKeywords : keywords,
+    mustHaveKeywords: current?.mustHaveKeywords || [],
     excludeKeywords: current?.excludeKeywords || [],
     companyBlacklist: current?.companyBlacklist || [],
     applicationLimit: current?.applicationLimit || 10,
     selectedSources: current?.selectedSources?.length ? current.selectedSources : [...SEARCH_SOURCES],
     selectedGroundTruthIds,
-    reasoning:
-      "Heuristic draft derived from the profile because the profile did not contain enough signal for a richer agent summary.",
+    reasoning: "Profile draft unavailable because the intake model did not return a usable result.",
   });
 }
 
@@ -162,7 +139,7 @@ Prioritize the strongest evidence-backed skills, projects, and experiences. Keep
     };
 
     return profileDraftSchema.parse({
-      ...heuristicDraft(profile, current),
+      ...fallbackDraft(profile, current),
       ...mapped,
       selectedGroundTruthIds: mapped.selectedGroundTruthIds.length
         ? mapped.selectedGroundTruthIds
@@ -170,6 +147,6 @@ Prioritize the strongest evidence-backed skills, projects, and experiences. Keep
       reasoning: parsed.reasoning || "Distilled from the profile with an agent pass.",
     });
   } catch {
-    return heuristicDraft(profile, current);
+    return fallbackDraft(profile, current);
   }
 }

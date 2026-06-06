@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { distillAutoApplyProfileDraft } from "@/lib/auto-apply/profile-draft";
+import { buildGroundTruthOptions } from "@/lib/auto-apply/ground-truth";
 import { connectToDatabase } from "@/lib/db";
 import { isAuthPayload, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 import { UserModel } from "@/lib/models/User";
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
-  const draft = await distillAutoApplyProfileDraft(user?.profile || undefined, parsed);
-  return NextResponse.json({ draft });
+  const profile = user?.profile || undefined;
+  const draft = await distillAutoApplyProfileDraft(profile, parsed);
+  const groundTruthOptions = buildGroundTruthOptions(profile);
+  return NextResponse.json({ draft, groundTruthOptions });
 }

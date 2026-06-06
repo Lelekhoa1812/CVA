@@ -7,6 +7,7 @@ import { rankAutoApplyCandidates } from "../../src/lib/auto-apply/ranking";
 import { saveAnswerSchema, submitApplicationSchema } from "../../src/lib/auto-apply/types";
 import { validateResumeDraft } from "../../src/lib/career/ats";
 import { scoreLeadFit } from "../../src/lib/career/career-strategist";
+import type { Profile } from "../../src/lib/models/User";
 
 // Deterministic tests: avoid flaking on live LLM output when API keys are present
 process.env.CONTROL_ROOM_STRATEGIST_MODE = "heuristic";
@@ -203,7 +204,7 @@ const tests: TestCase[] = [
   {
     name: "auto apply ground truth suggestion prefers relevant profile evidence",
     run: () => {
-      const profileDraft = {
+      const profileDraft: Partial<Profile> = {
         experiences: [
           {
             companyName: "MedSwin",
@@ -218,7 +219,7 @@ const tests: TestCase[] = [
           },
         ],
         skills: "LLM, RAG, healthcare AI",
-      } as any;
+      };
 
       const ids = suggestGroundTruthSelection(
         profileDraft,

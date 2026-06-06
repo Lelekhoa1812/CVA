@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useEffect } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { buildApiUrl } from "@/lib/api";
+import { buildGroundTruthOptions } from "@/lib/auto-apply/ground-truth";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
   SEARCH_SOURCES,
@@ -17,20 +18,7 @@ import {
 type Mode = "ai_coaching" | "manual_curate";
 type Tab = "prompt" | "jobs" | "apply" | "activity";
 
-type ProfileProject = { _id?: string; name: string; summary?: string; description?: string };
-type ProfileExperience = {
-  _id?: string;
-  companyName: string;
-  role: string;
-  summary?: string;
-  description?: string;
-};
-type Profile = {
-  skills?: string;
-  languages?: string;
-  projects?: ProfileProject[];
-  experiences?: ProfileExperience[];
-};
+type GroundTruthOption = ReturnType<typeof buildGroundTruthOptions>[number];
 
 type Session = {
   _id: string;
@@ -89,17 +77,16 @@ const employmentLabels: Record<EmploymentType, string> = {
 };
 
 const initialAutoApplyForm = {
-  prompt:
-    "Find Senior AI/ML Engineer roles in Melbourne or remote Australia focused on LLM, RAG, agentic systems, healthcare AI, or enterprise AI platforms.",
+  prompt: "",
   mode: "ai_coaching" as Mode,
-  location: "Melbourne or remote Australia",
+  location: "",
   workplaceMode: "any" as WorkplaceMode,
   employmentType: "any" as EmploymentType,
-  seniority: "Senior",
+  seniority: "",
   salaryMin: "",
   salaryMax: "",
   workRights: "",
-  mustHaveKeywords: "LLM, RAG, AI",
+  mustHaveKeywords: "",
   excludeKeywords: "",
   companyBlacklist: "",
   applicationLimit: "10",
@@ -108,26 +95,34 @@ const initialAutoApplyForm = {
   allowFullResumeContext: false,
 };
 
-function buildGroundTruthSections(profile: Profile | null) {
-  const experiences =
-    profile?.experiences?.map((experience, index) => ({
-      id: `experience:${experience._id || index}`,
-      label: [experience.companyName, experience.role].filter(Boolean).join(" - ") || "Untitled experience",
-      detail: experience.summary || experience.description || "",
-    })) || [];
-  const projects =
-    profile?.projects?.map((project, index) => ({
-      id: `project:${project._id || index}`,
-      label: project.name || "Untitled project",
-      detail: project.summary || project.description || "",
-    })) || [];
-  const profileFacts = [
-    profile?.skills ? { id: "profile:skills", label: "Profile skills", detail: profile.skills } : null,
-    profile?.languages
-      ? { id: "profile:languages", label: "Languages", detail: profile.languages }
-      : null,
-  ].filter((item): item is { id: string; label: string; detail: string } => Boolean(item));
-  return { experiences, projects, profileFacts };
+function buildGroundTruthSections(items: GroundTruthOption[]) {
+  const groups = {
+    experiences: [] as Array<{ id: string; label: string; detail: string }>,
+    projects: [] as Array<{ id: string; label: string; detail: string }>,
+    profileFacts: [] as Array<{ id: string; label: string; detail: string }>,
+  };
+
+  items.forEach((item) => {
+    const mapped = {
+      id: item.id,
+      label: item.title || "Untitled",
+      detail: item.summary || item.evidence?.join(" ") || "",
+    };
+
+    if (item.kind === "experience") {
+      groups.experiences.push(mapped);
+      return;
+    }
+
+    if (item.kind === "project") {
+      groups.projects.push(mapped);
+      return;
+    }
+
+    groups.profileFacts.push(mapped);
+  });
+
+  return groups;
 }
 
 function splitCsv(value: string) {
@@ -139,7 +134,7 @@ function splitCsv(value: string) {
 
 export default function AutoApplyPage() {
   const [activeTab, setActiveTab] = useState<Tab>("prompt");
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [groundTruthOptions, setGroundTruthOptions] = useState<GroundTruthOption[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -157,14 +152,13 @@ export default function AutoApplyPage() {
 
   const [form, setForm] = useState(initialAutoApplyForm);
 
-  const groundTruthSections = useMemo(() => buildGroundTruthSections(profile), [profile]);
+  const groundTruthSections = useMemo(() => buildGroundTruthSections(groundTruthOptions), [groundTruthOptions]);
   const selectedJob = jobs.find((job) => job._id === selectedJobId) || jobs[0];
   const selectedDraft = drafts.find((draft) => draft.jobCandidateId === selectedJob?._id) || drafts[0];
 
   useEffect(() => {
     const loadInitial = async () => {
-      const [profileResponse, sessionsResponse, draftResponse] = await Promise.all([
-        fetch(buildApiUrl("/api/profile")),
+      const [sessionsResponse, draftResponse] = await Promise.all([
         fetch(buildApiUrl("/api/auto-apply/session")),
         fetch(buildApiUrl("/api/auto-apply/profile-draft"), {
           method: "POST",
@@ -174,11 +168,10 @@ export default function AutoApplyPage() {
           }),
         }),
       ]);
-      const profileData = await profileResponse.json().catch(() => ({}));
       const sessionData = await sessionsResponse.json().catch(() => ({}));
       const draftData = await draftResponse.json().catch(() => ({}));
-      setProfile(profileData.profile || null);
       setSessions(sessionData.sessions || []);
+      setGroundTruthOptions(draftData.groundTruthOptions || []);
       if (draftData.draft) {
         setForm((current) => ({
           ...current,
@@ -212,6 +205,8 @@ export default function AutoApplyPage() {
         if (draftData.draft.reasoning) {
           setStatusMessage(`Profile draft ready: ${draftData.draft.reasoning}`);
         }
+      } else if (draftData.error) {
+        setError(draftData.error);
       }
     };
 
