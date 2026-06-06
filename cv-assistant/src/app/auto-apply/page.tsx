@@ -79,6 +79,22 @@ type EventItem = {
   createdAt: string;
 };
 
+type BrowserPreviewState = {
+  mode: "idle" | "browser_active" | "manual_guided";
+  reason: string;
+  guidance: string;
+  screenshotBase64: string;
+  domText: string;
+  blockers: string[];
+  savedSiteAuth?: {
+    siteKey: string;
+    origin: string;
+    hostname: string;
+    storageStatePath: string;
+    rememberCredentials: boolean;
+  } | null;
+};
+
 const workplaceLabels: Record<WorkplaceMode, string> = {
   any: "Any workplace",
   remote: "Remote",
@@ -177,6 +193,20 @@ export default function AutoApplyPage() {
   const [question, setQuestion] = useState("");
   const [userAnswer, setUserAnswer] = useState("");
   const [saveReusable, setSaveReusable] = useState(false);
+  const [browserPreview, setBrowserPreview] = useState<BrowserPreviewState>({
+    mode: "idle",
+    reason: "",
+    guidance: "",
+    screenshotBase64: "",
+    domText: "",
+    blockers: [],
+  });
+  const [browserSelector, setBrowserSelector] = useState("");
+  const [browserValue, setBrowserValue] = useState("");
+  const [browserLoginUsername, setBrowserLoginUsername] = useState("");
+  const [browserLoginPassword, setBrowserLoginPassword] = useState("");
+  const [rememberBrowserCredentials, setRememberBrowserCredentials] = useState(false);
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [showGroundTruthSelection, setShowGroundTruthSelection] = useState(true);
   const [statusMessage, setStatusMessage] = useState("Ready to create an applying session.");
   const [error, setError] = useState("");
@@ -197,6 +227,12 @@ export default function AutoApplyPage() {
   const groundTruthSections = useMemo(() => buildGroundTruthSections(groundTruthOptions), [groundTruthOptions]);
   const selectedJob = jobs.find((job) => job._id === selectedJobId) || jobs[0];
   const selectedDraft = drafts.find((draft) => draft.jobCandidateId === selectedJob?._id) || drafts[0];
+  const submittedDraftCount = drafts.filter((draft) => draft.finalReviewStatus === "submitted").length;
+  const submittedJobCount = jobs.filter((job) => job.status === "submitted").length;
+  const applicationValidationCount = Math.max(submittedDraftCount, submittedJobCount);
+  const previewImageUrl = browserPreview.screenshotBase64
+    ? `data:image/png;base64,${browserPreview.screenshotBase64}`
+    : "";
 
   function noteUserActivity() {
     lastUserInputAtRef.current = Date.now();
@@ -546,6 +582,78 @@ export default function AutoApplyPage() {
     setReview(data.review);
   }
 
+  async function startBrowserPreview() {
+    if (!selectedJob) return;
+    setIsBusy(true);
+    setError("");
+    try {
+      const response = await fetch(buildApiUrl(`/api/auto-apply/job/${selectedJob._id}/browser/start`), {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to start browser preview.");
+      setBrowserPreview({
+        mode: data.mode || "manual_guided",
+        reason: data.reason || "",
+        guidance: data.guidance || "",
+        screenshotBase64: data.screenshotBase64 || "",
+        domText: "",
+        blockers: data.blockers || [],
+        savedSiteAuth: data.savedSiteAuth || null,
+      });
+      setStatusMessage(
+        data.mode === "browser_active"
+          ? "Live browser preview started."
+          : String(data.reason || "").endsWith("_first_run")
+            ? "First run on this site. Sign in once, then save the login for future sessions."
+            : "Manual guided apply mode is active.",
+      );
+      await refreshSession();
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : "Unable to start browser preview.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runBrowserAction(
+    type: "click" | "type" | "screenshot" | "read_dom" | "scroll",
+    direction?: "up" | "down",
+  ) {
+    if (!selectedJob) return;
+    setIsBusy(true);
+    setError("");
+    try {
+      const response = await fetch(buildApiUrl(`/api/auto-apply/job/${selectedJob._id}/browser/action`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          selector: browserSelector,
+          value: browserValue,
+          direction,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Browser action failed.");
+      setBrowserPreview((current) => ({
+        ...current,
+        mode: data.mode || current.mode,
+        reason: data.reason || current.reason,
+        screenshotBase64: data.screenshotBase64 || current.screenshotBase64,
+        domText: data.domText || current.domText,
+        blockers: data.blockers || [],
+        savedSiteAuth: data.savedSiteAuth || current.savedSiteAuth || null,
+      }));
+      setStatusMessage(`Browser action completed: ${type}.`);
+      await refreshSession();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Browser action failed.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function submitDraft() {
     if (!selectedDraft) return;
     const confirmed = window.confirm("Submit this application now? This action requires your explicit confirmation.");
@@ -562,6 +670,41 @@ export default function AutoApplyPage() {
     }
     setStatusMessage("Application marked submitted.");
     await refreshSession();
+  }
+
+  async function saveBrowserLogin() {
+    if (!selectedJob) return;
+    setIsBusy(true);
+    setError("");
+    try {
+      const response = await fetch(buildApiUrl(`/api/auto-apply/job/${selectedJob._id}/browser/action`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "save_site_login",
+          url: selectedJob.applyUrl || selectedJob.url,
+          credentials: {
+            username: browserLoginUsername,
+            password: browserLoginPassword,
+          },
+          rememberCredentials: rememberBrowserCredentials,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to save site login.");
+      setBrowserPreview((current) => ({
+        ...current,
+        mode: data.mode || current.mode,
+        screenshotBase64: data.screenshotBase64 || current.screenshotBase64,
+        savedSiteAuth: data.savedSiteAuth || current.savedSiteAuth || null,
+      }));
+      setStatusMessage("Saved browser session for this site.");
+      await refreshSession();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save site login.");
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function toggleSource(source: SearchSource) {
@@ -978,14 +1121,157 @@ export default function AutoApplyPage() {
                       Open source
                     </a>
                   ) : null}
+                  <button onClick={() => void startBrowserPreview()} className="rounded-2xl border border-sky-400/40 px-4 py-2 text-sm font-semibold text-foreground">
+                    Start live preview
+                  </button>
                 </div>
               </div>
             ) : null}
 
-            <div className="surface-subtle min-h-40 rounded-2xl p-4">
-              <div className="mb-2 text-sm font-semibold text-foreground">Browser preview</div>
-              <div className="grid h-28 place-items-center rounded-xl border border-dashed border-border/80 text-sm text-muted-foreground">
-                Visible browser assistance appears here when enabled.
+            <div
+              onDoubleClick={() => setIsPreviewExpanded((current) => !current)}
+              className={`surface-subtle rounded-2xl p-4 ${isPreviewExpanded ? "fixed inset-4 z-[80] overflow-auto bg-[hsl(var(--background)/0.98)] shadow-elevated" : "min-h-40"}`}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">Browser preview</div>
+                  <p className="text-xs text-muted-foreground">
+                    {isPreviewExpanded ? "Double-click again to collapse." : "Double-click this panel to expand and interact."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">
+                    {browserPreview.mode}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewExpanded((current) => !current)}
+                    className="rounded-full border border-border/80 px-3 py-1 text-xs font-semibold text-foreground"
+                  >
+                    {isPreviewExpanded ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+              </div>
+
+              <div className={`grid gap-3 ${isPreviewExpanded ? "xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
+                <div className="overflow-hidden rounded-xl border border-border/80 bg-black/10">
+                  {previewImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={previewImageUrl}
+                      alt="Live browser preview screenshot"
+                      className="h-auto w-full"
+                    />
+                  ) : (
+                    <div className="grid h-36 place-items-center border border-dashed border-border/80 text-center text-sm text-muted-foreground">
+                      Start live preview to inspect the source application page here.
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {browserPreview.guidance ? (
+                    <div className="rounded-2xl border border-border/70 bg-[hsl(var(--surface-1)/0.62)] p-3 text-xs leading-5 text-muted-foreground">
+                      {browserPreview.guidance}
+                    </div>
+                  ) : null}
+                  {browserPreview.reason || browserPreview.blockers.length ? (
+                    <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs leading-5 text-amber-700 dark:text-amber-100">
+                      {[browserPreview.reason, ...browserPreview.blockers].filter(Boolean).join(", ")}
+                    </div>
+                  ) : null}
+                  {browserPreview.savedSiteAuth ? (
+                    <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-800 dark:text-emerald-100">
+                      Saved session for {browserPreview.savedSiteAuth.hostname}. Future visits should reuse this login state automatically.
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    <button disabled={!selectedJob || isBusy} onClick={() => void startBrowserPreview()} className="rounded-2xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                      Start
+                    </button>
+                    <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("screenshot")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Refresh
+                    </button>
+                    <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("scroll", "down")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Scroll down
+                    </button>
+                    <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("scroll", "up")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Scroll up
+                    </button>
+                    <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("read_dom")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Inspect DOM
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-border/70 bg-[hsl(var(--surface-1)/0.62)] p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Remember this site login
+                    </div>
+                    <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                      Log in or sign up in the third-party tab first, then save this site so future browser sessions can reuse the cached login state.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <input
+                        value={browserLoginUsername}
+                        onChange={(event) => setBrowserLoginUsername(event.target.value)}
+                        className="input-premium"
+                        placeholder="Site username or email"
+                      />
+                      <input
+                        value={browserLoginPassword}
+                        onChange={(event) => setBrowserLoginPassword(event.target.value)}
+                        className="input-premium"
+                        placeholder="Site password"
+                        type="password"
+                      />
+                    </div>
+                    <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={rememberBrowserCredentials}
+                        onChange={(event) => setRememberBrowserCredentials(event.target.checked)}
+                      />
+                      <span>Remember username and password too</span>
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        disabled={!selectedJob || isBusy}
+                        onClick={() => void saveBrowserLogin()}
+                        className="rounded-2xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Save site login
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    value={browserSelector}
+                    onChange={(event) => setBrowserSelector(event.target.value)}
+                    className="input-premium"
+                    placeholder='CSS selector, e.g. button[type="submit"]'
+                  />
+                  <input
+                    value={browserValue}
+                    onChange={(event) => setBrowserValue(event.target.value)}
+                    className="input-premium"
+                    placeholder="Value for type action"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button disabled={!browserSelector || isBusy} onClick={() => void runBrowserAction("click")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Click selector
+                    </button>
+                    <button disabled={!browserSelector || isBusy} onClick={() => void runBrowserAction("type")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Type value
+                    </button>
+                  </div>
+
+                  {browserPreview.domText ? (
+                    <pre className="max-h-64 overflow-auto rounded-2xl bg-black/20 p-3 text-xs text-muted-foreground">
+                      {browserPreview.domText}
+                    </pre>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -1016,7 +1302,12 @@ export default function AutoApplyPage() {
 
             {selectedDraft ? (
               <div className="interactive-card space-y-3">
-                <div className="text-sm font-semibold text-foreground">Final review</div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-foreground">Final review</div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${applicationValidationCount >= 10 ? "border-emerald-400/40 text-emerald-700 dark:text-emerald-100" : "border-border/80 text-muted-foreground"}`}>
+                    {applicationValidationCount}/10 submitted validation
+                  </span>
+                </div>
                 <p className="text-sm leading-6 text-muted-foreground">{selectedDraft.generatedApplicationSummary}</p>
                 {selectedDraft.coverLetterText ? (
                   <textarea readOnly value={selectedDraft.coverLetterText} className="input-premium min-h-40" />

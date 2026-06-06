@@ -33,9 +33,15 @@ export function toComputerScreenshotOutput(args: {
 
 export function detectAutomationBlockers(text: string) {
   const lower = text.toLowerCase();
+  const loginRequired =
+    /\b(sign in|log in|login)\s+(to|before)\s+(apply|continue|access|view|submit)\b/.test(lower) ||
+    /\b(apply|continue|access|view|submit)\s+(requires|required).{0,80}\b(sign in|log in|login)\b/.test(lower) ||
+    lower.includes("login required") ||
+    lower.includes("authentication required");
+
   return [
     lower.includes("captcha") ? "captcha" : "",
-    lower.includes("sign in") || lower.includes("log in") ? "login_required" : "",
+    loginRequired ? "login_required" : "",
     lower.includes("access denied") || lower.includes("blocked") ? "automation_blocked" : "",
     lower.includes("paywall") ? "paywall" : "",
   ].filter(Boolean);

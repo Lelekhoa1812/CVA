@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAutoApplySupervisorModel, resolveAutoApplySupervisorModelName } from "@/lib/ai";
 import { toResponsesImagePart } from "@/lib/auto-apply/browser";
-import { startVisibleBrowserSession } from "@/lib/auto-apply/browser-session";
+import { isVisibleBrowserEnabled, startVisibleBrowserSession } from "@/lib/auto-apply/browser-session";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     return NextResponse.json({ mode: "manual_guided", reason: "restricted_source" });
   }
 
-  if (process.env.AUTO_APPLY_BROWSER_ENABLED !== "true") {
+  if (!isVisibleBrowserEnabled()) {
     await logAutoApplyEvent({
       userId: auth.userId,
       sessionId: job.sessionId.toString(),
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     const browser = await startVisibleBrowserSession(
       `${auth.userId}:${job.sessionId.toString()}:${job._id.toString()}`,
       job.applyUrl || job.url,
+      auth.userId,
     );
     screenshotBase64 = browser.screenshotBase64;
     if (browser.mode !== "browser_active") {
@@ -55,32 +56,45 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
         message: "Browser session stopped because manual intervention or a blocker was detected.",
         payload: { reason: browser.reason, blockers: browser.blockers },
       });
-      return NextResponse.json({ mode: "manual_guided", reason: browser.reason, blockers: browser.blockers });
+      return NextResponse.json({
+        mode: "manual_guided",
+        reason: browser.reason,
+        blockers: browser.blockers,
+        screenshotBase64: browser.screenshotBase64,
+      });
     }
   }
 
-  const model = getAutoApplySupervisorModel();
-  const response = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only.` },
-        ],
-      },
-    ],
-    tools: [{ type: "computer" }],
-    extraInputItems: [
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: "Current browser screenshot." },
-          toResponsesImagePart({ base64: screenshotBase64, detail: "original" }),
-        ],
-      },
-    ],
-    reasoning: { summary: "concise" },
-  });
+  let guidance = "Browser preview is live. Inspect the screenshot, then use selectors or manual source-site controls to continue.";
+  try {
+    const model = getAutoApplySupervisorModel();
+    const response = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only.` },
+          ],
+        },
+      ],
+      tools: [{ type: "computer" }],
+      extraInputItems: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "Current browser screenshot." },
+            toResponsesImagePart({ base64: screenshotBase64, detail: "original" }),
+          ],
+        },
+      ],
+      reasoning: { summary: "concise" },
+    });
+    guidance = response.response.text() || guidance;
+  } catch (error) {
+    guidance = error instanceof Error
+      ? `Browser preview is live. Guidance model unavailable: ${error.message}`
+      : guidance;
+  }
 
   await logAutoApplyEvent({
     userId: auth.userId,
@@ -90,5 +104,5 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     message: "Visible browser-assisted application flow started.",
   });
 
-  return NextResponse.json({ mode: "browser_active", guidance: response.response.text() });
+  return NextResponse.json({ mode: "browser_active", guidance, screenshotBase64 });
 }
