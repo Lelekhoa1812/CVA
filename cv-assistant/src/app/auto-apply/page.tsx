@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { buildApiUrl } from "@/lib/api";
@@ -186,6 +187,59 @@ function displayAutoApplyIdentifier(value?: string | null) {
   return humanizeIdentifier(value) || "Unknown";
 }
 
+function normalizeUiMarkdown(value: string) {
+  return value.replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (match) => humanizeIdentifier(match) || match);
+}
+
+function renderInlineMarkdown(value: string, keyPrefix: string): ReactNode[] {
+  const normalized = normalizeUiMarkdown(value);
+  const nodes: ReactNode[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(normalized))) {
+    if (match.index > lastIndex) {
+      nodes.push(normalized.slice(lastIndex, match.index));
+    }
+    const key = `${keyPrefix}-${match.index}`;
+    if (match[2]) {
+      nodes.push(<strong key={key} className="font-semibold text-foreground">{match[2]}</strong>);
+    } else if (match[3]) {
+      nodes.push(<em key={key} className="italic">{match[3]}</em>);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < normalized.length) {
+    nodes.push(normalized.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = normalizeUiMarkdown(text)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return (
+    <>
+      {lines.map((line, index) => {
+        const bulletText = line.replace(/^-\s*/, "");
+        const isBullet = line.startsWith("- ");
+        return (
+          <p key={`${index}-${bulletText.slice(0, 16)}`} className={index > 0 ? "mt-2" : ""}>
+            {isBullet ? <span aria-hidden="true" className="mr-1">-</span> : null}
+            {renderInlineMarkdown(bulletText, `markdown-${index}`)}
+          </p>
+        );
+      })}
+    </>
+  );
+}
+
 export default function AutoApplyPage() {
   const [activeTab, setActiveTab] = useState<Tab>("prompt");
   const [groundTruthOptions, setGroundTruthOptions] = useState<GroundTruthOption[]>([]);
@@ -239,6 +293,9 @@ export default function AutoApplyPage() {
   const previewImageUrl = browserPreview.screenshotBase64
     ? `data:image/png;base64,${browserPreview.screenshotBase64}`
     : "";
+  const isPlatformLoginHandoff =
+    browserPreview.blockers.includes("platform_login_required") ||
+    (selectedJob ? ["linkedin", "seek", "indeed", "careerone", "adzuna", "talent"].includes(selectedJob.source) : false);
 
   function noteUserActivity() {
     lastUserInputAtRef.current = Date.now();
@@ -610,8 +667,10 @@ export default function AutoApplyPage() {
       setStatusMessage(
         data.mode === "browser_active"
           ? "Live browser preview started."
-          : String(data.reason || "").endsWith("_first_run")
-            ? "First run on this site. Sign in once, then save the login for future sessions."
+          : (data.blockers || []).includes("platform_login_required")
+            ? "Sign in to the job platform manually. Use your normal browser for Google sign-in if Google blocks the agent browser."
+            : String(data.reason || "").endsWith("_first_run")
+              ? "First run on this site. Sign in once, then save the login for future sessions."
             : "Manual guided apply mode is active.",
       );
       await refreshSession();
@@ -1149,7 +1208,7 @@ export default function AutoApplyPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">
-                    {browserPreview.mode}
+                    {displayAutoApplyIdentifier(browserPreview.mode)}
                   </span>
                   <button
                     type="button"
@@ -1180,12 +1239,20 @@ export default function AutoApplyPage() {
                 <div className="space-y-3">
                   {browserPreview.guidance ? (
                     <div className="rounded-2xl border border-border/70 bg-[hsl(var(--surface-1)/0.62)] p-3 text-xs leading-5 text-muted-foreground">
-                      {browserPreview.guidance}
+                      <MarkdownText text={browserPreview.guidance} />
                     </div>
                   ) : null}
                   {browserPreview.reason || browserPreview.blockers.length ? (
                     <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs leading-5 text-amber-700 dark:text-amber-100">
-                      {[browserPreview.reason, ...browserPreview.blockers].filter(Boolean).join(", ")}
+                      {[browserPreview.reason, ...browserPreview.blockers]
+                        .filter(Boolean)
+                        .map((item) => displayAutoApplyIdentifier(item))
+                        .join(", ")}
+                    </div>
+                  ) : null}
+                  {isPlatformLoginHandoff ? (
+                    <div className="rounded-2xl border border-sky-400/30 bg-sky-400/10 p-3 text-xs leading-5 text-sky-800 dark:text-sky-100">
+                      LinkedIn, SEEK, Indeed, and similar job platforms should be authenticated by you first. Google sign-in can reject agent-controlled browsers as not secure, so complete Google sign-in in your normal browser or use the platform&apos;s email sign-in here, then restart the live preview.
                     </div>
                   ) : null}
                   {browserPreview.savedSiteAuth ? (
@@ -1220,7 +1287,9 @@ export default function AutoApplyPage() {
                       Remember this site login
                     </div>
                     <p className="mb-3 text-xs leading-5 text-muted-foreground">
-                      Log in or sign up in the third-party tab first, then save this site so future browser sessions can reuse the cached login state.
+                      {isPlatformLoginHandoff
+                        ? "For job-platform Google sign-in, use your normal browser first. Save this session only after the preview is already authenticated, or use the platform's email sign-in if it works in this browser."
+                        : "Log in or sign up in the third-party tab first, then save this site so future browser sessions can reuse the cached login state."}
                     </p>
                     <div className="grid gap-2 md:grid-cols-2">
                       <input

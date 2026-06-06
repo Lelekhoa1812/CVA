@@ -16,6 +16,22 @@ type BrowserSession = {
   origin: string;
 };
 
+type BrowserSessionResult = {
+  mode: "browser_active" | "manual_guided";
+  reason: string;
+  guidance?: string;
+  blockers: string[];
+  domText?: string;
+  screenshotBase64: string;
+  savedSiteAuth?: {
+    siteKey: string;
+    origin: string;
+    hostname: string;
+    storageStatePath: string;
+    rememberCredentials: boolean;
+  };
+};
+
 declare global {
   var autoApplyBrowserSessions: Map<string, BrowserSession> | undefined;
 }
@@ -35,7 +51,11 @@ function shouldLaunchHeadlessBrowser() {
   return process.env.NODE_ENV === "production";
 }
 
-export async function startVisibleBrowserSession(sessionKey: string, url: string, userId?: string) {
+export async function startVisibleBrowserSession(
+  sessionKey: string,
+  url: string,
+  userId?: string,
+): Promise<BrowserSessionResult> {
   if (!isVisibleBrowserEnabled()) {
     return {
       mode: "manual_guided" as const,
@@ -65,13 +85,14 @@ export async function startVisibleBrowserSession(sessionKey: string, url: string
     const page = await context.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     const bodyText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
-    const blockers = detectAutomationBlockers(bodyText);
+    const blockers = detectAutomationBlockers(bodyText, url);
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
-    const loginRequired = blockers.includes("login_required");
+    const platformLoginRequired = blockers.includes("platform_login_required");
+    const employerLoginRequired = blockers.includes("employer_login_required");
 
     sessions.set(sessionKey, { browser, context, page, createdAt: Date.now(), siteKey, origin });
 
-    if (blockers.length && !loginRequired) {
+    if (blockers.length && !platformLoginRequired && !employerLoginRequired) {
       return {
         mode: "manual_guided" as const,
         reason: blockers[0],
@@ -80,7 +101,7 @@ export async function startVisibleBrowserSession(sessionKey: string, url: string
       };
     }
 
-    if (loginRequired) {
+    if (platformLoginRequired) {
       return {
         mode: "manual_guided" as const,
         reason: savedState?.storageStatePath ? "login_required" : "login_required_first_run",
@@ -91,7 +112,7 @@ export async function startVisibleBrowserSession(sessionKey: string, url: string
 
     return {
       mode: "browser_active" as const,
-      reason: "",
+      reason: employerLoginRequired ? "employer_login_autonomous" : "",
       blockers,
       screenshotBase64: screenshot.toString("base64"),
     };
@@ -165,11 +186,12 @@ export async function runVisibleBrowserAction(
     credentials?: { username?: string; password?: string };
     rememberCredentials?: boolean;
   },
-) {
+): Promise<BrowserSessionResult> {
   if (action.type === "stop") {
     await stopVisibleBrowserSession(sessionKey);
     return {
       mode: "manual_guided" as const,
+      reason: "",
       blockers: [],
       domText: "",
       screenshotBase64: "",
@@ -217,6 +239,7 @@ export async function runVisibleBrowserAction(
     const screenshot = await page.screenshot({ type: "png", fullPage: false });
     return {
       mode: "browser_active" as const,
+      reason: "",
       blockers: [],
       domText: "",
       screenshotBase64: screenshot.toString("base64"),
@@ -225,13 +248,15 @@ export async function runVisibleBrowserAction(
   }
 
   const bodyText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
-  const blockers = detectAutomationBlockers(bodyText);
+  const blockers = detectAutomationBlockers(bodyText, page.url());
   const screenshot = await page.screenshot({ type: "png", fullPage: false });
-  const loginRequired = blockers.includes("login_required");
+  const platformLoginRequired = blockers.includes("platform_login_required");
+  const employerLoginRequired = blockers.includes("employer_login_required");
 
-  if (blockers.length && !loginRequired) {
+  if (blockers.length && !platformLoginRequired && !employerLoginRequired) {
     return {
       mode: "manual_guided" as const,
+      reason: blockers[0] || "",
       blockers,
       domText: bodyText,
       screenshotBase64: screenshot.toString("base64"),
@@ -239,7 +264,8 @@ export async function runVisibleBrowserAction(
   }
 
   return {
-    mode: loginRequired ? ("manual_guided" as const) : ("browser_active" as const),
+    mode: platformLoginRequired ? ("manual_guided" as const) : ("browser_active" as const),
+    reason: employerLoginRequired ? "employer_login_autonomous" : platformLoginRequired ? "login_required" : "",
     blockers,
     domText: action.type === "read_dom" ? bodyText : "",
     screenshotBase64: screenshot.toString("base64"),
