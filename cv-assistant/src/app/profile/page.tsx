@@ -12,6 +12,7 @@ import {
   type ExperienceOrderingMetadata,
 } from "@/lib/experience-ordering";
 import type { ImportedProfileData } from "@/lib/profile-import";
+import { broadcastProfileUpdated } from "@/lib/profile-sync";
 
 type Project = {
   _id?: string;
@@ -825,6 +826,7 @@ export default function ProfilePage() {
         commitProfile((current) => hydrateProfile(data.profile || current, current));
         setNewProjectDraftIds([]);
         setNewExperienceDraftIds([]);
+        broadcastProfileUpdated();
         return;
       }
     } finally {

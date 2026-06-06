@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useEffect } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { buildApiUrl } from "@/lib/api";
 import { buildGroundTruthOptions } from "@/lib/auto-apply/ground-truth";
+import { PROFILE_UPDATED_EVENT, PROFILE_UPDATED_STORAGE_KEY } from "@/lib/profile-sync";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
   SEARCH_SOURCES,
@@ -19,6 +20,23 @@ type Mode = "ai_coaching" | "manual_curate";
 type Tab = "prompt" | "jobs" | "apply" | "activity";
 
 type GroundTruthOption = ReturnType<typeof buildGroundTruthOptions>[number];
+type ProfileDraftResponse = {
+  prompt?: string;
+  location?: string;
+  workplaceMode?: WorkplaceMode;
+  employmentType?: EmploymentType;
+  seniority?: string;
+  salaryMin?: string;
+  salaryMax?: string;
+  workRights?: string;
+  mustHaveKeywords?: string[];
+  excludeKeywords?: string[];
+  companyBlacklist?: string[];
+  applicationLimit?: number;
+  selectedSources?: SearchSource[];
+  selectedGroundTruthIds?: string[];
+  reasoning?: string;
+};
 
 type Session = {
   _id: string;
@@ -132,6 +150,20 @@ function splitCsv(value: string) {
     .filter(Boolean);
 }
 
+function isDraftSurfaceEmpty(form: typeof initialAutoApplyForm) {
+  return [
+    form.prompt,
+    form.location,
+    form.seniority,
+    form.salaryMin,
+    form.salaryMax,
+    form.workRights,
+    form.mustHaveKeywords,
+    form.excludeKeywords,
+    form.companyBlacklist,
+  ].every((value) => !value.trim());
+}
+
 export default function AutoApplyPage() {
   const [activeTab, setActiveTab] = useState<Tab>("prompt");
   const [groundTruthOptions, setGroundTruthOptions] = useState<GroundTruthOption[]>([]);
@@ -151,67 +183,156 @@ export default function AutoApplyPage() {
   const [isBusy, setIsBusy] = useState(false);
 
   const [form, setForm] = useState(initialAutoApplyForm);
+  const formRef = useRef(form);
+  const autoDraftInFlightRef = useRef(false);
+  const lastDraftRequestAtRef = useRef(0);
+  const lastUserInputAtRef = useRef(Date.now());
+  const emptyStateStartedAtRef = useRef<number | null>(Date.now());
+  const emptyStateTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
 
   const groundTruthSections = useMemo(() => buildGroundTruthSections(groundTruthOptions), [groundTruthOptions]);
   const selectedJob = jobs.find((job) => job._id === selectedJobId) || jobs[0];
   const selectedDraft = drafts.find((draft) => draft.jobCandidateId === selectedJob?._id) || drafts[0];
 
+  function noteUserActivity() {
+    lastUserInputAtRef.current = Date.now();
+  }
+
+  function mergeDraftIntoForm(draft: ProfileDraftResponse, overwriteExisting = true) {
+    setForm((current) => ({
+      ...current,
+      prompt: overwriteExisting ? draft.prompt || "" : draft.prompt || current.prompt,
+      location: overwriteExisting ? draft.location || "" : draft.location || current.location,
+      workplaceMode: draft.workplaceMode || current.workplaceMode,
+      employmentType: draft.employmentType || current.employmentType,
+      seniority: overwriteExisting ? draft.seniority || "" : draft.seniority || current.seniority,
+      salaryMin: overwriteExisting ? draft.salaryMin || "" : draft.salaryMin || current.salaryMin,
+      salaryMax: overwriteExisting ? draft.salaryMax || "" : draft.salaryMax || current.salaryMax,
+      workRights: overwriteExisting ? draft.workRights || "" : draft.workRights || current.workRights,
+      mustHaveKeywords: Array.isArray(draft.mustHaveKeywords)
+        ? draft.mustHaveKeywords.filter(Boolean).join(", ")
+        : current.mustHaveKeywords,
+      excludeKeywords: Array.isArray(draft.excludeKeywords)
+        ? draft.excludeKeywords.filter(Boolean).join(", ")
+        : current.excludeKeywords,
+      companyBlacklist: Array.isArray(draft.companyBlacklist)
+        ? draft.companyBlacklist.filter(Boolean).join(", ")
+        : current.companyBlacklist,
+      applicationLimit: String(draft.applicationLimit || Number.parseInt(current.applicationLimit, 10) || 10),
+      selectedSources: draft.selectedSources?.length ? draft.selectedSources : current.selectedSources,
+      selectedGroundTruthIds: draft.selectedGroundTruthIds?.length
+        ? draft.selectedGroundTruthIds
+        : current.selectedGroundTruthIds,
+    }));
+  }
+
+  const runProfileDraft = useCallback(async (reason: "initial" | "idle_empty" | "profile_updated") => {
+    if (autoDraftInFlightRef.current) return;
+
+    autoDraftInFlightRef.current = true;
+    lastDraftRequestAtRef.current = Date.now();
+    if (reason !== "initial") {
+      setStatusMessage(reason === "profile_updated" ? "Refreshing draft from your latest profile." : "Refreshing draft from your profile.");
+    }
+    setError("");
+
+    try {
+      const response = await fetch(buildApiUrl("/api/auto-apply/profile-draft"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formRef.current,
+          mustHaveKeywords: splitCsv(formRef.current.mustHaveKeywords),
+          excludeKeywords: splitCsv(formRef.current.excludeKeywords),
+          companyBlacklist: splitCsv(formRef.current.companyBlacklist),
+          applicationLimit: Number.parseInt(formRef.current.applicationLimit, 10) || 10,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to refresh profile draft.");
+
+      setGroundTruthOptions(data.groundTruthOptions || []);
+      if (data.draft) {
+        mergeDraftIntoForm(data.draft, reason !== "idle_empty");
+        if (data.draft.reasoning) {
+          setStatusMessage(`Profile draft ready: ${data.draft.reasoning}`);
+        }
+      }
+    } catch (draftError) {
+      setError(draftError instanceof Error ? draftError.message : "Unable to refresh profile draft.");
+    } finally {
+      autoDraftInFlightRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     const loadInitial = async () => {
-      const [sessionsResponse, draftResponse] = await Promise.all([
+      const [sessionsResponse] = await Promise.all([
         fetch(buildApiUrl("/api/auto-apply/session")),
-        fetch(buildApiUrl("/api/auto-apply/profile-draft"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...initialAutoApplyForm,
-          }),
-        }),
       ]);
       const sessionData = await sessionsResponse.json().catch(() => ({}));
-      const draftData = await draftResponse.json().catch(() => ({}));
       setSessions(sessionData.sessions || []);
-      setGroundTruthOptions(draftData.groundTruthOptions || []);
-      if (draftData.draft) {
-        setForm((current) => ({
-          ...current,
-          prompt: draftData.draft.prompt || current.prompt,
-          location: draftData.draft.location || current.location,
-          workplaceMode: draftData.draft.workplaceMode || current.workplaceMode,
-          employmentType: draftData.draft.employmentType || current.employmentType,
-          seniority: draftData.draft.seniority || current.seniority,
-          salaryMin: draftData.draft.salaryMin || current.salaryMin,
-          salaryMax: draftData.draft.salaryMax || current.salaryMax,
-          workRights: draftData.draft.workRights || current.workRights,
-          mustHaveKeywords: (draftData.draft.mustHaveKeywords || current.mustHaveKeywords)
-            .filter(Boolean)
-            .join(", "),
-          excludeKeywords: (draftData.draft.excludeKeywords || current.excludeKeywords)
-            .filter(Boolean)
-            .join(", "),
-          companyBlacklist: (draftData.draft.companyBlacklist || current.companyBlacklist)
-            .filter(Boolean)
-            .join(", "),
-          applicationLimit: String(
-            draftData.draft.applicationLimit || Number.parseInt(current.applicationLimit, 10) || 10,
-          ),
-          selectedSources: draftData.draft.selectedSources?.length
-            ? draftData.draft.selectedSources
-            : current.selectedSources,
-          selectedGroundTruthIds: draftData.draft.selectedGroundTruthIds?.length
-            ? draftData.draft.selectedGroundTruthIds
-            : current.selectedGroundTruthIds,
-        }));
-        if (draftData.draft.reasoning) {
-          setStatusMessage(`Profile draft ready: ${draftData.draft.reasoning}`);
-        }
-      } else if (draftData.error) {
-        setError(draftData.error);
-      }
+      await runProfileDraft("initial");
     };
 
     void loadInitial();
-  }, []);
+  }, [runProfileDraft]);
+
+  useEffect(() => {
+    if (isDraftSurfaceEmpty(form)) {
+      if (emptyStateStartedAtRef.current === null) {
+        emptyStateStartedAtRef.current = Date.now();
+        emptyStateTriggeredRef.current = false;
+      }
+      return;
+    }
+
+    emptyStateStartedAtRef.current = null;
+    emptyStateTriggeredRef.current = false;
+  }, [form]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const emptySince = emptyStateStartedAtRef.current;
+      if (!emptySince || emptyStateTriggeredRef.current || autoDraftInFlightRef.current) return;
+
+      const now = Date.now();
+      if (now - lastDraftRequestAtRef.current < 5000) return;
+      const idleFor = now - lastUserInputAtRef.current;
+      const emptyFor = now - emptySince;
+      if (idleFor < 30000 || emptyFor < 30000) return;
+
+      emptyStateTriggeredRef.current = true;
+      void runProfileDraft("idle_empty");
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [runProfileDraft]);
+
+  useEffect(() => {
+    function handleProfileUpdated() {
+      emptyStateTriggeredRef.current = false;
+      emptyStateStartedAtRef.current = isDraftSurfaceEmpty(formRef.current) ? Date.now() : null;
+      void runProfileDraft("profile_updated");
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === PROFILE_UPDATED_STORAGE_KEY && event.newValue) {
+        handleProfileUpdated();
+      }
+    }
+
+    window.addEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdated);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdated);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [runProfileDraft]);
 
   async function syncSessionFromForm() {
     if (!session) return;
@@ -444,6 +565,7 @@ export default function AutoApplyPage() {
   }
 
   function toggleSource(source: SearchSource) {
+    noteUserActivity();
     setForm((current) => ({
       ...current,
       selectedSources: current.selectedSources.includes(source)
@@ -453,6 +575,7 @@ export default function AutoApplyPage() {
   }
 
   function toggleGroundTruth(id: string) {
+    noteUserActivity();
     setForm((current) => ({
       ...current,
       selectedGroundTruthIds: current.selectedGroundTruthIds.includes(id)
@@ -482,7 +605,10 @@ export default function AutoApplyPage() {
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setForm((current) => ({ ...current, mode: value as Mode }))}
+                    onClick={() => {
+                      noteUserActivity();
+                      setForm((current) => ({ ...current, mode: value as Mode }));
+                    }}
                     className={`rounded-full px-4 py-2 text-sm font-medium ${
                       form.mode === value
                         ? "bg-primary text-primary-foreground"
@@ -522,28 +648,38 @@ export default function AutoApplyPage() {
             <SectionHeading title="Prompt" description="Define the roles, constraints, and evidence for this session." />
             <textarea
               value={form.prompt}
-              onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
+              onChange={(event) => {
+                noteUserActivity();
+                setForm((current) => ({ ...current, prompt: event.target.value }));
+              }}
               className="input-premium min-h-32 resize-y"
               required
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <input
                 value={form.location}
-                onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, location: event.target.value }));
+                }}
                 className="input-premium"
                 placeholder="Preferred location"
               />
               <input
                 value={form.seniority}
-                onChange={(event) => setForm((current) => ({ ...current, seniority: event.target.value }))}
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, seniority: event.target.value }));
+                }}
                 className="input-premium"
                 placeholder="Seniority"
               />
               <select
                 value={form.workplaceMode}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, workplaceMode: event.target.value as WorkplaceMode }))
-                }
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, workplaceMode: event.target.value as WorkplaceMode }));
+                }}
                 className="input-premium"
               >
                 {WORKPLACE_MODE_OPTIONS.map((option) => (
@@ -552,9 +688,10 @@ export default function AutoApplyPage() {
               </select>
               <select
                 value={form.employmentType}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, employmentType: event.target.value as EmploymentType }))
-                }
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, employmentType: event.target.value as EmploymentType }));
+                }}
                 className="input-premium"
               >
                 {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
@@ -563,32 +700,47 @@ export default function AutoApplyPage() {
               </select>
               <input
                 value={form.salaryMin}
-                onChange={(event) => setForm((current) => ({ ...current, salaryMin: event.target.value }))}
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, salaryMin: event.target.value }));
+                }}
                 className="input-premium"
                 placeholder="Salary min"
               />
               <input
                 value={form.salaryMax}
-                onChange={(event) => setForm((current) => ({ ...current, salaryMax: event.target.value }))}
+                onChange={(event) => {
+                  noteUserActivity();
+                  setForm((current) => ({ ...current, salaryMax: event.target.value }));
+                }}
                 className="input-premium"
                 placeholder="Salary max"
               />
             </div>
             <input
               value={form.mustHaveKeywords}
-              onChange={(event) => setForm((current) => ({ ...current, mustHaveKeywords: event.target.value }))}
+              onChange={(event) => {
+                noteUserActivity();
+                setForm((current) => ({ ...current, mustHaveKeywords: event.target.value }));
+              }}
               className="input-premium"
               placeholder="Must-have keywords"
             />
             <input
               value={form.excludeKeywords}
-              onChange={(event) => setForm((current) => ({ ...current, excludeKeywords: event.target.value }))}
+              onChange={(event) => {
+                noteUserActivity();
+                setForm((current) => ({ ...current, excludeKeywords: event.target.value }));
+              }}
               className="input-premium"
               placeholder="Exclude keywords"
             />
             <input
               value={form.companyBlacklist}
-              onChange={(event) => setForm((current) => ({ ...current, companyBlacklist: event.target.value }))}
+              onChange={(event) => {
+                noteUserActivity();
+                setForm((current) => ({ ...current, companyBlacklist: event.target.value }));
+              }}
               className="input-premium"
               placeholder="Company blacklist"
             />
@@ -626,9 +778,10 @@ export default function AutoApplyPage() {
                     <input
                       type="checkbox"
                       checked={form.allowFullResumeContext}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, allowFullResumeContext: event.target.checked }))
-                      }
+                      onChange={(event) => {
+                        noteUserActivity();
+                        setForm((current) => ({ ...current, allowFullResumeContext: event.target.checked }));
+                      }}
                     />
                     <span>Allow full resume context</span>
                   </label>

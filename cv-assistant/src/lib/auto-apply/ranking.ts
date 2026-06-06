@@ -26,9 +26,26 @@ export type RankedJob = RankableJob & {
 };
 
 const restrictedSources = new Set(["linkedin", "indeed"]);
+const PLACEHOLDER_COMPANIES = new Set(["tbh", "unknown"]);
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function includesNormalized(haystack: string, needle: string) {
+  return Boolean(needle) && haystack.includes(needle);
+}
+
+function isPlaceholderCompany(company: string) {
+  return PLACEHOLDER_COMPANIES.has(normalize(company));
+}
+
+export function createAutoApplyExactDuplicateKey(job: Pick<RankableJob, "title" | "company">) {
+  const company = normalize(job.company);
+  if (!company || isPlaceholderCompany(company)) return "";
+  const title = normalize(job.title);
+  if (!title) return "";
+  return `${title}::${company}`;
 }
 
 export function createAutoApplyDedupeKey(job: RankableJob) {
@@ -44,7 +61,14 @@ function tokenize(value: string) {
 
 export function dedupeJobs<T extends RankableJob>(jobs: T[]) {
   const seen = new Set<string>();
+  const seenExactDuplicates = new Set<string>();
   return jobs.filter((job) => {
+    const exactDuplicateKey = createAutoApplyExactDuplicateKey(job);
+    if (exactDuplicateKey) {
+      if (seenExactDuplicates.has(exactDuplicateKey)) return false;
+      seenExactDuplicates.add(exactDuplicateKey);
+    }
+
     const key = createAutoApplyDedupeKey(job);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -73,10 +97,12 @@ export function rankAutoApplyCandidates(args: {
         [job.title, job.company, job.location, job.snippet, job.descriptionText].filter(Boolean).join(" "),
       );
       const titleTokens = tokenize(job.title);
-      const promptMatches = [...promptTokens].filter((token) => haystack.includes(token));
-      const evidenceMatches = [...groundTruthTokens].filter((token) => haystack.includes(token));
-      const missingMustHave = mustHave.filter((keyword) => !haystack.includes(keyword));
-      const excludedMatches = exclude.filter((keyword) => haystack.includes(keyword));
+      const promptMatches = [...promptTokens].filter((token) => includesNormalized(haystack, token));
+      const evidenceMatches = [...groundTruthTokens].filter((token) => includesNormalized(haystack, token));
+      const titlePromptMatches = titleTokens.filter((token) => promptTokens.has(token));
+      const missingMustHave = mustHave.filter((keyword) => !includesNormalized(haystack, keyword));
+      const matchedMustHave = mustHave.filter((keyword) => includesNormalized(haystack, keyword));
+      const excludedMatches = exclude.filter((keyword) => includesNormalized(haystack, keyword));
       const blacklisted = blacklist.some((company) => normalize(job.company).includes(company));
       const riskFlags = [
         ...(restrictedSources.has(String(job.source)) ? ["restricted_source_manual_guidance"] : []),
@@ -85,10 +111,11 @@ export function rankAutoApplyCandidates(args: {
       ];
 
       let fitScore = 35;
-      fitScore += Math.min(25, promptMatches.length * 4);
-      fitScore += Math.min(25, evidenceMatches.length * 3);
-      fitScore += Math.min(10, titleTokens.filter((token) => promptTokens.has(token)).length * 5);
-      fitScore -= missingMustHave.length * 12;
+      fitScore += Math.min(20, promptMatches.length * 5);
+      fitScore += Math.min(20, evidenceMatches.length * 3);
+      fitScore += Math.min(15, titlePromptMatches.length * 6);
+      fitScore += Math.min(16, matchedMustHave.length * 8);
+      fitScore -= missingMustHave.length * 7;
       fitScore -= excludedMatches.length * 15;
       if (blacklisted) fitScore -= 40;
       fitScore = Math.max(0, Math.min(100, Math.round(fitScore)));
@@ -108,6 +135,7 @@ export function rankAutoApplyCandidates(args: {
         fitScore,
         fitReasons: [
           promptMatches.length ? `Matches ${promptMatches.slice(0, 6).join(", ")} from the search prompt.` : "",
+          matchedMustHave.length ? `Covers must-have signals like ${matchedMustHave.slice(0, 4).join(", ")}.` : "",
           evidenceMatches.length
             ? `Supported by selected evidence mentioning ${evidenceMatches.slice(0, 6).join(", ")}.`
             : "",

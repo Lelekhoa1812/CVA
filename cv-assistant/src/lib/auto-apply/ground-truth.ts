@@ -1,7 +1,30 @@
-import type { Profile } from "@/lib/models/User";
+export type GroundTruthProject = {
+  _id?: unknown;
+  name?: string;
+  summary?: string;
+  description?: string;
+};
 
-type ProjectLike = NonNullable<Profile["projects"]>[number] & { _id?: unknown };
-type ExperienceLike = NonNullable<Profile["experiences"]>[number] & { _id?: unknown };
+export type GroundTruthExperience = {
+  _id?: unknown;
+  companyName?: string;
+  role?: string;
+  timeFrom?: string;
+  timeTo?: string;
+  summary?: string;
+  description?: string;
+};
+
+export type GroundTruthProfile = {
+  name?: string;
+  major?: string;
+  school?: string;
+  studyPeriod?: string;
+  skills?: string;
+  languages?: string;
+  projects?: GroundTruthProject[];
+  experiences?: GroundTruthExperience[];
+};
 
 function idOf(value: unknown, fallback: string) {
   if (!value) return fallback;
@@ -16,8 +39,8 @@ function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function buildGroundTruthOptions(profile?: Partial<Profile> | null) {
-  const projects = ((profile?.projects || []) as ProjectLike[]).map((project, index) => ({
+export function buildGroundTruthOptions(profile?: GroundTruthProfile | null) {
+  const projects = (profile?.projects || []).map((project, index) => ({
     id: `project:${idOf(project._id, `${index}`)}`,
     kind: "project",
     title: clean(project.name) || "Untitled project",
@@ -25,7 +48,7 @@ export function buildGroundTruthOptions(profile?: Partial<Profile> | null) {
     evidence: [clean(project.summary), clean(project.description)].filter(Boolean),
   }));
 
-  const experiences = ((profile?.experiences || []) as ExperienceLike[]).map((experience, index) => ({
+  const experiences = (profile?.experiences || []).map((experience, index) => ({
     id: `experience:${idOf(experience._id, `${index}`)}`,
     kind: "experience",
     title:
@@ -72,7 +95,7 @@ export function buildGroundTruthOptions(profile?: Partial<Profile> | null) {
 }
 
 export function buildGroundTruthSnapshot(
-  profile: Partial<Profile> | null | undefined,
+  profile: GroundTruthProfile | null | undefined,
   selectedIds: string[],
   allowFullResumeContext: boolean,
 ) {
@@ -105,7 +128,7 @@ function tokenize(value: string) {
 }
 
 export function suggestGroundTruthSelection(
-  profile: Partial<Profile> | null | undefined,
+  profile: GroundTruthProfile | null | undefined,
   prompt: string,
   limit = 6,
 ) {

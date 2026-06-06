@@ -4,10 +4,12 @@ import { answerEmployerQuestionFromGroundTruth } from "../../src/lib/auto-apply/
 import { toComputerScreenshotOutput, toResponsesImagePart } from "../../src/lib/auto-apply/browser";
 import { suggestGroundTruthSelection } from "../../src/lib/auto-apply/ground-truth";
 import { rankAutoApplyCandidates } from "../../src/lib/auto-apply/ranking";
+import { refineAutoApplyProfileDraft } from "../../src/lib/auto-apply/profile-draft";
 import { saveAnswerSchema, submitApplicationSchema } from "../../src/lib/auto-apply/types";
 import { validateResumeDraft } from "../../src/lib/career/ats";
 import { scoreLeadFit } from "../../src/lib/career/career-strategist";
-import type { Profile } from "../../src/lib/models/User";
+
+type GroundTruthProfileInput = Parameters<typeof suggestGroundTruthSelection>[0];
 
 // Deterministic tests: avoid flaking on live LLM output when API keys are present
 process.env.CONTROL_ROOM_STRATEGIST_MODE = "heuristic";
@@ -202,9 +204,68 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "auto apply ranking keeps placeholder-company duplicates",
+    run: () => {
+      const ranked = rankAutoApplyCandidates({
+        prompt: "Software Engineer",
+        groundTruthSnapshot: { items: [] },
+        jobs: [
+          {
+            source: "seek",
+            title: "Software Engineer",
+            company: "Unknown",
+            location: "Melbourne",
+            descriptionText: "Platform role.",
+            dedupeKey: "seek-1",
+          },
+          {
+            source: "careerone",
+            title: "Software Engineer",
+            company: "Unknown",
+            location: "Melbourne",
+            descriptionText: "Potentially different result.",
+            dedupeKey: "careerone-1",
+          },
+        ],
+      });
+
+      assert.equal(ranked.length, 2);
+    },
+  },
+  {
+    name: "auto apply profile draft refinement keeps prompt compact and filters selective",
+    run: () => {
+      const refined = refineAutoApplyProfileDraft(
+        {
+          prompt:
+            "Senior software engineer focused on React, TypeScript, Node.js, AWS, CI/CD, stakeholder management, and end-to-end delivery across product teams.",
+          seniority: "Senior",
+          mustHaveKeywords: [
+            "React, TypeScript, Node.js, AWS",
+            "stakeholder management",
+            "software engineer",
+            "CI/CD",
+            "TypeScript",
+          ],
+          excludeKeywords: ["door to door", "Door to door", "team player"],
+          companyBlacklist: ["BadCo", "badco", " AnotherCo "],
+        },
+        {
+          experiences: [{ role: "Senior Software Engineer", companyName: "Acme", summary: "Built React and Node products." }],
+        } as GroundTruthProfileInput & Parameters<typeof refineAutoApplyProfileDraft>[1],
+      );
+
+      assert.ok(refined.prompt.split(/\s+/).length <= 8);
+      assert.ok(refined.mustHaveKeywords.length <= 4);
+      assert.ok(!refined.mustHaveKeywords.some((keyword) => keyword.toLowerCase() === "software engineer"));
+      assert.deepEqual(refined.companyBlacklist, ["BadCo", "AnotherCo"]);
+      assert.deepEqual(refined.excludeKeywords, ["door to door"]);
+    },
+  },
+  {
     name: "auto apply ground truth suggestion prefers relevant profile evidence",
     run: () => {
-      const profileDraft: Partial<Profile> = {
+      const profileDraft: GroundTruthProfileInput = {
         experiences: [
           {
             companyName: "MedSwin",
