@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { resolveAutoApplySupervisorModelName, resolveModelName } from "../../src/lib/ai";
 import { answerEmployerQuestionFromGroundTruth } from "../../src/lib/auto-apply/answering";
 import { toComputerScreenshotOutput, toResponsesImagePart } from "../../src/lib/auto-apply/browser";
+import { isVisibleBrowserEnabled, startVisibleBrowserSession } from "../../src/lib/auto-apply/browser-session";
 import { suggestGroundTruthSelection } from "../../src/lib/auto-apply/ground-truth";
 import { rankAutoApplyCandidates } from "../../src/lib/auto-apply/ranking";
 import { refineAutoApplyProfileDraft } from "../../src/lib/auto-apply/profile-draft";
@@ -152,6 +153,32 @@ const tests: TestCase[] = [
       assert.equal(output.call_id, "call_123");
       assert.equal(output.output.type, "computer_screenshot");
       assert.equal(output.output.detail, "original");
+    },
+  },
+  {
+    name: "auto apply browser defaults to production attempt and explicit disable falls back cleanly",
+    run: async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      const previousBrowserEnabled = process.env.AUTO_APPLY_BROWSER_ENABLED;
+      const previousHeadless = process.env.AUTO_APPLY_BROWSER_HEADLESS;
+
+      process.env.NODE_ENV = "production";
+      delete process.env.AUTO_APPLY_BROWSER_ENABLED;
+      delete process.env.AUTO_APPLY_BROWSER_HEADLESS;
+      assert.equal(isVisibleBrowserEnabled(), true);
+
+      process.env.AUTO_APPLY_BROWSER_ENABLED = "false";
+      const disabled = await startVisibleBrowserSession("test-browser-session", "https://example.com");
+      assert.equal(disabled.mode, "manual_guided");
+      assert.equal(disabled.reason, "browser_unavailable");
+      assert.match(disabled.guidance || "", /disabled on this deployment/i);
+
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousBrowserEnabled === undefined) delete process.env.AUTO_APPLY_BROWSER_ENABLED;
+      else process.env.AUTO_APPLY_BROWSER_ENABLED = previousBrowserEnabled;
+      if (previousHeadless === undefined) delete process.env.AUTO_APPLY_BROWSER_HEADLESS;
+      else process.env.AUTO_APPLY_BROWSER_HEADLESS = previousHeadless;
     },
   },
   {

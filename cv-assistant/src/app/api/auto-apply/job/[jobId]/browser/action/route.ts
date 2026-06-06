@@ -6,7 +6,7 @@ import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-ap
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const allowedActions = new Set(["click", "type", "select", "upload", "screenshot", "read_dom", "scroll", "save_site_login"]);
+const allowedActions = new Set(["click", "type", "select", "upload", "screenshot", "read_dom", "scroll", "save_site_login", "stop"]);
 
 export async function POST(req: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const auth = requireAutoApplyAuth(req);
@@ -46,15 +46,19 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     type:
       body.type === "save_site_login"
         ? "site_login_saved"
+        : body.type === "stop"
+          ? "browser_stopped"
         : result.mode === "browser_active"
           ? "browser_action"
           : "browser_manual_fallback",
     message:
       body.type === "save_site_login"
         ? "Browser login/session saved for reuse."
-        : result.mode === "browser_active"
-        ? `Browser action completed: ${body.type}.`
-        : "Browser automation stopped and returned to manual guidance.",
+        : body.type === "stop"
+          ? "Browser session stopped."
+          : result.mode === "browser_active"
+            ? `Browser action completed: ${body.type}.`
+            : "Browser automation stopped and returned to manual guidance.",
     payload: {
       action: body.type,
       selector: body.selector || "",

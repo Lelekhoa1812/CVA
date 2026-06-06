@@ -22,13 +22,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ applic
 
   const job = await AutoApplyJobCandidateModel.findOne({ _id: draft.jobCandidateId, userId: auth.userId });
   if (!job) return NextResponse.json({ error: "Job candidate not found." }, { status: 404 });
-  if (job.riskFlags.includes("restricted_source_manual_guidance")) {
-    await draft.updateOne({ $set: { finalReviewStatus: "blocked" } });
-    return NextResponse.json(
-      { error: "Direct submission is blocked for this source. Use manual guided apply." },
-      { status: 409 },
-    );
-  }
+  const confirmedRestrictedSourceCompletion = job.riskFlags.includes("restricted_source_manual_guidance");
 
   await draft.updateOne({ $set: { finalReviewStatus: "submitted", submittedAt: new Date() } });
   await job.updateOne({ $set: { status: "submitted" } });
@@ -39,7 +33,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ applic
     jobCandidateId: job._id.toString(),
     applicationDraftId: draft._id.toString(),
     type: "submitted",
-    message: `Application marked submitted for ${job.title} at ${job.company}.`,
+    message: confirmedRestrictedSourceCompletion
+      ? `Guided source application marked submitted for ${job.title} at ${job.company}.`
+      : `Application marked submitted for ${job.title} at ${job.company}.`,
+    payload: confirmedRestrictedSourceCompletion
+      ? { riskFlags: job.riskFlags, completionMode: "guided_external_source" }
+      : {},
   });
 
   return NextResponse.json({ submitted: true });

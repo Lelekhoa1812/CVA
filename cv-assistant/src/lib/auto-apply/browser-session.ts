@@ -26,62 +26,88 @@ globalThis.autoApplyBrowserSessions = sessions;
 export function isVisibleBrowserEnabled() {
   if (process.env.AUTO_APPLY_BROWSER_ENABLED === "true") return true;
   if (process.env.AUTO_APPLY_BROWSER_ENABLED === "false") return false;
-  return process.env.NODE_ENV !== "production";
+  return true;
+}
+
+function shouldLaunchHeadlessBrowser() {
+  if (process.env.AUTO_APPLY_BROWSER_HEADLESS === "true") return true;
+  if (process.env.AUTO_APPLY_BROWSER_HEADLESS === "false") return false;
+  return process.env.NODE_ENV === "production";
 }
 
 export async function startVisibleBrowserSession(sessionKey: string, url: string, userId?: string) {
   if (!isVisibleBrowserEnabled()) {
     return {
       mode: "manual_guided" as const,
-      reason: "browser_disabled",
+      reason: "browser_unavailable",
+      guidance:
+        "Browser automation is disabled on this deployment. Set AUTO_APPLY_BROWSER_ENABLED=true to allow browser sessions.",
       blockers: [],
       screenshotBase64: "",
     };
   }
 
-  await stopVisibleBrowserSession(sessionKey);
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: false });
-  const siteKey = getSiteKeyFromUrl(url);
-  const origin = getSiteOrigin(url);
-  const savedState = userId ? await loadSavedSiteStorageState(userId, siteKey) : null;
-  const context = await browser.newContext({
-    viewport: { width: 1366, height: 900 },
-    storageState: savedState?.storageStatePath,
-  });
-  const page = await context.newPage();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-  const bodyText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
-  const blockers = detectAutomationBlockers(bodyText);
-  const screenshot = await page.screenshot({ type: "png", fullPage: false });
-  const loginRequired = blockers.includes("login_required");
+  try {
+    await stopVisibleBrowserSession(sessionKey);
+    const { chromium } = await import("playwright");
+    const headless = shouldLaunchHeadlessBrowser();
+    const browser = await chromium.launch({
+      headless,
+      args: headless ? ["--no-sandbox", "--disable-setuid-sandbox"] : [],
+    });
+    const siteKey = getSiteKeyFromUrl(url);
+    const origin = getSiteOrigin(url);
+    const savedState = userId ? await loadSavedSiteStorageState(userId, siteKey) : null;
+    const context = await browser.newContext({
+      viewport: { width: 1366, height: 900 },
+      storageState: savedState?.storageStatePath,
+    });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    const bodyText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
+    const blockers = detectAutomationBlockers(bodyText);
+    const screenshot = await page.screenshot({ type: "png", fullPage: false });
+    const loginRequired = blockers.includes("login_required");
 
-  if (blockers.length && !loginRequired) {
-    await browser.close();
+    sessions.set(sessionKey, { browser, context, page, createdAt: Date.now(), siteKey, origin });
+
+    if (blockers.length && !loginRequired) {
+      return {
+        mode: "manual_guided" as const,
+        reason: blockers[0],
+        blockers,
+        screenshotBase64: screenshot.toString("base64"),
+      };
+    }
+
+    if (loginRequired) {
+      return {
+        mode: "manual_guided" as const,
+        reason: savedState?.storageStatePath ? "login_required" : "login_required_first_run",
+        blockers,
+        screenshotBase64: screenshot.toString("base64"),
+      };
+    }
+
     return {
-      mode: "manual_guided" as const,
-      reason: blockers[0],
+      mode: "browser_active" as const,
+      reason: "",
       blockers,
       screenshotBase64: screenshot.toString("base64"),
     };
-  }
-
-  sessions.set(sessionKey, { browser, context, page, createdAt: Date.now(), siteKey, origin });
-  if (loginRequired) {
+  } catch (error) {
+    await stopVisibleBrowserSession(sessionKey);
     return {
       mode: "manual_guided" as const,
-      reason: savedState?.storageStatePath ? "login_required" : "login_required_first_run",
-      blockers,
-      screenshotBase64: screenshot.toString("base64"),
+      reason: "browser_unavailable",
+      guidance:
+        error instanceof Error
+          ? `Browser automation could not start on this deployment: ${error.message}`
+          : "Browser automation could not start on this deployment.",
+      blockers: [],
+      screenshotBase64: "",
     };
   }
-
-  return {
-    mode: "browser_active" as const,
-    reason: "",
-    blockers,
-    screenshotBase64: screenshot.toString("base64"),
-  };
 }
 
 export async function stopVisibleBrowserSession(sessionKey: string) {
@@ -129,7 +155,7 @@ export async function saveVisibleBrowserSessionSiteAuth(
 export async function runVisibleBrowserAction(
   sessionKey: string,
   action: {
-    type: "click" | "type" | "select" | "upload" | "screenshot" | "read_dom" | "scroll" | "save_site_login";
+    type: "click" | "type" | "select" | "upload" | "screenshot" | "read_dom" | "scroll" | "save_site_login" | "stop";
     selector?: string;
     value?: string;
     filePath?: string;
@@ -140,6 +166,16 @@ export async function runVisibleBrowserAction(
     rememberCredentials?: boolean;
   },
 ) {
+  if (action.type === "stop") {
+    await stopVisibleBrowserSession(sessionKey);
+    return {
+      mode: "manual_guided" as const,
+      blockers: [],
+      domText: "",
+      screenshotBase64: "",
+    };
+  }
+
   const session = sessions.get(sessionKey);
   if (!session) throw new Error("Browser session is not active.");
   const { page } = session;
@@ -194,7 +230,6 @@ export async function runVisibleBrowserAction(
   const loginRequired = blockers.includes("login_required");
 
   if (blockers.length && !loginRequired) {
-    await stopVisibleBrowserSession(sessionKey);
     return {
       mode: "manual_guided" as const,
       blockers,

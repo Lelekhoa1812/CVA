@@ -6,6 +6,7 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import { buildApiUrl } from "@/lib/api";
 import { buildGroundTruthOptions } from "@/lib/auto-apply/ground-truth";
 import { PROFILE_UPDATED_EVENT, PROFILE_UPDATED_STORAGE_KEY } from "@/lib/profile-sync";
+import { humanizeIdentifier } from "@/lib/utils";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
   SEARCH_SOURCES,
@@ -179,6 +180,10 @@ function isDraftSurfaceEmpty(form: typeof initialAutoApplyForm) {
     form.excludeKeywords,
     form.companyBlacklist,
   ].every((value) => !value.trim());
+}
+
+function displayAutoApplyIdentifier(value?: string | null) {
+  return humanizeIdentifier(value) || "Unknown";
 }
 
 export default function AutoApplyPage() {
@@ -618,7 +623,7 @@ export default function AutoApplyPage() {
   }
 
   async function runBrowserAction(
-    type: "click" | "type" | "screenshot" | "read_dom" | "scroll",
+    type: "click" | "type" | "screenshot" | "read_dom" | "scroll" | "stop",
     direction?: "up" | "down",
   ) {
     if (!selectedJob) return;
@@ -764,7 +769,7 @@ export default function AutoApplyPage() {
                 ))}
               </div>
               <span className="rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.78)] px-4 py-2 text-sm font-medium text-foreground">
-                {session?.status || "idle"}
+                {displayAutoApplyIdentifier(session?.status || "idle")}
               </span>
             </div>
           </div>
@@ -1073,7 +1078,7 @@ export default function AutoApplyPage() {
                   <div className="flex flex-wrap gap-2">
                     {job.riskFlags.map((flag) => (
                       <span key={flag} className="rounded-full border border-amber-400/30 px-2 py-1 text-xs text-amber-700 dark:text-amber-100">
-                        {flag}
+                        {displayAutoApplyIdentifier(flag)}
                       </span>
                     ))}
                     {job.missingRequirements.map((missing) => (
@@ -1083,7 +1088,9 @@ export default function AutoApplyPage() {
                     ))}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">{job.status}</span>
+                    <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">
+                      {displayAutoApplyIdentifier(job.status)}
+                    </span>
                     <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">Save job</span>
                     <span className="rounded-full border border-border/80 px-3 py-1 text-xs text-muted-foreground">Skip</span>
                   </div>
@@ -1202,6 +1209,9 @@ export default function AutoApplyPage() {
                     </button>
                     <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("read_dom")} className="rounded-2xl border border-border/80 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
                       Inspect DOM
+                    </button>
+                    <button disabled={!selectedJob || isBusy} onClick={() => void runBrowserAction("stop")} className="rounded-2xl border border-rose-400/40 px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50">
+                      Stop
                     </button>
                   </div>
 
@@ -1340,7 +1350,7 @@ export default function AutoApplyPage() {
               {events.map((event) => (
                 <div key={event._id} className="surface-subtle rounded-2xl p-3">
                   <div className="text-sm font-medium text-foreground">{event.message}</div>
-                  <div className="text-xs text-muted-foreground">{event.type}</div>
+                  <div className="text-xs text-muted-foreground">{displayAutoApplyIdentifier(event.type)}</div>
                 </div>
               ))}
             </div>
@@ -1357,7 +1367,7 @@ export default function AutoApplyPage() {
                     className="surface-subtle w-full rounded-2xl p-3 text-left text-sm"
                   >
                     <span className="block font-medium text-foreground">{item.prompt}</span>
-                    <span className="text-xs text-muted-foreground">{item.status}</span>
+                    <span className="text-xs text-muted-foreground">{displayAutoApplyIdentifier(item.status)}</span>
                   </button>
                 ))}
               </div>
