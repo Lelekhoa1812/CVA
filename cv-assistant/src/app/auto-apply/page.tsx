@@ -61,6 +61,7 @@ type Job = {
   applicationStrategy: string;
   status: string;
   applyUrl: string;
+  url?: string;
 };
 
 type Draft = {
