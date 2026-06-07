@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel, type Profile as DbProfile } from '@/lib/models/User';
 import { wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
 import { getCoverLetterContactDetails } from '@/lib/cover-letter';
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
 const PAGE_MARGIN = 72;
 const BODY_FONT_SIZE = 11;
-const BODY_LINE_HEIGHT = 16;
-const HEADER_NAME_SIZE = 16;
+const BODY_LINE_HEIGHT = 16.5;
+const HEADER_NAME_SIZE = 20;
+const HEADER_INFO_SIZE = 8.5;
+const DATE_FONT_SIZE = 10.5;
+const RECIPIENT_FONT_SIZE = 11;
+const SECTION_SPACING = 14;
 
 function normalizeLine(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -122,13 +127,13 @@ export async function POST(req: NextRequest) {
 
   const pdf = await PDFDocument.create();
   let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  const regularFont = await pdf.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const { regular: regularFont, bold: boldFont } = await embedNotoSansFonts(pdf);
 
   const left = PAGE_MARGIN;
   const right = PAGE_WIDTH - PAGE_MARGIN;
   const bottom = PAGE_MARGIN;
   const contentWidth = right - left;
+  const centerX = PAGE_WIDTH / 2;
   let y = PAGE_HEIGHT - PAGE_MARGIN;
 
   function addPage() {
@@ -142,7 +147,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  function drawLines(lines: string[], options: { size: number; bold?: boolean; color?: ReturnType<typeof rgb>; gap?: number }) {
+  function drawLines(
+    lines: string[],
+    options: { size: number; bold?: boolean; color?: ReturnType<typeof rgb>; gap?: number },
+  ) {
     if (!lines.length) return;
     const gap = options.gap ?? 5;
     const font = options.bold ? boldFont : regularFont;
@@ -162,44 +170,76 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  function drawCenteredLines(
+    lines: string[],
+    options: { size: number; bold?: boolean; color?: ReturnType<typeof rgb>; gap?: number },
+  ) {
+    if (!lines.length) return;
+    const gap = options.gap ?? 4;
+    const font = options.bold ? boldFont : regularFont;
+    const color = options.color || rgb(0.15, 0.19, 0.24);
+
+    ensureSpace(lines.length * (options.size + gap));
+
+    for (const line of lines) {
+      const textWidth = font.widthOfTextAtSize(line, options.size);
+      const x = Math.max(left, centerX - textWidth / 2);
+      page.drawText(line, {
+        x,
+        y,
+        size: options.size,
+        font,
+        color,
+      });
+      y -= options.size + gap;
+    }
+  }
+
   const headerName = contactDetails.name || 'Candidate';
-  drawLines(wrapTextLines(headerName, boldFont, HEADER_NAME_SIZE, contentWidth), {
+  drawCenteredLines(wrapTextLines(headerName, boldFont, HEADER_NAME_SIZE, contentWidth), {
     size: HEADER_NAME_SIZE,
     bold: true,
     color: rgb(0.08, 0.12, 0.18),
-    gap: 6,
+    gap: 2,
   });
 
-  if (contactDetails.detailLines.length) {
-    drawLines(
-      contactDetails.detailLines.flatMap((line) => wrapTextLines(line, regularFont, BODY_FONT_SIZE, contentWidth)),
+  if (contactDetails.letterheadLines.length) {
+    drawCenteredLines(
+      contactDetails.letterheadLines.flatMap((line) => wrapTextLines(line, regularFont, HEADER_INFO_SIZE, contentWidth)),
       {
-        size: BODY_FONT_SIZE,
-        color: rgb(0.32, 0.37, 0.43),
-        gap: 5,
+        size: HEADER_INFO_SIZE,
+        color: rgb(0.34, 0.39, 0.45),
+        gap: 2,
       },
     );
   }
 
-  ensureSpace(22);
+  ensureSpace(18);
   page.drawLine({
     start: { x: left, y: y + 4 },
     end: { x: right, y: y + 4 },
     thickness: 1,
-    color: rgb(0.83, 0.86, 0.9),
+    color: rgb(0.84, 0.87, 0.9),
   });
-  y -= 22;
+  y -= SECTION_SPACING + 4;
 
-  const businessHeader = [formattedDate, company ? 'Hiring Team' : '', company].filter(Boolean);
+  drawLines([formattedDate], {
+    size: DATE_FONT_SIZE,
+    color: rgb(0.28, 0.33, 0.39),
+    gap: 2,
+  });
+
+  const businessHeader = [company ? 'Hiring Team' : '', company].filter(Boolean);
   drawLines(
-    businessHeader.flatMap((line) => wrapTextLines(line, regularFont, BODY_FONT_SIZE, contentWidth)),
+    businessHeader.flatMap((line) => wrapTextLines(line, regularFont, RECIPIENT_FONT_SIZE, contentWidth)),
     {
-      size: BODY_FONT_SIZE,
+      size: RECIPIENT_FONT_SIZE,
+      bold: Boolean(company),
       color: rgb(0.15, 0.19, 0.24),
-      gap: 5,
+      gap: 3,
     },
   );
-  y -= 12;
+  y -= 8;
 
   const bodyParagraphs = paragraphs.length
     ? paragraphs

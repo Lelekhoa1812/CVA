@@ -21,6 +21,13 @@ function cleanText(value?: string) {
   return (value || '').trim();
 }
 
+function trimUrlProtocol(value: string) {
+  return value
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/g, '')
+    .trim();
+}
+
 // Motivation vs Logic:
 // Motivation: The cover-letter flow now ranks evidence, drafts the letter, and exports it as PDF, so drift
 // between route-specific profile transforms would quickly create mismatched titles, ordering, and contact info.
@@ -72,6 +79,13 @@ export function getCoverLetterContactDetails(profile?: Partial<CoverLetterProfil
 
   const compactLine = [phone, email, website, linkedin].filter(Boolean).join(' | ');
   const detailLines = [compactLine, languages ? `Languages: ${languages}` : ''].filter(Boolean);
+  const letterheadLines = [
+    [phone, email].filter(Boolean).join(' | '),
+    [website ? trimUrlProtocol(website) : '', linkedin ? trimUrlProtocol(linkedin) : '']
+      .filter(Boolean)
+      .join(' | '),
+    languages ? `Languages: ${languages}` : '',
+  ].filter(Boolean);
   const promptLines = [name, ...detailLines].filter(Boolean);
 
   return {
@@ -82,6 +96,7 @@ export function getCoverLetterContactDetails(profile?: Partial<CoverLetterProfil
     linkedin,
     languages,
     detailLines,
+    letterheadLines,
     promptLines,
   };
 }
