@@ -68,7 +68,7 @@ const TEXT_SECTION_META = {
     name: "Profile",
     label: "profile",
     exploreTooltip:
-      "Explore drafts a resume-ready profile from your education, projects, experience, and saved skills so the summary stays specific to your background.",
+      "Explore writes a direct, concise profile from your education, projects, experience, and saved skills so the summary sounds confident and employer-ready.",
   },
   skills: {
     apiType: "skills" as const,
@@ -415,7 +415,9 @@ function TextSectionActionButtons({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {helperText ? <span className="text-muted-foreground text-xs">{helperText}</span> : null}
+      {helperText ? (
+        <span className="text-muted-foreground hidden text-xs 2xl:inline">{helperText}</span>
+      ) : null}
       <HoverTooltip message={meta.exploreTooltip}>
         <button
           type="button"
@@ -534,7 +536,7 @@ export default function ProfilePage() {
     const clientId = createClientId();
     commitProfile((current) => ({
       ...current,
-      experiences: sortExperiencesByRecency([
+      experiences: [
         {
           companyName: "",
           role: "",
@@ -547,7 +549,7 @@ export default function ProfilePage() {
           updatedAt: timestamp,
         },
         ...current.experiences,
-      ]),
+      ],
     }));
     setNewExperienceDraftIds((current) => [clientId, ...current.filter((id) => id !== clientId)]);
   }
@@ -909,18 +911,50 @@ export default function ProfilePage() {
     return Math.round((filled / keyValues.length) * 100);
   }, [profile]);
 
-  const visibleProjects = useMemo(
-    () => prioritizeFreshEntries(profile.projects, newProjectDraftIds),
+  const orderedProjects = useMemo(
+    () =>
+      prioritizeFreshEntries(profile.projects, newProjectDraftIds).map((entry, renderIndex) => ({
+        ...entry,
+        renderIndex,
+      })),
     [newProjectDraftIds, profile.projects]
   );
 
-  const visibleExperiences = useMemo(
+  const draftProjects = useMemo(
     () =>
-      prioritizeFreshEntries(
-        profile.experiences,
-        newExperienceDraftIds
-      ),
+      orderedProjects.filter(({ item }) => item._clientId && newProjectDraftIds.includes(item._clientId)),
+    [newProjectDraftIds, orderedProjects]
+  );
+
+  const savedProjects = useMemo(
+    () =>
+      orderedProjects.filter(({ item }) => !item._clientId || !newProjectDraftIds.includes(item._clientId)),
+    [newProjectDraftIds, orderedProjects]
+  );
+
+  const orderedExperiences = useMemo(
+    () =>
+      prioritizeFreshEntries(profile.experiences, newExperienceDraftIds).map((entry, renderIndex) => ({
+        ...entry,
+        renderIndex,
+      })),
     [newExperienceDraftIds, profile.experiences]
+  );
+
+  const draftExperiences = useMemo(
+    () =>
+      orderedExperiences.filter(
+        ({ item }) => item._clientId && newExperienceDraftIds.includes(item._clientId)
+      ),
+    [newExperienceDraftIds, orderedExperiences]
+  );
+
+  const savedExperiences = useMemo(
+    () =>
+      orderedExperiences.filter(
+        ({ item }) => !item._clientId || !newExperienceDraftIds.includes(item._clientId)
+      ),
+    [newExperienceDraftIds, orderedExperiences]
   );
 
   if (loading) {
@@ -1220,107 +1254,226 @@ export default function ProfilePage() {
               </GlassPanel>
             ) : null}
 
-            {visibleExperiences.map(({ item: experience, index }, renderIndex) => (
-              <StaggerItem key={experience._id ?? experience._clientId ?? `${experience.companyName}-${experience.role}-${index}`}>
-                <div className="interactive-card space-y-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="section-kicker">
-                        Experience {String(renderIndex + 1).padStart(2, "0")}
-                      </p>
-                      <h3 className="text-foreground mt-2 text-lg font-semibold">
-                        {experience.companyName || "Company"} · {experience.role || "Role"}
-                      </h3>
+            {draftExperiences.length > 0 ? (
+              <div className="space-y-4">
+                {draftExperiences.map(({ item: experience, index, renderIndex }) => (
+                  <div
+                    key={experience._id ?? experience._clientId ?? `${experience.companyName}-${experience.role}-${index}`}
+                    className="interactive-card space-y-5 border-sky-300/30"
+                  >
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                      <div className="min-w-0">
+                        <p className="section-kicker">
+                          Experience {String(renderIndex + 1).padStart(2, "0")}
+                        </p>
+                        <h3 className="text-foreground mt-2 text-base font-semibold leading-tight sm:text-lg">
+                          {experience.companyName || "Company"} · {experience.role || "Role"}
+                        </h3>
+                      </div>
+                      <div className="flex flex-nowrap items-start gap-2">
+                        <button
+                          onClick={() => enhanceExperience(index)}
+                          className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          disabled={enhancingExperience === index}
+                        >
+                          {enhancingExperience === index ? "Enhancing..." : "Enhance"}
+                        </button>
+                        <button
+                          onClick={() => copyExperience(index)}
+                          className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                        >
+                          {copiedExperience === index ? "Copied" : "Copy"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this experience?")) {
+                              deleteExperience(index);
+                            }
+                          }}
+                          className="whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 sm:px-4 sm:py-3 sm:text-sm dark:text-rose-100"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => enhanceExperience(index)}
-                        className="button-secondary"
-                        disabled={enhancingExperience === index}
-                      >
-                        {enhancingExperience === index ? "Enhancing..." : "Enhance"}
-                      </button>
-                      <button onClick={() => copyExperience(index)} className="button-secondary">
-                        {copiedExperience === index ? "Copied" : "Copy"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm("Are you sure you want to delete this experience?")) {
-                            deleteExperience(index);
-                          }
-                        }}
-                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <TextField
-                      label="Company"
-                      value={experience.companyName}
-                      onChange={(value) => {
-                        updateExperience(index, (current) => ({
-                          ...current,
-                          companyName: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                    />
-                    <TextField
-                      label="Role"
-                      value={experience.role}
-                      onChange={(value) => {
-                        updateExperience(index, (current) => ({
-                          ...current,
-                          role: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                    />
-                    <TextField
-                      label="Start"
-                      value={experience.timeFrom}
-                      onChange={(value) => {
-                        updateExperience(index, (current) => ({
-                          ...current,
-                          timeFrom: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                      placeholder="Jan 2023"
-                    />
-                    <TextField
-                      label="End"
-                      value={experience.timeTo}
-                      onChange={(value) => {
-                        updateExperience(index, (current) => ({
-                          ...current,
-                          timeTo: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                      placeholder="Present"
-                    />
-                    <div className="md:col-span-2">
-                      <TextareaField
-                        label="Description"
-                        value={experience.description}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <TextField
+                        label="Company"
+                        value={experience.companyName}
                         onChange={(value) => {
                           updateExperience(index, (current) => ({
                             ...current,
-                            description: value,
+                            companyName: value,
                             _needsSummary: true,
                           }));
                         }}
-                        rows={5}
                       />
+                      <TextField
+                        label="Role"
+                        value={experience.role}
+                        onChange={(value) => {
+                          updateExperience(index, (current) => ({
+                            ...current,
+                            role: value,
+                            _needsSummary: true,
+                          }));
+                        }}
+                      />
+                      <TextField
+                        label="Start"
+                        value={experience.timeFrom}
+                        onChange={(value) => {
+                          updateExperience(index, (current) => ({
+                            ...current,
+                            timeFrom: value,
+                            _needsSummary: true,
+                          }));
+                        }}
+                        placeholder="Jan 2023"
+                      />
+                      <TextField
+                        label="End"
+                        value={experience.timeTo}
+                        onChange={(value) => {
+                          updateExperience(index, (current) => ({
+                            ...current,
+                            timeTo: value,
+                            _needsSummary: true,
+                          }));
+                        }}
+                        placeholder="Present"
+                      />
+                      <div className="md:col-span-2">
+                        <TextareaField
+                          label="Description"
+                          value={experience.description}
+                          onChange={(value) => {
+                            updateExperience(index, (current) => ({
+                              ...current,
+                              description: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                          rows={5}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </StaggerItem>
-            ))}
+                ))}
+              </div>
+            ) : null}
+
+            {savedExperiences.length > 0 ? (
+              <StaggerGroup className="space-y-4">
+                {savedExperiences.map(({ item: experience, index, renderIndex }) => (
+                  <StaggerItem
+                    key={experience._id ?? experience._clientId ?? `${experience.companyName}-${experience.role}-${index}`}
+                  >
+                    <div className="interactive-card space-y-5">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="section-kicker">
+                            Experience {String(renderIndex + 1).padStart(2, "0")}
+                          </p>
+                          <h3 className="text-foreground mt-2 text-base font-semibold leading-tight sm:text-lg">
+                            {experience.companyName || "Company"} · {experience.role || "Role"}
+                          </h3>
+                        </div>
+                        <div className="flex flex-nowrap items-start gap-2">
+                          <button
+                            onClick={() => enhanceExperience(index)}
+                            className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                            disabled={enhancingExperience === index}
+                          >
+                            {enhancingExperience === index ? "Enhancing..." : "Enhance"}
+                          </button>
+                          <button
+                            onClick={() => copyExperience(index)}
+                            className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          >
+                            {copiedExperience === index ? "Copied" : "Copy"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm("Are you sure you want to delete this experience?")) {
+                                deleteExperience(index);
+                              }
+                            }}
+                            className="whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 sm:px-4 sm:py-3 sm:text-sm dark:text-rose-100"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <TextField
+                          label="Company"
+                          value={experience.companyName}
+                          onChange={(value) => {
+                            updateExperience(index, (current) => ({
+                              ...current,
+                              companyName: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                        />
+                        <TextField
+                          label="Role"
+                          value={experience.role}
+                          onChange={(value) => {
+                            updateExperience(index, (current) => ({
+                              ...current,
+                              role: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                        />
+                        <TextField
+                          label="Start"
+                          value={experience.timeFrom}
+                          onChange={(value) => {
+                            updateExperience(index, (current) => ({
+                              ...current,
+                              timeFrom: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                          placeholder="Jan 2023"
+                        />
+                        <TextField
+                          label="End"
+                          value={experience.timeTo}
+                          onChange={(value) => {
+                            updateExperience(index, (current) => ({
+                              ...current,
+                              timeTo: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                          placeholder="Present"
+                        />
+                        <div className="md:col-span-2">
+                          <TextareaField
+                            label="Description"
+                            value={experience.description}
+                            onChange={(value) => {
+                              updateExperience(index, (current) => ({
+                                ...current,
+                                description: value,
+                                _needsSummary: true,
+                              }));
+                            }}
+                            rows={5}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </StaggerItem>
+                ))}
+              </StaggerGroup>
+            ) : null}
           </StaggerGroup>
         </GlassPanel>
       </Reveal>
@@ -1347,70 +1500,150 @@ export default function ProfilePage() {
               </GlassPanel>
             ) : null}
 
-            {visibleProjects.map(({ item: project, index }, renderIndex) => (
-              <StaggerItem key={project._id ?? project._clientId ?? `${project.name}-${index}`}>
-                <div className="interactive-card space-y-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="section-kicker">
-                        Project {String(renderIndex + 1).padStart(2, "0")}
-                      </p>
-                      <h3 className="text-foreground mt-2 text-lg font-semibold">
-                        {project.name || "Untitled Project"}
-                      </h3>
+            {draftProjects.length > 0 ? (
+              <div className="space-y-4">
+                {draftProjects.map(({ item: project, index, renderIndex }) => (
+                  <div
+                    key={project._id ?? project._clientId ?? `${project.name}-${index}`}
+                    className="interactive-card space-y-5 border-sky-300/30"
+                  >
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                      <div className="min-w-0">
+                        <p className="section-kicker">
+                          Project {String(renderIndex + 1).padStart(2, "0")}
+                        </p>
+                        <h3 className="text-foreground mt-2 text-base font-semibold leading-tight sm:text-lg">
+                          {project.name || "Untitled Project"}
+                        </h3>
+                      </div>
+                      <div className="flex flex-nowrap items-start gap-2">
+                        <button
+                          onClick={() => enhanceProject(index)}
+                          className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          disabled={enhancingProject === index}
+                        >
+                          {enhancingProject === index ? "Enhancing..." : "Enhance"}
+                        </button>
+                        <button
+                          onClick={() => copyProject(index)}
+                          className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                        >
+                          {copiedProject === index ? "Copied" : "Copy"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this project?")) {
+                              deleteProject(index);
+                            }
+                          }}
+                          className="whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 sm:px-4 sm:py-3 sm:text-sm dark:text-rose-100"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => enhanceProject(index)}
-                        className="button-secondary"
-                        disabled={enhancingProject === index}
-                      >
-                        {enhancingProject === index ? "Enhancing..." : "Enhance"}
-                      </button>
-                      <button onClick={() => copyProject(index)} className="button-secondary">
-                        {copiedProject === index ? "Copied" : "Copy"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm("Are you sure you want to delete this project?")) {
-                            deleteProject(index);
-                          }
-                        }}
-                        className="rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-100"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
-                    <TextField
-                      label="Project Name"
-                      value={project.name}
-                      onChange={(value) => {
-                        updateProject(index, (current) => ({
-                          ...current,
-                          name: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                    />
-                    <TextareaField
-                      label="Project Description"
-                      value={project.description}
-                      onChange={(value) => {
-                        updateProject(index, (current) => ({
-                          ...current,
-                          description: value,
-                          _needsSummary: true,
-                        }));
-                      }}
-                      rows={5}
-                    />
+                    <div className="grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+                      <TextField
+                        label="Project Name"
+                        value={project.name}
+                        onChange={(value) => {
+                          updateProject(index, (current) => ({
+                            ...current,
+                            name: value,
+                            _needsSummary: true,
+                          }));
+                        }}
+                      />
+                      <TextareaField
+                        label="Project Description"
+                        value={project.description}
+                        onChange={(value) => {
+                          updateProject(index, (current) => ({
+                            ...current,
+                            description: value,
+                            _needsSummary: true,
+                          }));
+                        }}
+                        rows={5}
+                      />
+                    </div>
                   </div>
-                </div>
-              </StaggerItem>
-            ))}
+                ))}
+              </div>
+            ) : null}
+
+            {savedProjects.length > 0 ? (
+              <StaggerGroup className="space-y-4">
+                {savedProjects.map(({ item: project, index, renderIndex }) => (
+                  <StaggerItem key={project._id ?? project._clientId ?? `${project.name}-${index}`}>
+                    <div className="interactive-card space-y-5">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="section-kicker">
+                            Project {String(renderIndex + 1).padStart(2, "0")}
+                          </p>
+                          <h3 className="text-foreground mt-2 text-base font-semibold leading-tight sm:text-lg">
+                            {project.name || "Untitled Project"}
+                          </h3>
+                        </div>
+                        <div className="flex flex-nowrap items-start gap-2">
+                          <button
+                            onClick={() => enhanceProject(index)}
+                            className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                            disabled={enhancingProject === index}
+                          >
+                            {enhancingProject === index ? "Enhancing..." : "Enhance"}
+                          </button>
+                          <button
+                            onClick={() => copyProject(index)}
+                            className="button-secondary whitespace-nowrap px-3 py-2 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          >
+                            {copiedProject === index ? "Copied" : "Copy"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm("Are you sure you want to delete this project?")) {
+                                deleteProject(index);
+                              }
+                            }}
+                            className="whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 sm:px-4 sm:py-3 sm:text-sm dark:text-rose-100"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+                        <TextField
+                          label="Project Name"
+                          value={project.name}
+                          onChange={(value) => {
+                            updateProject(index, (current) => ({
+                              ...current,
+                              name: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                        />
+                        <TextareaField
+                          label="Project Description"
+                          value={project.description}
+                          onChange={(value) => {
+                            updateProject(index, (current) => ({
+                              ...current,
+                              description: value,
+                              _needsSummary: true,
+                            }));
+                          }}
+                          rows={5}
+                        />
+                      </div>
+                    </div>
+                  </StaggerItem>
+                ))}
+              </StaggerGroup>
+            ) : null}
           </StaggerGroup>
         </GlassPanel>
       </Reveal>

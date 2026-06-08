@@ -171,9 +171,11 @@ ${contextBlock}
 
 Strict requirements:
 - Keep the tone industrially professional, polished, and employer-ready.
-- Be concise and clear for a resume.
+- Be concise, direct, and high impact.
 - Write one short paragraph of 2-3 sentences only.
-- Emphasize responsibilities, ownership, and enthusiasm for applying this expertise in professional environments.
+- Use confident, active language that sounds immediate and specific.
+- Avoid first-person phrasing entirely, including "I am", "I have", "My skills", and "My background".
+- Do not write in a soft or self-introductory voice.
 - Surface the high-level strengths and expertise areas most likely to improve employer, HR, or AI-screening acceptance.
 - If the candidate appears early-career, naturally anchor the summary in the major or education without making it sound academic-only.
 - Avoid first-person pronouns, generic fluff, and unsupported claims.

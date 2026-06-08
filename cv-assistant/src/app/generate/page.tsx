@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
@@ -18,16 +18,77 @@ type RankedEvidence = {
   justification: string;
 };
 
+type SavedDraft = {
+  company: string;
+  jobDescription: string;
+  employerQuestion: string;
+  idealWordCount: string;
+  answerStyle: string;
+  shouldSelect: boolean;
+  indices: number[] | null;
+  rankings: RankedEvidence[];
+  result: string;
+  employerQuestionResult: string;
+  manualSelection: { projects: number[]; experiences: number[] };
+  enableManualSelection: boolean;
+  showManualEvidence: boolean;
+};
+
+const DRAFT_STORAGE_KEY = "cv-assistant.generate.cover-letter.v2";
+
+function loadSavedDraft(): SavedDraft | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<SavedDraft>;
+
+    return {
+      company: typeof parsed.company === "string" ? parsed.company : "",
+      jobDescription: typeof parsed.jobDescription === "string" ? parsed.jobDescription : "",
+      employerQuestion: typeof parsed.employerQuestion === "string" ? parsed.employerQuestion : "",
+      idealWordCount: typeof parsed.idealWordCount === "string" ? parsed.idealWordCount : "",
+      answerStyle: typeof parsed.answerStyle === "string" ? parsed.answerStyle : "",
+      shouldSelect: typeof parsed.shouldSelect === "boolean" ? parsed.shouldSelect : true,
+      indices: Array.isArray(parsed.indices) ? parsed.indices.filter((value) => Number.isInteger(value)) : null,
+      rankings: Array.isArray(parsed.rankings) ? (parsed.rankings as RankedEvidence[]) : [],
+      result: typeof parsed.result === "string" ? parsed.result : "",
+      employerQuestionResult:
+        typeof parsed.employerQuestionResult === "string" ? parsed.employerQuestionResult : "",
+      manualSelection: {
+        projects: Array.isArray(parsed.manualSelection?.projects)
+          ? parsed.manualSelection!.projects.filter((value) => Number.isInteger(value))
+          : [],
+        experiences: Array.isArray(parsed.manualSelection?.experiences)
+          ? parsed.manualSelection!.experiences.filter((value) => Number.isInteger(value))
+          : [],
+      },
+      enableManualSelection: typeof parsed.enableManualSelection === "boolean" ? parsed.enableManualSelection : false,
+      showManualEvidence: typeof parsed.showManualEvidence === "boolean" ? parsed.showManualEvidence : true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function GeneratePage() {
   const [company, setCompany] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+  const [employerQuestion, setEmployerQuestion] = useState("");
+  const [idealWordCount, setIdealWordCount] = useState("");
+  const [answerStyle, setAnswerStyle] = useState("");
   const [shouldSelect, setShouldSelect] = useState(true);
   const [indices, setIndices] = useState<number[] | null>(null);
   const [rankings, setRankings] = useState<RankedEvidence[]>([]);
   const [loading, setLoading] = useState(false);
+  const [questionLoading, setQuestionLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [result, setResult] = useState("");
+  const [employerQuestionResult, setEmployerQuestionResult] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [questionError, setQuestionError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [manualSelection, setManualSelection] = useState<{ projects: number[]; experiences: number[] }>({
     projects: [],
@@ -35,6 +96,11 @@ export default function GeneratePage() {
   });
   const [enableManualSelection, setEnableManualSelection] = useState(false);
   const [showManualEvidence, setShowManualEvidence] = useState(true);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const previousDraftRef = useRef<{ jobDescription: string; shouldSelect: boolean }>({
+    jobDescription: "",
+    shouldSelect: true,
+  });
 
   async function selectRelevant() {
     setError(null);
@@ -52,38 +118,82 @@ export default function GeneratePage() {
     setRankings(Array.isArray(data.rankings) ? data.rankings : []);
   }
 
+  function getFinalIndices() {
+    if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
+      const projectCount = profile?.projects?.length || 0;
+      return [
+        ...manualSelection.projects.map((idx) => idx),
+        ...manualSelection.experiences.map((idx) => idx + projectCount),
+      ];
+    }
+
+    if (shouldSelect && indices && indices.length > 0) {
+      return indices;
+    }
+
+    return null;
+  }
+
   async function generate() {
     setLoading(true);
     setResult("");
     setError(null);
+    try {
+      const finalIndices = getFinalIndices();
+      const res = await fetch(buildApiUrl("/api/generate/cover-letter"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company, jobDescription, indices: finalIndices }),
+      });
 
-    let finalIndices: number[] | null = null;
+      if (!res.ok) {
+        setError("Failed to generate");
+        return;
+      }
 
-    if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
-      const projectCount = profile?.projects?.length || 0;
-      finalIndices = [
-        ...manualSelection.projects.map((idx) => idx),
-        ...manualSelection.experiences.map((idx) => idx + projectCount),
-      ];
-    } else if (shouldSelect && indices && indices.length > 0) {
-      finalIndices = indices;
-    }
-
-    const res = await fetch(buildApiUrl("/api/generate/cover-letter"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ company, jobDescription, indices: finalIndices }),
-    });
-
-    if (!res.ok) {
+      const data = await res.json();
+      setResult(data.coverLetter);
+    } catch {
       setError("Failed to generate");
+    } finally {
       setLoading(false);
-      return;
     }
+  }
 
-    const data = await res.json();
-    setResult(data.coverLetter);
-    setLoading(false);
+  async function answerEmployerQuestion() {
+    if (!employerQuestion.trim()) return;
+
+    setQuestionLoading(true);
+    setEmployerQuestionResult("");
+    setQuestionError(null);
+    try {
+      const finalIndices = getFinalIndices();
+      const res = await fetch(buildApiUrl("/api/generate/employer-question"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company,
+          jobDescription,
+          question: employerQuestion,
+          idealWordCount,
+          answerStyle,
+          indices: finalIndices,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setQuestionError(data.error || "Failed to answer employer question");
+        return;
+      }
+
+      const data = await res.json();
+      setEmployerQuestionResult(data.answer);
+    } catch {
+      setQuestionError("Failed to answer employer question");
+    } finally {
+      setQuestionLoading(false);
+    }
   }
 
   async function exportPdf() {
@@ -156,11 +266,89 @@ export default function GeneratePage() {
   }, []);
 
   useEffect(() => {
-    if (shouldSelect && jobDescription.trim()) {
+    const draft = loadSavedDraft();
+    if (!draft) {
+      setDraftHydrated(true);
+      return;
+    }
+
+    setCompany(draft.company);
+    setJobDescription(draft.jobDescription);
+    setEmployerQuestion(draft.employerQuestion);
+    setIdealWordCount(draft.idealWordCount);
+    setAnswerStyle(draft.answerStyle);
+    setShouldSelect(draft.shouldSelect);
+    setIndices(draft.indices);
+    setRankings(draft.rankings);
+    setResult(draft.result);
+    setEmployerQuestionResult(draft.employerQuestionResult);
+    setManualSelection(draft.manualSelection);
+    setEnableManualSelection(draft.enableManualSelection);
+    setShowManualEvidence(draft.showManualEvidence);
+    previousDraftRef.current = {
+      jobDescription: draft.jobDescription,
+      shouldSelect: draft.shouldSelect,
+    };
+    setDraftHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    const previous = previousDraftRef.current;
+    const jobChanged = jobDescription !== previous.jobDescription;
+    const selectionEnabled = shouldSelect && !previous.shouldSelect;
+
+    if ((jobChanged || selectionEnabled) && shouldSelect && jobDescription.trim()) {
       setIndices(null);
       setRankings([]);
     }
+
+    previousDraftRef.current = {
+      jobDescription,
+      shouldSelect,
+    };
   }, [jobDescription, shouldSelect]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+
+    try {
+      window.localStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          company,
+          jobDescription,
+          employerQuestion,
+          idealWordCount,
+          answerStyle,
+          shouldSelect,
+          indices,
+          rankings,
+          result,
+          employerQuestionResult,
+          manualSelection,
+          enableManualSelection,
+          showManualEvidence,
+        } satisfies SavedDraft),
+      );
+    } catch {
+      // Ignore storage failures so the page still works in restricted browser contexts.
+    }
+  }, [
+    company,
+    jobDescription,
+    employerQuestion,
+    idealWordCount,
+    answerStyle,
+    shouldSelect,
+    indices,
+    rankings,
+    result,
+    employerQuestionResult,
+    manualSelection,
+    enableManualSelection,
+    showManualEvidence,
+    draftHydrated,
+  ]);
 
   const evidenceCount = useMemo(() => {
     if (enableManualSelection) {
@@ -467,6 +655,95 @@ export default function GeneratePage() {
                       <p className="text-foreground font-medium">Your cover letter draft will appear here.</p>
                       <p className="text-muted-foreground text-sm leading-7">
                         Add the role context, pick evidence, and generate when ready.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </GlassPanel>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <GlassPanel className="p-6">
+              <SectionHeading
+                eyebrow="Answer Employer Question"
+                title="Turn a prompt into a tailored response"
+                description="Use the same evidence selection as the cover letter, then add the employer's question, a target length, and a preferred answer style."
+              />
+
+              <div className="mt-6 space-y-4">
+                <label className="space-y-2">
+                  <span className="text-foreground text-sm font-medium">Employer question</span>
+                  <textarea
+                    className="input-premium min-h-32 resize-y"
+                    placeholder="Paste the employer's question here."
+                    value={employerQuestion}
+                    onChange={(event) => setEmployerQuestion(event.target.value)}
+                  />
+                </label>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-foreground text-sm font-medium">Ideal Word Count (optional)</span>
+                    <input
+                      className="input-premium"
+                      placeholder="e.g. 120"
+                      value={idealWordCount}
+                      onChange={(event) => setIdealWordCount(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-foreground text-sm font-medium">Answer Style (optional)</span>
+                    <input
+                      className="input-premium"
+                      placeholder="e.g. concise, direct, confident"
+                      value={answerStyle}
+                      onChange={(event) => setAnswerStyle(event.target.value)}
+                    />
+                  </label>
+                </div>
+
+                {questionError ? (
+                  <div className="border-destructive/40 rounded-2xl bg-destructive/5 p-3">
+                    <p className="text-sm text-rose-700 dark:text-rose-200">{questionError}</p>
+                  </div>
+                ) : null}
+
+                <button
+                  onClick={answerEmployerQuestion}
+                  disabled={questionLoading || !employerQuestion.trim()}
+                  className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {questionLoading ? "Answering employer question..." : "Generate Employer Answer"}
+                </button>
+
+                <div className="result-well rounded-[1.4rem] p-4">
+                  {employerQuestionResult ? (
+                    <div className="space-y-4">
+                      <div className="text-foreground max-h-[22rem] overflow-auto whitespace-pre-wrap text-sm leading-8">
+                        {employerQuestionResult}
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(employerQuestionResult)}
+                          className="button-secondary flex-1"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          onClick={() => setEmployerQuestionResult("")}
+                          className="button-secondary flex-1"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 py-10 text-center">
+                      <p className="text-foreground font-medium">Your employer-question answer will appear here.</p>
+                      <p className="text-muted-foreground text-sm leading-7">
+                        Add the question, choose an optional style, and generate when ready.
                       </p>
                     </div>
                   )}

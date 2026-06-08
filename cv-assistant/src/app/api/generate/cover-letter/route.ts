@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   async function tryGenerate(modelName: ModelName) {
     const model = getModel(modelName);
     const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-    return res.response.text().trim();
+    return res.response.text().trim().replace(/[—–]/g, ',');
   }
 
   try {

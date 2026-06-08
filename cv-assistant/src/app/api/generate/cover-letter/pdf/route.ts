@@ -39,6 +39,53 @@ function looksLikeRecipientLine(value: string, company: string) {
   return /^(hiring manager|hiring team|dear hiring manager|dear recruiter|recruitment team)$/i.test(trimmed);
 }
 
+function splitClosingLine(value: string) {
+  const match = value
+    .trim()
+    .match(/^(kind regards|best regards|warm regards|regards|sincerely|yours sincerely|yours faithfully),?\s*(.*)$/i);
+  if (!match) return null;
+
+  const closing = `${match[1]},`;
+  const signature = match[2]?.trim();
+  return signature ? [closing, signature] : [closing];
+}
+
+function normalizeLetterBlocks(blocks: string[][]) {
+  const normalizedBlocks: string[] = [];
+
+  for (const block of blocks) {
+    let currentParagraph: string[] = [];
+    let closingLines: string[] = [];
+
+    for (const line of block) {
+      const closingLine = splitClosingLine(line);
+      if (closingLine) {
+        if (currentParagraph.length) {
+          normalizedBlocks.push(currentParagraph.join(' ').trim());
+          currentParagraph = [];
+        }
+        closingLines = closingLine;
+        continue;
+      }
+
+      if (closingLines.length) {
+        closingLines.push(line);
+      } else {
+        currentParagraph.push(line);
+      }
+    }
+
+    if (currentParagraph.length) {
+      normalizedBlocks.push(currentParagraph.join(' ').trim());
+    }
+    if (closingLines.length) {
+      normalizedBlocks.push(closingLines.join('\n').trim());
+    }
+  }
+
+  return normalizedBlocks.filter(Boolean);
+}
+
 // Motivation vs Logic:
 // Motivation: The generated cover letter can already include a plain-text header, but the PDF export now owns a
 // formal "Modern Executive" presentation and should not duplicate contact/date blocks when styling the document.
@@ -90,10 +137,7 @@ function extractLetterParagraphs(args: {
     startIndex += 1;
   }
 
-  return rawBlocks
-    .slice(startIndex)
-    .map((block) => block.join(' ').trim())
-    .filter(Boolean);
+  return normalizeLetterBlocks(rawBlocks.slice(startIndex));
 }
 
 function toFilenameFragment(value: string) {

@@ -28,6 +28,16 @@ function trimUrlProtocol(value: string) {
     .trim();
 }
 
+function formatEvidencePromptBlock(items: CoverLetterItem[]) {
+  return items
+    .map(
+      (item, index) => `${index + 1}. ${item.title}
+Type: ${item.type}
+Relevant evidence: ${item.summary || item.description || 'No additional detail provided'}`,
+    )
+    .join('\n\n');
+}
+
 // Motivation vs Logic:
 // Motivation: The cover-letter flow now ranks evidence, drafts the letter, and exports it as PDF, so drift
 // between route-specific profile transforms would quickly create mismatched titles, ordering, and contact info.
@@ -149,18 +159,75 @@ Job Description:
 ${jobDescription}
 
 Prioritized Candidate Experiences:
-${prioritizedItems
-  .map(
-    (item, index) => `${index + 1}. ${item.title}
-Type: ${item.type}
-Relevant Evidence: ${item.summary || item.description || 'No additional detail provided'}`,
-  )
-  .join('\n\n')}
+${formatEvidencePromptBlock(prioritizedItems)}
 
 Instructions:
-- Structure the letter with a formal header, a compelling hook, two body paragraphs illustrating specific achievements that solve the employer's needs, and a strong call to action.
-- Use professional, persuasive, and direct language.
-- Ground the body paragraphs in the prioritized experiences and projects instead of generic claims.
+- Write as if the applicant is trying to maximize interview likelihood with precise, tailored, and credible language.
+- Use a formal header, a compelling opening, two body paragraphs with specific proof, and a confident closing.
+- Ground the letter in the prioritized experiences and projects instead of generic claims.
+- Prefer measurable impact, role alignment, and employer-specific language over broad enthusiasm.
+- Keep the tone polished, human, and direct.
+- Do not invent facts, companies, titles, tools, or metrics that are not supported by the provided evidence.
+- Keep the letter concise and readable, ideally 3 to 4 short paragraphs.
+- Do not use an em dash or en dash. Use commas, semicolons, colons, or parentheses instead.
 - Output only the final cover letter text.
 - Do not include any conversational filler, introductory remarks, placeholders, markdown, or meta-commentary.`;
+}
+
+export function buildEmployerQuestionPrompt(args: {
+  candidateName?: string;
+  company: string;
+  jobDescription: string;
+  question: string;
+  idealWordCount?: string;
+  answerStyle?: string;
+  prioritizedItems: CoverLetterItem[];
+}) {
+  const { candidateName, company, jobDescription, question, idealWordCount, answerStyle, prioritizedItems } = args;
+  const styleHint = cleanText(answerStyle);
+  const wordCountHint = cleanText(idealWordCount);
+
+  return `Write a strong answer to an employer question that maximizes the candidate's chance of progressing in the hiring process.
+
+Candidate Name:
+${candidateName || 'Candidate'}
+
+Target Company:
+${company || 'Not provided'}
+
+Job Description:
+${jobDescription || 'Not provided'}
+
+Employer Question:
+${question}
+
+Ideal Word Count:
+${wordCountHint || 'Not provided'}
+
+Answer Style:
+${styleHint || 'Not provided'}
+
+Prioritized Candidate Evidence:
+${formatEvidencePromptBlock(prioritizedItems)}
+
+Instructions:
+- Answer the employer's question directly and specifically. Do not drift into generic self-promotion.
+- Make the answer sound credible, thoughtful, and tailored to the company and role.
+- Use only the supplied evidence and profile context. Do not invent facts, employers, tools, degrees, or numbers.
+- Prioritize relevance, measurable impact, and role fit. Lead with the strongest evidence first.
+- If an ideal word count is provided, keep the answer close to it. If not provided, keep the answer concise, usually 90 to 140 words unless a shorter factual response is better.
+- If an answer style is provided, follow it while keeping the language professional and tailored.
+- Use first person and write in a natural hiring-manager-friendly voice.
+- If the question asks for a brief fact, stay brief. If it asks for an example, use a tight situation-action-result structure in one or two short paragraphs.
+- Do not use bullet points, headings, markdown, or filler.
+- Do not use an em dash or en dash. Use commas, semicolons, colons, or parentheses instead.
+
+Examples:
+Question: Why are you interested in this role?
+Strong answer: I’m interested because the role combines rigorous problem solving with production-minded delivery, which matches the way I’ve built AI systems that improve reliability, grounding, and user trust.
+
+Question: Tell us about a time you improved reliability.
+Strong answer: At Harry the Hirer, I led a production-grade multi-agent RAG platform on Azure and focused on grounding, verification, and observability so outputs were not only useful but dependable in day-to-day use.
+
+Output only the final answer.`;
 }
