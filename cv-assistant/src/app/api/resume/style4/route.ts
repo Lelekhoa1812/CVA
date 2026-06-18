@@ -12,7 +12,7 @@ import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/re
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
-import { buildJustifiedTextLines, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, estimateBulletBlockHeight, estimateWrappedHeight, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -398,8 +398,7 @@ export async function POST(req: NextRequest) {
 
   // Helpers: wrap measurement & drawing
   function measureWrapped(text: string, size: number, maxWidth: number, font = helv) {
-    const lines = wrapTextLines(text, font, size, maxWidth);
-    return lines.length * (size + 4);
+    return estimateWrappedHeight(text, font, size, maxWidth, size + 4);
   }
   function drawWrappedAt(x: number, yRef: { v: number }, text: string, size: number, maxWidth: number, font = helv) {
     const lines = wrapTextLines(text, font, size, maxWidth);
@@ -409,16 +408,9 @@ export async function POST(req: NextRequest) {
     }
   }
   function measureBullets(text: string, size: number, maxWidth: number) {
-    text = stripMarkdownForPdf(text);
-    const lines = (text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
-    let h = 0;
     const bullet = '•';
     const bulletIndent = helv.widthOfTextAtSize(`${bullet}  `, size);
-    for (const ln of lines) {
-      const t = ln.replace(/^[•\-\u2013\u2014\*]\s*/, ''); // NOTE: added \*
-      h += measureWrapped(t, size, maxWidth - bulletIndent);
-    }
-    return h + lines.length * 2;
+    return estimateBulletBlockHeight(text, helv, size, maxWidth, size + 4, bulletIndent, 2);
   }
   function drawBulletsAt(x: number, yRef: { v: number }, text: string, size: number, maxWidth: number) {
     text = stripMarkdownForPdf(text);

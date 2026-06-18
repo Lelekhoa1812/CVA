@@ -15,7 +15,7 @@ import { formatResumeProfileParagraph, resolveResumeProfileText } from '@/lib/re
 import { formatResumeSkillsParagraph, resolveResumeSkillsText } from '@/lib/resume/skills';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { embedNotoSansFonts } from '@/app/api/resume/embed-noto-sans-fonts';
-import { buildJustifiedTextLines, packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
+import { buildJustifiedTextLines, estimateBulletBlockHeight, estimateWrappedHeight, packItemsIntoLines, splitResumeItems, stripMarkdownForPdf, wrapTextLines } from '@/app/api/resume/pdf-layout';
 
 export async function POST(req: NextRequest) {
   const auth = getAuthFromCookies(req);
@@ -188,8 +188,13 @@ export async function POST(req: NextRequest) {
   const right = width - margin;
   const top = height - margin;
   const bottom = margin;
-  const railWidth = 154;
-  const gutter = 22;
+  // Motivation vs Logic:
+  // Motivation: The previous ledger split squeezed dense copy into a narrow main column, which made long ATS phrases
+  // wrap too aggressively and visually spill against dividers on real resumes.
+  // Logic: Widen the editorial column, slightly relax the rail width, and let shared measurement helpers drive the
+  // block heights so each entry keeps breathable spacing without clipping.
+  const railWidth = 138;
+  const gutter = 18;
   const mainLeft = left;
   const mainRight = right - railWidth - gutter;
   const railLeft = mainRight + gutter;
@@ -347,31 +352,38 @@ export async function POST(req: NextRequest) {
     if (yMain - required < bottom) newPage();
   }
 
+  function ensureRailSpace(required: number) {
+    if (yRail - required < bottom) {
+      newPage();
+    }
+  }
+
   function drawRailPanel(title: string, lines: string[]) {
     if (!lines.length) return;
     const titleSize = Math.max(fontSize - 1, 9);
     const bodySize = Math.max(fontSize - 2, 8);
     const lineHeight = bodySize + 4;
-    const wrappedLines = lines.flatMap((line) => wrapTextLines(line, helv, bodySize, railWidthInner - 20));
+    const wrappedLines = lines.flatMap((line) => wrapTextLines(line, helv, bodySize, railWidthInner - 28));
     const panelHeight = 18 + titleSize + wrappedLines.length * lineHeight + 18;
+    ensureRailSpace(panelHeight + 8);
     const panelTop = yRail;
     const panelBottom = panelTop - panelHeight;
 
     page.drawRectangle({
-      x: railLeft + 8,
+      x: railLeft + 10,
       y: panelBottom,
-      width: railWidthInner - 16,
+      width: railWidthInner - 20,
       height: panelHeight,
       color: rgb(1, 1, 1),
       borderColor: rule,
       borderWidth: 0.8
     });
-    page.drawRectangle({ x: railLeft + 8, y: panelTop - 4, width: railWidthInner - 16, height: 4, color: accent });
-    page.drawText(title.toUpperCase(), { x: railLeft + 18, y: panelTop - 18, size: titleSize, font: helvBold, color: accentDark });
+    page.drawRectangle({ x: railLeft + 10, y: panelTop - 4, width: railWidthInner - 20, height: 4, color: accent });
+    page.drawText(title.toUpperCase(), { x: railLeft + 20, y: panelTop - 18, size: titleSize, font: helvBold, color: accentDark });
 
     let lineY = panelTop - 34;
     for (const line of wrappedLines) {
-      page.drawText(line, { x: railLeft + 18, y: lineY, size: bodySize, font: helv, color: ink });
+      page.drawText(line, { x: railLeft + 20, y: lineY, size: bodySize, font: helv, color: ink });
       lineY -= lineHeight;
     }
 
@@ -414,15 +426,16 @@ export async function POST(req: NextRequest) {
 
     if (!bulletMode) {
       const lines = wrapTextLines(stripMarkdownForPdf(text), helv, bodySize, bodyWidth);
-      return { bodySize, height: lines.length * (bodySize + lineGap), lines, bullets: [] as string[][] };
+      const height = estimateWrappedHeight(stripMarkdownForPdf(text), helv, bodySize, bodyWidth, bodySize + lineGap);
+      return { bodySize, height, lines, bullets: [] as string[][] };
     }
 
     const bulletLines = stripMarkdownForPdf(text)
       .split(/\n+/)
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => wrapTextLines(line.replace(/^[•\-\u2013\u2014\*]\s*/, ''), helv, bodySize, bodyWidth - 12));
-    const height = bulletLines.reduce((total, lines) => total + lines.length * (bodySize + lineGap) + 2, 0);
+      .map((line) => wrapTextLines(line.replace(/^[•\-\u2013\u2014\*]\s*/, ''), helv, bodySize, bodyWidth - 14));
+    const height = estimateBulletBlockHeight(text, helv, bodySize, bodyWidth, bodySize + lineGap, 14, 2);
     return { bodySize, height, lines: [] as string[], bullets: bulletLines };
   }
 
@@ -478,16 +491,33 @@ export async function POST(req: NextRequest) {
 
   function drawLedgerEntry(badgeText: string, title: string, body: string, bulletMode: boolean, accentTitle = false) {
     const titleSize = Math.max(fontSize + 1, 12);
+    const titleLineHeight = titleSize + 3;
     const titleLines = wrapTextLines(title || 'Selected item', helvBold, titleSize, bodyWidth);
     const badge = measureBadge(badgeText);
     const measuredBody = getBodyMeasure(body, bulletMode);
-    const textHeight = titleLines.length * (titleSize + 3) + (measuredBody.height ? 6 + measuredBody.height : 0);
-    const entryHeight = Math.max(badge.height, textHeight) + 14;
+    const textHeight = titleLines.length * titleLineHeight + (measuredBody.height ? 8 + measuredBody.height : 0);
+    const cardPadding = 14;
+    const entryHeight = Math.max(badge.height, textHeight) + cardPadding * 2;
 
+    // Root Cause vs Logic:
+    // Root Cause: Ledger entries measured one width for wrapping but drew with tighter indents and minimal padding,
+    // so dense titles and bullet blocks could visually collide with the divider or the bottom rule.
+    // Logic: Treat each entry as a padded card, reuse the measured line heights, and align the draw positions to the
+    // same geometry so pagination and rendering stay in sync.
     ensureMainSpace(entryHeight + 6);
 
     const topY = yMain;
-    const badgeBottom = topY - badge.height;
+    const cardBottom = topY - entryHeight;
+    const badgeBottom = topY - cardPadding - badge.height;
+    page.drawRectangle({
+      x: bodyX - 18,
+      y: cardBottom,
+      width: mainRight - (bodyX - 18),
+      height: entryHeight,
+      color: rgb(1, 1, 1),
+      borderColor: rule,
+      borderWidth: 0.8
+    });
     page.drawRectangle({
       x: mainLeft,
       y: badgeBottom,
@@ -498,7 +528,7 @@ export async function POST(req: NextRequest) {
       borderWidth: 0.8
     });
 
-    let badgeY = topY - 14;
+    let badgeY = topY - cardPadding - 14;
     for (const line of badge.lines) {
       const lineWidth = helvBold.widthOfTextAtSize(line, badge.size);
       page.drawText(line, {
@@ -512,13 +542,13 @@ export async function POST(req: NextRequest) {
     }
 
     page.drawLine({
-      start: { x: bodyX - 8, y: topY },
-      end: { x: bodyX - 8, y: topY - entryHeight + 10 },
+      start: { x: bodyX - 10, y: topY - cardPadding + 2 },
+      end: { x: bodyX - 10, y: cardBottom + cardPadding - 2 },
       thickness: 1,
       color: rule
     });
 
-    let textY = topY - 2;
+    let textY = topY - cardPadding;
     for (const line of titleLines) {
       page.drawText(line, {
         x: bodyX,
@@ -527,11 +557,11 @@ export async function POST(req: NextRequest) {
         font: helvBold,
         color: accentTitle ? accentDark : ink
       });
-      textY -= titleSize + 3;
+      textY -= titleLineHeight;
     }
 
     if (measuredBody.height) {
-      textY -= 3;
+      textY -= 5;
       if (bulletMode) {
         const bulletSize = measuredBody.bodySize;
         for (const bulletLines of measuredBody.bullets) {
@@ -539,7 +569,7 @@ export async function POST(req: NextRequest) {
           page.drawText('•', { x: bodyX, y: textY, size: bulletSize, font: helvBold, color: accent });
           let bulletY = textY;
           for (const line of bulletLines) {
-            page.drawText(line, { x: bodyX + 12, y: bulletY, size: bulletSize, font: helv, color: ink });
+            page.drawText(line, { x: bodyX + 14, y: bulletY, size: bulletSize, font: helv, color: ink });
             bulletY -= bulletSize + 4;
           }
           textY = bulletY - 2;
@@ -552,9 +582,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    yMain = topY - entryHeight;
-    page.drawLine({ start: { x: mainLeft, y: yMain + 4 }, end: { x: mainRight, y: yMain + 4 }, thickness: 0.6, color: rule });
-    yMain -= 10;
+    yMain = cardBottom - 10;
   }
 
   if (Array.isArray(profile.experiences) && selectedExperiences.length) {

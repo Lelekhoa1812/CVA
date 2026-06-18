@@ -148,3 +148,34 @@ export function buildJustifiedTextLines(
 export function measureLineBlock(lines: string[], lineHeight: number): number {
   return lines.length * lineHeight;
 }
+
+export function estimateWrappedHeight(
+  text: string,
+  font: MeasuredFont,
+  size: number,
+  maxWidth: number,
+  lineHeight: number
+): number {
+  return wrapTextLines(text, font, size, maxWidth).length * lineHeight;
+}
+
+export function estimateBulletBlockHeight(
+  text: string,
+  font: MeasuredFont,
+  size: number,
+  maxWidth: number,
+  lineHeight: number,
+  bulletIndent: number,
+  itemGap = 2
+): number {
+  const bullets = stripMarkdownForPdf(text)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return bullets.reduce((total, bullet) => {
+    const content = bullet.replace(/^[•\-\u2013\u2014\*]\s*/, '');
+    const wrappedHeight = wrapTextLines(content, font, size, Math.max(maxWidth - bulletIndent, 40)).length * lineHeight;
+    return total + wrappedHeight + itemGap;
+  }, 0);
+}
