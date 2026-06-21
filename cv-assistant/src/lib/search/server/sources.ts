@@ -10,6 +10,7 @@ import { discoverFallbackUrls } from "@/lib/search/server/fallback";
 import {
   absoluteUrl,
   buildDedupeKey,
+  buildDuplicateGroupKey,
   buildResultId,
   canonicalizeUrl,
   chooseApplicationUrl,
@@ -80,8 +81,10 @@ async function fetchHtml(url: string, signal?: AbortSignal): Promise<{ status: n
 }
 
 // Root Cause vs Logic:
-// Root Cause: Some job boards briefly return block pages (e.g., HTTP 429) even though a retry succeeds.
-// Logic: Retry once immediately and only treat the source as blocked if the follow-up attempt is still blocked.
+// Root Cause: Some job boards briefly return bot-defense responses (for example 403/429 pages) even though the same
+// request succeeds moments later, so a single retry still leaks false-positive source blocks into the stream.
+// Logic: Allow up to five bounded retries after the first blocked response and add a short backoff so transient board
+// protection has time to clear before we permanently mark the fetch as blocked.
 async function fetchHtmlWithBlockedRetry(
   source: SearchSource,
   url: string,
@@ -90,7 +93,7 @@ async function fetchHtmlWithBlockedRetry(
   response: { status: number; body: string };
   blocked: ReturnType<typeof detectBlockedPage>;
 }> {
-  const maxRetries = 1;
+  const maxRetries = 5;
   let attempts = 0;
 
   while (true) {
@@ -99,7 +102,27 @@ async function fetchHtmlWithBlockedRetry(
     if (!blocked.blocked || attempts >= maxRetries) {
       return { response, blocked };
     }
+
     attempts += 1;
+    const backoffMs = Math.min(1500, 250 * attempts);
+    await new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason instanceof Error ? signal.reason : new Error("Search aborted."));
+        return;
+      }
+
+      const onAbort = () => {
+        clearTimeout(timeout);
+        reject(signal?.reason instanceof Error ? signal.reason : new Error("Search aborted."));
+      };
+
+      const timeout = setTimeout(() => {
+        signal?.removeEventListener?.("abort", onAbort);
+        resolve();
+      }, backoffMs);
+
+      signal?.addEventListener?.("abort", onAbort, { once: true });
+    });
   }
 }
 
@@ -526,11 +549,20 @@ function parseGenericDetailPage(
   };
 }
 
-function buildResult(partial: Omit<JobSearchResult, "id" | "dedupeKey">): JobSearchResult {
-  const dedupeKey = buildDedupeKey({ ...partial, id: "", dedupeKey: "" });
+function buildResult(
+  partial: Omit<JobSearchResult, "id" | "dedupeKey" | "duplicateGroupKey">,
+): JobSearchResult {
+  const duplicateGroupKey = buildDuplicateGroupKey(partial);
+  const dedupeKey = buildDedupeKey({
+    ...partial,
+    id: "",
+    dedupeKey: "",
+    duplicateGroupKey,
+  });
   return {
     ...partial,
     dedupeKey,
+    duplicateGroupKey,
     id: buildResultId(dedupeKey),
   };
 }
@@ -620,12 +652,11 @@ export async function* crawlLinkedIn({
         listingUrl: card.listingUrl,
         applicationUrl: applyTarget.applicationUrl,
         applicationUrlType: detail?.applicationUrlType || applyTarget.applicationUrlType,
-        searchQueryMatch: computeSearchQueryMatch(request.jobTitle, [
-          card.title,
-          card.company,
-          detail?.snippet || "",
-          card.location,
-        ]),
+        searchQueryMatch: computeSearchQueryMatch(
+          request.jobTitle,
+          [card.title, card.company, detail?.snippet || "", card.location],
+          request,
+        ),
       });
 
       resultsFound += 1;
@@ -721,11 +752,11 @@ async function crawlLandingPage(
       listingUrl: link.listingUrl,
       applicationUrl: applyTarget.applicationUrl,
       applicationUrlType: detail?.applicationUrlType || applyTarget.applicationUrlType,
-      searchQueryMatch: computeSearchQueryMatch(request.jobTitle, [
-        link.title,
-        detail?.company || link.companyHint || "",
-        link.context,
-      ]),
+      searchQueryMatch: computeSearchQueryMatch(
+        request.jobTitle,
+        [link.title, detail?.company || link.companyHint || "", link.context],
+        request,
+      ),
     });
 
     resultsFound += 1;

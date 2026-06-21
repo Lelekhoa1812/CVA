@@ -32,12 +32,57 @@ export type SearchFilters = {
   employmentType: EmploymentType;
 };
 
+export type SearchInstructionExpansion = {
+  normalizedInstruction: string;
+  suggestedJobTitle?: string;
+  suggestedLocation?: string;
+  suggestedSources?: SearchSource[];
+  suggestedFilters?: Partial<SearchFilters>;
+  preferredKeywords: string[];
+  optionalKeywords: string[];
+  summary: string;
+};
+
+export type SearchInstructionContext = {
+  targetRoles: string[];
+  preferredLocations: string[];
+  preferredSources: SearchSource[];
+  remoteOnly: boolean;
+  techStackPreferences: string[];
+  cultureSignals: string[];
+};
+
+export type AdvancedSearchQuestionPlan = {
+  summary: string;
+  questions: AdvancedSearchQuestion[];
+};
+
+export type AdvancedSearchAnswer = {
+  questionId: string;
+  answer: string;
+};
+
+export type AdvancedSearchQuestion = {
+  id: string;
+  prompt: string;
+  helperText?: string;
+};
+
+export type AdvancedSearchSession = {
+  summary: string;
+  questionsAsked: AdvancedSearchQuestion[];
+  answers: AdvancedSearchAnswer[];
+};
+
 export type SearchRequest = {
   jobTitle: string;
   location: string;
   filters: SearchFilters;
   maxResultsPerSource: MaxResultsPerSource;
   selectedSources: SearchSource[];
+  searchInstruction?: string;
+  instructionExpansion?: SearchInstructionExpansion | null;
+  advancedSearchSession?: AdvancedSearchSession | null;
 };
 
 export type ApplicationUrlType = "external" | "board-detail" | "listing";
@@ -57,6 +102,7 @@ export type JobSearchResult = {
   applicationUrlType: ApplicationUrlType;
   searchQueryMatch: SearchQueryMatch;
   dedupeKey: string;
+  duplicateGroupKey: string;
 };
 
 export type SourceProgressEvent = {

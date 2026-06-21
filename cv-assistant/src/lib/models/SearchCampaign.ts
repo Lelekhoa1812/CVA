@@ -7,6 +7,9 @@ const SearchCampaignQuerySchema = new Schema(
     filters: { type: Schema.Types.Mixed, default: {} },
     maxResultsPerSource: { type: Number, default: 50 },
     selectedSources: { type: [String], default: [] },
+    searchInstruction: { type: String, default: "" },
+    instructionExpansion: { type: Schema.Types.Mixed, default: null },
+    advancedSearchSession: { type: Schema.Types.Mixed, default: null },
   },
   { _id: false },
 );

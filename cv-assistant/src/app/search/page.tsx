@@ -80,6 +80,77 @@ type ResultFilters = {
   employmentType: EmploymentType;
 };
 
+type AdvancedSearchQuestionDraft = {
+  id: string;
+  prompt: string;
+  helperText?: string;
+};
+
+function normalizeText(value: string | null | undefined) {
+  if (!value) return "";
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function buildQuestionId(index: number) {
+  return `question-${index + 1}`;
+}
+
+function buildQuestionHelper(question: string) {
+  const lowered = normalizeText(question).toLowerCase();
+  if (lowered.includes("location")) return "Mention places you want to prioritize or avoid.";
+  if (lowered.includes("remote") || lowered.includes("hybrid") || lowered.includes("onsite")) {
+    return "Describe the work setup that would make you say yes quickly.";
+  }
+  if (lowered.includes("stack") || lowered.includes("technology") || lowered.includes("tool")) {
+    return "List the technologies or problem spaces you want to stay close to.";
+  }
+  return "Keep the answer brief and concrete so the search brief can stay specific.";
+}
+
+async function readJsonResponse(response: Response) {
+  return response.json().catch(() => ({}));
+}
+
+function buildAdvancedSearchSession(
+  questions: AdvancedSearchQuestionDraft[],
+  answers: Record<string, string>,
+  summary: string,
+): SearchRequest["advancedSearchSession"] {
+  const answered = questions
+    .map((question) => ({
+      questionId: question.id,
+      answer: normalizeText(answers[question.id]),
+      prompt: question.prompt,
+      helperText: question.helperText,
+    }))
+    .filter((entry) => entry.answer.length > 0);
+
+  if (!summary && answered.length === 0) {
+    return null;
+  }
+
+  return {
+    summary,
+    questionsAsked: questions.map(({ id, prompt, helperText }) => ({ id, prompt, helperText })),
+    answers: answered.map(({ questionId, answer }) => ({ questionId, answer })),
+  };
+}
+
+function formatInstructionExpansionSummary(request: SearchRequest) {
+  const summaryParts = [request.instructionExpansion?.summary, request.advancedSearchSession?.summary]
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+  return summaryParts.join(" ");
+}
+
+function getDuplicateGroupCount(results: JobSearchResult[], duplicateGroupKey: string) {
+  return results.filter((result) => result.duplicateGroupKey === duplicateGroupKey).length;
+}
+
+function formatDuplicateLabel(count: number) {
+  return count > 1 ? `${count} linked duplicates` : "Unique card";
+}
+
 function formatElapsed(elapsedMs: number) {
   if (elapsedMs < 1000) return `${elapsedMs} ms`;
   return `${(elapsedMs / 1000).toFixed(1)} s`;
@@ -109,6 +180,16 @@ export default function SearchPage() {
     workplaceMode: "any",
     employmentType: "any",
   });
+  const [archivedDuplicateGroups, setArchivedDuplicateGroups] = useState<string[]>([]);
+  const [advancedQuestions, setAdvancedQuestions] = useState<AdvancedSearchQuestionDraft[]>([]);
+  const [advancedAnswers, setAdvancedAnswers] = useState<Record<string, string>>({});
+  const [advancedSummary, setAdvancedSummary] = useState("");
+  const [isPreparingAdvancedSearch, setIsPreparingAdvancedSearch] = useState(false);
+  const [advancedSearchError, setAdvancedSearchError] = useState<string | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<AdvancedSearchQuestionDraft | null>(null);
+  const [currentAnswer, setCurrentAnswer] = useState("");
+  const [isAdvancedSearchComplete, setIsAdvancedSearchComplete] = useState(false);
+  const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -180,6 +261,7 @@ export default function SearchPage() {
     setError(null);
     setResults([]);
     setSummary(null);
+    setArchivedDuplicateGroups([]);
     setSourceProgress(createInitialSourceProgress());
     setStatusMessage("Preparing the hybrid crawl.");
     setRunSources(form.selectedSources);
@@ -190,10 +272,15 @@ export default function SearchPage() {
       // fallbacks, and detail pages that can take noticeably longer than a normal form submit.
       // Logic: Stream NDJSON from the backend and fold each event into local UI state so the user sees per-source
       // progress, partial results, and cancellation feedback without waiting for the full crawl to complete.
+      const requestPayload: SearchRequest = {
+        ...form,
+        searchInstruction: normalizeText(form.searchInstruction),
+        advancedSearchSession: activeAdvancedSearchSession,
+      };
       const response = await fetch(buildApiUrl("/api/search/jobs/stream"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
 
@@ -274,8 +361,140 @@ export default function SearchPage() {
     setError(null);
     setResults([]);
     setSummary(null);
+    setArchivedDuplicateGroups([]);
+    setAdvancedQuestions([]);
+    setAdvancedAnswers({});
+    setAdvancedSummary("");
+    setAdvancedSearchError(null);
+    setCurrentQuestion(null);
+    setCurrentAnswer("");
+    setIsAdvancedSearchComplete(false);
+    setForm(defaultSearchRequest);
     setSourceProgress(createInitialSourceProgress());
     setStatusMessage("Ready to scan public job sources.");
+  }
+
+  async function prepareAdvancedSearch() {
+    if (!form.jobTitle.trim()) {
+      setAdvancedSearchError("Please fill in your job title and location first.");
+      return;
+    }
+
+    setIsPreparingAdvancedSearch(true);
+    setError(null);
+    setAdvancedSearchError(null);
+    setAdvancedQuestions([]);
+    setAdvancedAnswers({});
+    setCurrentAnswer("");
+    setIsAdvancedSearchComplete(false);
+
+    try {
+      const response = await fetch(buildApiUrl("/api/search/advanced-sequential"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobTitle: form.jobTitle,
+          location: form.location,
+          selectedSources: form.selectedSources,
+          filters: form.filters,
+          searchInstruction: form.searchInstruction || "",
+          previousQuestions: [],
+          previousAnswers: [],
+        }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to prepare advanced search.");
+      }
+
+      if (data.isComplete) {
+        setIsAdvancedSearchComplete(true);
+        setCurrentQuestion(null);
+        setAdvancedSummary(typeof data.summary === "string" ? data.summary : "");
+        setStatusMessage("Advanced Search completed. Ready to start the crawl.");
+      } else if (data.question) {
+        const question = {
+          id: data.question.id || buildQuestionId(0),
+          prompt: data.question.prompt,
+          helperText: data.question.helperText || buildQuestionHelper(data.question.prompt),
+        };
+        setCurrentQuestion(question);
+        setStatusMessage("Answer the question to help refine your search.");
+      } else {
+        throw new Error("No question received from server.");
+      }
+    } catch (advancedError) {
+      setError(advancedError instanceof Error ? advancedError.message : "Failed to prepare advanced search.");
+    } finally {
+      setIsPreparingAdvancedSearch(false);
+    }
+  }
+
+  async function submitCurrentAnswer() {
+    if (!currentQuestion || !currentAnswer.trim()) {
+      return;
+    }
+
+    setIsLoadingNextQuestion(true);
+    setError(null);
+
+    try {
+      const updatedQuestions = [...advancedQuestions, currentQuestion];
+      const updatedAnswers = { ...advancedAnswers, [currentQuestion.id]: currentAnswer };
+
+      const response = await fetch(buildApiUrl("/api/search/advanced-sequential"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobTitle: form.jobTitle,
+          location: form.location,
+          selectedSources: form.selectedSources,
+          filters: form.filters,
+          searchInstruction: form.searchInstruction || "",
+          previousQuestions: updatedQuestions.map(({ id, prompt, helperText }) => ({ id, prompt, helperText })),
+          previousAnswers: Object.entries(updatedAnswers).map(([questionId, answer]) => ({ questionId, answer })),
+        }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get next question.");
+      }
+
+      setAdvancedQuestions(updatedQuestions);
+      setAdvancedAnswers(updatedAnswers);
+      setCurrentAnswer("");
+
+      if (data.isComplete) {
+        setIsAdvancedSearchComplete(true);
+        setCurrentQuestion(null);
+        setAdvancedSummary(typeof data.summary === "string" ? data.summary : "");
+        setStatusMessage("Advanced Search completed. Ready to start the crawl.");
+      } else if (data.question) {
+        const question = {
+          id: data.question.id || buildQuestionId(updatedQuestions.length),
+          prompt: data.question.prompt,
+          helperText: data.question.helperText || buildQuestionHelper(data.question.prompt),
+        };
+        setCurrentQuestion(question);
+        setStatusMessage("Answer the next question to continue refining your search.");
+      } else {
+        setIsAdvancedSearchComplete(true);
+        setCurrentQuestion(null);
+        setStatusMessage("Advanced Search completed. Ready to start the crawl.");
+      }
+    } catch (nextQuestionError) {
+      setError(nextQuestionError instanceof Error ? nextQuestionError.message : "Failed to get next question.");
+    } finally {
+      setIsLoadingNextQuestion(false);
+    }
+  }
+
+  function toggleDuplicateArchive(duplicateGroupKey: string) {
+    setArchivedDuplicateGroups((current) =>
+      current.includes(duplicateGroupKey)
+        ? current.filter((item) => item !== duplicateGroupKey)
+        : [...current, duplicateGroupKey],
+    );
   }
 
   // Motivation vs Logic:
@@ -291,6 +510,11 @@ export default function SearchPage() {
         : form.selectedSources
       : SEARCH_SOURCES;
   const blockedCount = visibleSources.filter((source) => sourceProgress[source].status === "blocked").length;
+  const activeAdvancedSearchSession = buildAdvancedSearchSession(
+    advancedQuestions,
+    advancedAnswers,
+    normalizeText(advancedSummary),
+  );
   const searchFilters: SearchFilters = {
     postedWithin: resultFilters.postedWithin,
     workplaceMode: resultFilters.workplaceMode,
@@ -300,6 +524,9 @@ export default function SearchPage() {
   // Motivation: Result cards should be fine-grained so readers can dial in a subset of matches without re-running the crawl.
   // Logic: Track dedicated UI filters and reuse the server heuristics to drop cards before we render them.
   const filteredResults = results.filter((result) => {
+    if (archivedDuplicateGroups.includes(result.duplicateGroupKey)) {
+      return false;
+    }
     if (resultFilters.match !== "any" && result.searchQueryMatch !== resultFilters.match) {
       return false;
     }
@@ -311,6 +538,7 @@ export default function SearchPage() {
     }
     return true;
   });
+  const archivedResultCount = results.length - filteredResults.length;
 
   return (
     <ModuleShell
@@ -376,9 +604,10 @@ export default function SearchPage() {
                     className="input-premium"
                     placeholder="Software Engineer"
                     value={form.jobTitle}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, jobTitle: event.target.value }))
-                    }
+                    onChange={(event) => {
+                      setForm((current) => ({ ...current, jobTitle: event.target.value }));
+                      if (advancedSearchError) setAdvancedSearchError(null);
+                    }}
                   />
                 </label>
 
@@ -394,6 +623,24 @@ export default function SearchPage() {
                   />
                 </label>
               </div>
+
+              <label className="space-y-2">
+                <span className="text-foreground text-sm font-medium">Search instruction (optional)</span>
+                <textarea
+                  className="input-premium min-h-28"
+                  placeholder="Optional: tell us what matters most, such as ideal roles, industries, tools, culture, or work setup."
+                  value={form.searchInstruction || ""}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      searchInstruction: event.target.value,
+                    }))
+                  }
+                />
+                <span className="text-muted-foreground block text-xs leading-6">
+                  Use this to highlight preferences; leave it blank for a broad search.
+                </span>
+              </label>
 
               <fieldset className="space-y-3">
                 <legend className="text-foreground text-sm font-medium">Hiring platforms</legend>
@@ -513,6 +760,92 @@ export default function SearchPage() {
                     ))}
                   </select>
                 </label>
+              </div>
+
+              <div className="surface-subtle space-y-4 rounded-[1.4rem] p-4 sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-foreground text-sm font-medium">Advanced Search</p>
+                  </div>
+                  <button
+                    className="button-secondary"
+                    type="button"
+                    onClick={prepareAdvancedSearch}
+                    disabled={isSearching || isPreparingAdvancedSearch}
+                  >
+                    {isPreparingAdvancedSearch ? "Preparing..." : advancedQuestions.length ? "Refresh Questions" : "Start Advanced Search"}
+                  </button>
+                </div>
+
+                {advancedSearchError ? (
+                  <div className="rounded-lg border border-rose-400/30 bg-rose-400/10 p-3">
+                    <p className="text-sm text-rose-700 dark:text-rose-100">{advancedSearchError}</p>
+                  </div>
+                ) : null}
+
+                {isAdvancedSearchComplete && advancedSummary ? (
+                  <div className="surface-subtle rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4">
+                    <p className="text-sm leading-7 text-emerald-700 dark:text-emerald-100">
+                      <span className="font-semibold">Complete:</span> {advancedSummary}
+                    </p>
+                    {advancedQuestions.length > 0 ? (
+                      <p className="text-muted-foreground mt-2 text-xs">
+                        {advancedQuestions.length} question{advancedQuestions.length !== 1 ? "s" : ""} answered
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {currentQuestion ? (
+                  <div className="space-y-4">
+                    {advancedQuestions.length > 0 ? (
+                      <div className="text-muted-foreground text-xs">
+                        Question {advancedQuestions.length + 1} of 5
+                      </div>
+                    ) : null}
+                    
+                    <div className="space-y-3">
+                      <label className="space-y-2">
+                        <span className="text-foreground text-sm font-medium">{currentQuestion.prompt}</span>
+                        <textarea
+                          className="input-premium min-h-24"
+                          placeholder="Add your answer"
+                          value={currentAnswer}
+                          onChange={(event) => setCurrentAnswer(event.target.value)}
+                          disabled={isLoadingNextQuestion}
+                        />
+                        {currentQuestion.helperText ? (
+                          <span className="text-muted-foreground block text-xs leading-6">
+                            {currentQuestion.helperText}
+                          </span>
+                        ) : null}
+                      </label>
+
+                      <button
+                        className="button-primary"
+                        type="button"
+                        onClick={submitCurrentAnswer}
+                        disabled={isLoadingNextQuestion || !currentAnswer.trim()}
+                      >
+                        {isLoadingNextQuestion ? "Loading next question..." : "Submit Answer"}
+                      </button>
+                    </div>
+
+                    {advancedQuestions.length > 0 ? (
+                      <div className="surface-subtle rounded-lg p-3">
+                        <p className="text-muted-foreground text-xs font-medium">Previous answers:</p>
+                        <div className="mt-2 space-y-2">
+                          {advancedQuestions.map((q, index) => (
+                            <div key={q.id} className="text-xs">
+                              <span className="text-foreground font-medium">Q{index + 1}:</span>{" "}
+                              <span className="text-muted-foreground">{advancedAnswers[q.id] || "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -642,6 +975,33 @@ export default function SearchPage() {
             }
           />
 
+          {(form.searchInstruction || activeAdvancedSearchSession || archivedDuplicateGroups.length > 0) ? (
+            <div className="surface-subtle mt-6 rounded-[1.35rem] p-4 text-sm leading-7 text-muted-foreground">
+              {formatInstructionExpansionSummary({
+                ...form,
+                advancedSearchSession: activeAdvancedSearchSession,
+              }) ? (
+                <p>
+                  <span className="text-foreground font-semibold">AI brief:</span>{" "}
+                  {formatInstructionExpansionSummary({
+                    ...form,
+                    advancedSearchSession: activeAdvancedSearchSession,
+                  })}
+                </p>
+              ) : null}
+              {archivedDuplicateGroups.length > 0 ? (
+                <p>
+                  <span className="text-foreground font-semibold">Archived duplicate groups:</span> {archivedDuplicateGroups.length}
+                </p>
+              ) : null}
+              {archivedResultCount > 0 ? (
+                <p>
+                  <span className="text-foreground font-semibold">Hidden cards:</span> {archivedResultCount}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <label className="space-y-2">
               <span className="text-foreground text-sm font-medium">Match strength</span>
@@ -746,8 +1106,11 @@ export default function SearchPage() {
 
           {filteredResults.length ? (
             <div className="mt-8 grid gap-4 xl:grid-cols-2">
-              {filteredResults.map((result) => (
-                <article
+              {filteredResults.map((result) => {
+                const duplicateCount = getDuplicateGroupCount(results, result.duplicateGroupKey);
+                const isArchived = archivedDuplicateGroups.includes(result.duplicateGroupKey);
+                return (
+                  <article
                   key={result.id}
                   className="interactive-card rounded-[1.5rem] p-6"
                 >
@@ -755,6 +1118,7 @@ export default function SearchPage() {
                     <span className="metric-chip">{SOURCE_LABELS[result.source]}</span>
                     <span className="metric-chip">{result.applicationUrlType}</span>
                     <span className="metric-chip">{result.searchQueryMatch}</span>
+                    <span className="metric-chip">{formatDuplicateLabel(duplicateCount)}</span>
                   </div>
 
                   <div className="mt-5 space-y-2">
@@ -774,7 +1138,7 @@ export default function SearchPage() {
                     {result.snippet || "No snippet was publicly exposed for this listing."}
                   </p>
 
-                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <a
                       href={result.applicationUrl}
                       target="_blank"
@@ -791,9 +1155,19 @@ export default function SearchPage() {
                     >
                       Open listing page
                     </a>
+                    {duplicateCount > 1 ? (
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        onClick={() => toggleDuplicateArchive(result.duplicateGroupKey)}
+                      >
+                        {isArchived ? "Unarchive linked duplicates" : "Archive linked duplicates"}
+                      </button>
+                    ) : null}
                   </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-border/75 bg-[hsl(var(--surface-1)/0.5)] p-8 text-sm leading-7">

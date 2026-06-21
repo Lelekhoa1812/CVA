@@ -5,7 +5,6 @@ import type {
   SourceProgressEvent,
 } from "@/lib/search/types";
 import { passesPostFilters } from "@/lib/search/filters";
-import { canonicalizeUrl } from "@/lib/search/server/utils";
 import { crawlBlockProneSource, crawlLinkedIn } from "@/lib/search/server/sources";
 
 type StreamOptions = {
@@ -18,7 +17,6 @@ export async function* streamSearchJobs(
 ): AsyncGenerator<SearchStreamEvent> {
   const startedAt = Date.now();
   const blockedSources = new Set<SearchSource>();
-  const seenUrls = new Set<string>();
   const seenDedupeKeys = new Set<string>();
   let totalResults = 0;
 
@@ -46,7 +44,8 @@ export async function* streamSearchJobs(
   // Motivation: The UI needs a single live stream even though each source has different markup, filter support,
   // and failure behavior in public HTML mode.
   // Logic: Centralize orchestration here so source adapters only fetch and normalize candidates while this stream
-  // layer owns post-filtering, dedupe, blocked-source accounting, and the incremental event contract used by the page.
+  // layer owns post-filtering, exact per-card dedupe, blocked-source accounting, and the incremental event contract
+  // used by the page. Cross-platform duplicates stay visible because they now share only `duplicateGroupKey` metadata.
   const sources = request.selectedSources;
   for (const source of sources) {
     options.signal?.throwIfAborted?.();
@@ -69,21 +68,11 @@ export async function* streamSearchJobs(
           continue;
         }
 
-        const canonicalListing = canonicalizeUrl(result.listingUrl);
-        const canonicalApplication = canonicalizeUrl(result.applicationUrl);
         if (seenDedupeKeys.has(result.dedupeKey)) {
-          continue;
-        }
-        if (canonicalListing && seenUrls.has(canonicalListing)) {
-          continue;
-        }
-        if (canonicalApplication && seenUrls.has(canonicalApplication)) {
           continue;
         }
 
         seenDedupeKeys.add(result.dedupeKey);
-        if (canonicalListing) seenUrls.add(canonicalListing);
-        if (canonicalApplication) seenUrls.add(canonicalApplication);
 
         totalResults += 1;
         yield { type: "result", result };

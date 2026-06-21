@@ -7,6 +7,9 @@ import {
 } from "@/lib/career/search-persistence";
 import { searchRequestSchema } from "@/lib/search/schema";
 import { streamSearchJobs } from "@/lib/search/server/stream";
+import { expandSearchInstruction } from "@/lib/search/server/intent";
+import { buildSearchInstructionContext, mergeSearchInstructionExpansion } from "@/lib/search/server/utils";
+import { loadUserContextSnapshot } from "@/lib/career/context";
 import type { ErrorEvent, SearchSource } from "@/lib/search/types";
 import type { NextRequest } from "next/server";
 
@@ -41,7 +44,23 @@ export async function POST(req: NextRequest) {
   }
 
   await connectToDatabase();
-  const campaign = await createPersistedSearchCampaign(auth.userId, parsedBody.data);
+  const snapshot = await loadUserContextSnapshot(auth.userId);
+  const instructionExpansion = await expandSearchInstruction({
+    request: parsedBody.data,
+    context: buildSearchInstructionContext({
+      request: parsedBody.data,
+      context: {
+        targetRoles: snapshot.targetRoles,
+        preferredLocations: snapshot.workPreferences.preferredLocations,
+        preferredSources: snapshot.searchPreferences.sources,
+        remoteOnly: snapshot.workPreferences.remoteOnly || snapshot.searchPreferences.remoteOnly,
+        techStackPreferences: snapshot.techStackPreferences,
+        cultureSignals: snapshot.cultureSignals.map((signal) => signal.label),
+      },
+    }),
+  });
+  const enrichedRequest = mergeSearchInstructionExpansion(parsedBody.data, instructionExpansion);
+  const campaign = await createPersistedSearchCampaign(auth.userId, enrichedRequest);
 
   return new Response(
     new ReadableStream<Uint8Array>({
@@ -93,7 +112,7 @@ export async function POST(req: NextRequest) {
         };
 
         try {
-          for await (const event of streamSearchJobs(parsedBody.data, { signal: req.signal })) {
+          for await (const event of streamSearchJobs(enrichedRequest, { signal: req.signal })) {
             if (req.signal.aborted) {
               await finalizeCampaign({ status: "canceled" });
               safeClose();
