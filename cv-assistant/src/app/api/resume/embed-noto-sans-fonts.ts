@@ -12,8 +12,14 @@ const FONTS_DIR = path.join(process.cwd(), 'public', 'fonts');
 const NOTO_SANS_REGULAR = fs.readFileSync(path.join(FONTS_DIR, 'NotoSans-Regular.ttf'));
 const NOTO_SANS_BOLD = fs.readFileSync(path.join(FONTS_DIR, 'NotoSans-Bold.ttf'));
 
-export async function embedNotoSansFonts(pdf: PDFDocument): Promise<{ regular: PDFFont; bold: PDFFont }> {
+export async function embedNotoSansFonts(
+  pdf: PDFDocument,
+  options: { subset?: boolean } = {},
+): Promise<{ regular: PDFFont; bold: PDFFont }> {
   pdf.registerFontkit(fontkit);
-  const [regular, bold] = await Promise.all([pdf.embedFont(NOTO_SANS_REGULAR), pdf.embedFont(NOTO_SANS_BOLD)]);
+  const [regular, bold] = await Promise.all([
+    pdf.embedFont(NOTO_SANS_REGULAR, { subset: Boolean(options.subset) }),
+    pdf.embedFont(NOTO_SANS_BOLD, { subset: Boolean(options.subset) }),
+  ]);
   return { regular, bold };
 }
