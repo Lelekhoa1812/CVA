@@ -61,6 +61,7 @@ export type AdvancedGenerationTrace = {
   reviewerNotes: string[];
   finalEvidenceCount: number;
   coverageSummary: string[];
+  agentSteps: string[];
 };
 
 export type AdvancedCoverLetterResult = {
@@ -89,6 +90,23 @@ function uniqNumbers(values: unknown[]): number[] {
   }
 
   return normalized;
+}
+
+function mergeUniqueText(...groups: string[][]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const group of groups) {
+    for (const item of group) {
+      const clean = safeText(item);
+      const key = clean.toLowerCase();
+      if (!clean || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(clean);
+    }
+  }
+
+  return merged;
 }
 
 function formatEvidence(items: CoverLetterItem[]): string {
@@ -139,9 +157,7 @@ function normalizeCoveragePlan(parsed: unknown): CoveragePlan {
     : [];
   const missingCriticalRequirements = Array.isArray(source.missingCriticalRequirements)
     ? source.missingCriticalRequirements.map(safeText).filter(Boolean)
-    : requirements
-        .filter((item) => !item.covered && item.priority === 'critical')
-        .map((item) => item.label);
+    : requirements.filter((item) => !item.covered && item.priority === 'critical').map((item) => item.label);
 
   return {
     roleFocus: safeText(source.roleFocus) || 'Role-aligned cover letter positioning',
@@ -233,23 +249,30 @@ async function textAgent(prompt: string): Promise<string> {
   throw lastError ?? new Error('Advanced generation failed');
 }
 
-function buildCoveragePlannerPrompt(jobDescription: string, selectedItems: CoverLetterItem[]): string {
-  return `You are the Requirement Coverage Planner agent for an AI job-application system.
+function buildCoveragePlannerPrompt(jobDescription: string, selectedItems: CoverLetterItem[], mode: 'planner' | 'auditor' = 'planner'): string {
+  const title = mode === 'planner' ? 'Requirement Coverage Planner agent' : 'Final Coverage Auditor agent';
+  const task =
+    mode === 'planner'
+      ? "Deeply inspect the job description against the candidate evidence currently selected for the cover letter. Identify the role's important skills, qualifications, experiences, technologies, domain signals, and personal qualities. Mark which ones are covered by the selected evidence and which ones are still missing."
+      : 'Re-audit the final evidence set after supplemental retrieval. Be stricter than the writer: decide which JD requirements are directly covered, which can only be framed as transferable, and which remain unsupported.';
+
+  return `You are the ${title} for an AI job-application system.
 
 Task:
-Deeply inspect the job description against the candidate evidence currently selected for the cover letter. Identify the role's important skills, qualifications, experiences, technologies, domain signals, and personal qualities. Mark which ones are covered by the selected evidence and which ones are still missing.
+${task}
 
 Job Description:
 ${jobDescription}
 
-Currently Selected Evidence:
+Candidate Evidence Under Review:
 ${formatEvidence(selectedItems)}
 
 Rules:
-- Be strict. If the selected evidence only weakly implies a requirement, mark it uncovered and explain the gap.
+- Be strict. If the evidence only weakly implies a requirement, mark it uncovered and explain the gap.
 - Treat must-have requirements, repeated requirements, and core delivery responsibilities as critical.
 - Do not invent candidate facts.
 - Do not downgrade important technical stacks or qualities just because they are missing.
+- If a requirement is only transferable, mark it uncovered but explain the transferable bridge in evidenceGap.
 
 Return only valid JSON with this exact shape:
 {
@@ -265,12 +288,14 @@ function buildSupplementalEvidencePrompt(args: {
   coveragePlan: CoveragePlan;
   allItems: CoverLetterItem[];
   selectedItems: CoverLetterItem[];
+  retrievalRound: number;
 }): string {
   const selectedIndices = new Set(args.selectedItems.map((item) => item.index));
   const candidates = args.allItems.map((item) => ({ ...item, alreadySelected: selectedIndices.has(item.index) }));
 
-  return `You are the Evidence Retrieval agent. Your job is to search the candidate's other experiences and projects for truthful evidence that can close the uncovered role-fit gaps found by the planner.
+  return `You are the Evidence Retrieval tool-agent. Your job is to search the candidate's other experiences and projects for truthful evidence that can close the uncovered role-fit gaps found by the planner.
 
+Retrieval round: ${args.retrievalRound}
 Prioritize professional experiences before projects. Select only evidence that is actually relevant to the missing requirements. It is acceptable to select no extra evidence if the profile does not support the gap.
 
 Job Description:
@@ -286,7 +311,8 @@ Rules:
 - Prefer experience evidence over project evidence when both are relevant.
 - Do not select evidence already marked as selected unless there is no alternative.
 - Do not invent skills, tech stacks, employers, degrees, tools, certifications, or metrics.
-- If a JD skill can only be addressed as transferable/adjacent, say so in the rationale.
+- If a JD skill can only be addressed as transferable or adjacent, say so in the rationale.
+- Select evidence that can improve hiring fit, not just keyword overlap.
 
 Return only valid JSON with this exact shape:
 {
@@ -298,7 +324,8 @@ Return only valid JSON with this exact shape:
 
 function buildSynthesisPrompt(args: {
   jobDescription: string;
-  coveragePlan: CoveragePlan;
+  initialCoveragePlan: CoveragePlan;
+  finalCoveragePlan: CoveragePlan;
   supplementalPlan: SupplementalPlan;
   finalItems: CoverLetterItem[];
 }): string {
@@ -307,8 +334,11 @@ function buildSynthesisPrompt(args: {
 Job Description:
 ${args.jobDescription}
 
-Coverage Plan:
-${JSON.stringify(args.coveragePlan, null, 2)}
+Initial Coverage Plan:
+${JSON.stringify(args.initialCoveragePlan, null, 2)}
+
+Final Coverage Audit:
+${JSON.stringify(args.finalCoveragePlan, null, 2)}
 
 Supplemental Evidence Plan:
 ${JSON.stringify(args.supplementalPlan, null, 2)}
@@ -318,8 +348,9 @@ ${formatEvidence(args.finalItems)}
 
 Rules:
 - Turn the evidence into a hiring-manager-friendly narrative strategy.
-- Highlight JD technologies, skills, qualities, and responsibilities only when they are supported by the evidence.
+- Highlight JD technologies, skills, qualities, and responsibilities only when they are supported by evidence.
 - If a requirement is not directly supported, propose a cautious transferable framing instead of pretending direct experience.
+- Maximize fit by surfacing truthful adjacent skills, tech stacks, qualities, and achievements the employer is likely screening for.
 - Keep it concise.
 
 Return only valid JSON with this exact shape:
@@ -353,17 +384,17 @@ function buildAdvancedCoverLetterPrompt(args: {
 
 Advanced Mode Planning Context:
 Role-fit thesis: ${args.synthesisPlan.positioningStatement}
-Coverage analysis: ${JSON.stringify(args.coveragePlan.requirements.slice(0, 12), null, 2)}
+Final coverage audit: ${JSON.stringify(args.coveragePlan.requirements.slice(0, 12), null, 2)}
 Supplemental evidence selected: ${JSON.stringify(args.supplementalPlan.supplementalEvidence, null, 2)}
 Evidence strategy: ${args.synthesisPlan.evidenceStrategy.join('\n') || 'Use the strongest selected evidence directly.'}
 Transferable signals to emphasize carefully: ${args.synthesisPlan.transferableSignals.join('\n') || 'None'}
 Caution notes: ${args.synthesisPlan.cautionNotes.join('\n') || 'Do not overclaim unsupported requirements.'}
 
 Advanced Mode Instructions:
-- This is not a one-shot generic letter. Write as the final executor after planner, evidence-retrieval, synthesis, and reviewer preparation.
+- This is not a one-shot generic letter. Write as the final executor after planner, evidence-retrieval, final coverage audit, synthesis, and reviewer preparation.
 - Address the employer's most important role signals explicitly, including missing-but-transferable skills when evidence supports an adjacent framing.
 - Maximize hiring fit while staying truthful to the supplied evidence.
-- If a critical requirement remains unsupported, avoid claiming it directly; instead, emphasize the closest credible experience or learning agility.
+- If a critical requirement remains unsupported, avoid claiming it directly; instead, emphasize the closest credible experience, learning agility, or adjacent capability.
 - Output only the final cover letter.`;
 }
 
@@ -393,14 +424,14 @@ function buildAdvancedEmployerAnswerPrompt(args: {
 
 Advanced Mode Planning Context:
 Role-fit thesis: ${args.synthesisPlan.positioningStatement}
-Coverage analysis: ${JSON.stringify(args.coveragePlan.requirements.slice(0, 10), null, 2)}
+Final coverage audit: ${JSON.stringify(args.coveragePlan.requirements.slice(0, 10), null, 2)}
 Supplemental evidence selected: ${JSON.stringify(args.supplementalPlan.supplementalEvidence, null, 2)}
 Evidence strategy: ${args.synthesisPlan.evidenceStrategy.join('\n') || 'Use the strongest selected evidence directly.'}
 Transferable signals to emphasize carefully: ${args.synthesisPlan.transferableSignals.join('\n') || 'None'}
 Caution notes: ${args.synthesisPlan.cautionNotes.join('\n') || 'Do not overclaim unsupported requirements.'}
 
 Advanced Mode Instructions:
-- Answer as the executor after planner, retrieval, synthesis, and review preparation.
+- Answer as the executor after planner, retrieval, final coverage audit, synthesis, and review preparation.
 - Make the answer directly responsive to the employer question while using the most role-aligned evidence available.
 - Maximize fit, but never invent facts or claim unsupported experience.
 - Output only the final answer.`;
@@ -422,7 +453,7 @@ ${args.jobDescription}
 Final Candidate Evidence:
 ${formatEvidence(args.finalItems)}
 
-Coverage Plan:
+Final Coverage Audit:
 ${JSON.stringify(args.coveragePlan, null, 2)}
 
 Synthesis Plan:
@@ -464,7 +495,7 @@ ${args.jobDescription}
 Final Evidence:
 ${formatEvidence(args.finalItems)}
 
-Coverage Plan:
+Final Coverage Audit:
 ${JSON.stringify(args.coveragePlan, null, 2)}
 
 Synthesis Plan:
@@ -484,6 +515,39 @@ Rules:
 - Output only the final ${args.outputKind}.`;
 }
 
+function buildFinalItems(initialItems: CoverLetterItem[], supplementalPlan: SupplementalPlan, allItems: CoverLetterItem[]) {
+  const supplementalItems = supplementalPlan.supplementalEvidence
+    .map((entry) => allItems.find((item) => item.index === entry.index))
+    .filter((item): item is CoverLetterItem => Boolean(item));
+
+  return [...initialItems, ...supplementalItems]
+    .filter((item, index, array) => array.findIndex((candidate) => candidate.index === item.index) === index)
+    .sort((a, b) => {
+      if (a.type === b.type) return a.index - b.index;
+      return a.type === 'experience' ? -1 : 1;
+    })
+    .slice(0, 8);
+}
+
+async function runSupplementalRetrieval(args: {
+  jobDescription: string;
+  coveragePlan: CoveragePlan;
+  allItems: CoverLetterItem[];
+  selectedItems: CoverLetterItem[];
+  retrievalRound: number;
+}) {
+  const selectedIndexSet = new Set(args.selectedItems.map((item) => item.index));
+  return jsonAgent(
+    buildSupplementalEvidencePrompt(args),
+    (parsed) => normalizeSupplementalPlan(parsed, args.allItems, selectedIndexSet),
+    {
+      supplementalEvidence: [],
+      uncoveredRequirements: args.coveragePlan.missingCriticalRequirements,
+      retrievalNotes: [`Supplemental retrieval round ${args.retrievalRound} fallback used.`],
+    },
+  );
+}
+
 async function buildAdvancedEvidenceContext(args: {
   jobDescription: string;
   allItems: CoverLetterItem[];
@@ -494,12 +558,13 @@ async function buildAdvancedEvidenceContext(args: {
   synthesisPlan: SynthesisPlan;
   finalItems: CoverLetterItem[];
   finalIndices: number[];
+  agentSteps: string[];
 }> {
   const initialItems = args.initialItems.length ? args.initialItems : args.allItems;
-  const initialIndexSet = new Set(initialItems.map((item) => item.index));
+  const agentSteps: string[] = ['planner: audited JD requirements against initial selected evidence'];
 
-  const coveragePlan = await jsonAgent(
-    buildCoveragePlannerPrompt(args.jobDescription, initialItems),
+  const initialCoveragePlan = await jsonAgent(
+    buildCoveragePlannerPrompt(args.jobDescription, initialItems, 'planner'),
     normalizeCoveragePlan,
     {
       roleFocus: 'Role-aligned cover letter positioning',
@@ -509,53 +574,80 @@ async function buildAdvancedEvidenceContext(args: {
     },
   );
 
-  const needsSupplementalSearch = coveragePlan.requirements.some((item) => !item.covered && item.priority !== 'preferred');
-  const supplementalPlan = needsSupplementalSearch
-    ? await jsonAgent(
-        buildSupplementalEvidencePrompt({
-          jobDescription: args.jobDescription,
-          coveragePlan,
-          allItems: args.allItems,
-          selectedItems: initialItems,
-        }),
-        (parsed) => normalizeSupplementalPlan(parsed, args.allItems, initialIndexSet),
-        {
-          supplementalEvidence: [],
-          uncoveredRequirements: coveragePlan.missingCriticalRequirements,
-          retrievalNotes: ['Supplemental retrieval fallback used.'],
-        },
-      )
+  const needsSupplementalSearch = initialCoveragePlan.requirements.some((item) => !item.covered && item.priority !== 'preferred');
+  let supplementalPlan: SupplementalPlan = needsSupplementalSearch
+    ? await runSupplementalRetrieval({
+        jobDescription: args.jobDescription,
+        coveragePlan: initialCoveragePlan,
+        allItems: args.allItems,
+        selectedItems: initialItems,
+        retrievalRound: 1,
+      })
     : { supplementalEvidence: [], uncoveredRequirements: [], retrievalNotes: ['Selected evidence already covers core requirements.'] };
+  agentSteps.push('retriever: searched full profile evidence, prioritising experience before projects');
 
-  const supplementalItems = supplementalPlan.supplementalEvidence
-    .map((entry) => args.allItems.find((item) => item.index === entry.index))
-    .filter((item): item is CoverLetterItem => Boolean(item));
-  const finalItems = [...initialItems, ...supplementalItems]
-    .filter((item, index, array) => array.findIndex((candidate) => candidate.index === item.index) === index)
-    .sort((a, b) => {
-      if (a.type === b.type) return a.index - b.index;
-      return a.type === 'experience' ? -1 : 1;
-    })
-    .slice(0, 8);
-  const finalIndices = finalItems.map((item) => item.index);
+  let finalItems = buildFinalItems(initialItems, supplementalPlan, args.allItems);
+  let finalCoveragePlan = await jsonAgent(
+    buildCoveragePlannerPrompt(args.jobDescription, finalItems, 'auditor'),
+    normalizeCoveragePlan,
+    initialCoveragePlan,
+  );
+  agentSteps.push('auditor: re-checked final evidence coverage after supplemental retrieval');
+
+  const stillNeedsRepair = finalCoveragePlan.requirements.some((item) => !item.covered && item.priority === 'critical');
+  if (stillNeedsRepair) {
+    const repairPlan = await runSupplementalRetrieval({
+      jobDescription: args.jobDescription,
+      coveragePlan: finalCoveragePlan,
+      allItems: args.allItems,
+      selectedItems: finalItems,
+      retrievalRound: 2,
+    });
+
+    if (repairPlan.supplementalEvidence.length) {
+      supplementalPlan = {
+        supplementalEvidence: [...supplementalPlan.supplementalEvidence, ...repairPlan.supplementalEvidence]
+          .filter((item, index, array) => array.findIndex((candidate) => candidate.index === item.index) === index)
+          .slice(0, 6),
+        uncoveredRequirements: mergeUniqueText(supplementalPlan.uncoveredRequirements, repairPlan.uncoveredRequirements),
+        retrievalNotes: mergeUniqueText(supplementalPlan.retrievalNotes, repairPlan.retrievalNotes),
+      };
+      finalItems = buildFinalItems(initialItems, supplementalPlan, args.allItems);
+      finalCoveragePlan = await jsonAgent(
+        buildCoveragePlannerPrompt(args.jobDescription, finalItems, 'auditor'),
+        normalizeCoveragePlan,
+        finalCoveragePlan,
+      );
+      agentSteps.push('repair-retriever: added a second-pass evidence search for unresolved critical gaps');
+    }
+  }
 
   const synthesisPlan = await jsonAgent(
     buildSynthesisPrompt({
       jobDescription: args.jobDescription,
-      coveragePlan,
+      initialCoveragePlan,
+      finalCoveragePlan,
       supplementalPlan,
       finalItems,
     }),
     normalizeSynthesisPlan,
     {
-      positioningStatement: coveragePlan.roleFocus,
+      positioningStatement: finalCoveragePlan.roleFocus || initialCoveragePlan.roleFocus,
       evidenceStrategy: [],
       transferableSignals: [],
-      cautionNotes: supplementalPlan.uncoveredRequirements,
+      cautionNotes: mergeUniqueText(finalCoveragePlan.missingCriticalRequirements, supplementalPlan.uncoveredRequirements),
     },
   );
+  agentSteps.push('synthesiser: produced final positioning, evidence strategy, and caution notes');
 
-  return { coveragePlan, supplementalPlan, synthesisPlan, finalItems, finalIndices };
+  return {
+    coveragePlan: finalCoveragePlan,
+    supplementalPlan,
+    synthesisPlan,
+    finalItems,
+    finalIndices: finalItems.map((item) => item.index),
+    agentSteps,
+  };
 }
 
 function buildTrace(args: {
@@ -564,6 +656,7 @@ function buildTrace(args: {
   synthesisPlan: SynthesisPlan;
   reviewPlan: ReviewPlan;
   finalItems: CoverLetterItem[];
+  agentSteps: string[];
 }): AdvancedGenerationTrace {
   const coverageSummary = args.coveragePlan.requirements.slice(0, 8).map((requirement) => {
     const status = requirement.covered ? 'covered' : 'gap';
@@ -575,13 +668,14 @@ function buildTrace(args: {
     roleFocus: args.synthesisPlan.positioningStatement || args.coveragePlan.roleFocus,
     missingCriticalRequirements: args.coveragePlan.missingCriticalRequirements,
     supplementalEvidenceTitles: args.supplementalPlan.supplementalEvidence.map((item) => item.title),
-    uncoveredRequirements: args.supplementalPlan.uncoveredRequirements,
+    uncoveredRequirements: mergeUniqueText(args.supplementalPlan.uncoveredRequirements, args.coveragePlan.missingCriticalRequirements),
     reviewerNotes: [
       ...args.reviewPlan.issues,
       ...args.reviewPlan.missingRoleSignals.map((signal) => `Missing role signal: ${signal}`),
     ].filter(Boolean),
     finalEvidenceCount: args.finalItems.length,
     coverageSummary,
+    agentSteps: args.agentSteps,
   };
 }
 
@@ -646,6 +740,7 @@ export async function generateAdvancedCoverLetter(args: {
       synthesisPlan: context.synthesisPlan,
       reviewPlan,
       finalItems: context.finalItems,
+      agentSteps: [...context.agentSteps, shouldRevise ? 'reviewer: requested final revision before delivery' : 'reviewer: approved draft without revision'],
     }),
   };
 }
@@ -660,8 +755,9 @@ export async function generateAdvancedEmployerAnswer(args: {
   allItems: CoverLetterItem[];
   initialItems: CoverLetterItem[];
 }): Promise<AdvancedCoverLetterResult> {
+  const planningContext = `${args.jobDescription}\n\nEmployer Question:\n${args.question}`;
   const context = await buildAdvancedEvidenceContext({
-    jobDescription: `${args.jobDescription}\n\nEmployer Question:\n${args.question}`,
+    jobDescription: planningContext,
     allItems: args.allItems,
     initialItems: args.initialItems,
   });
@@ -682,7 +778,7 @@ export async function generateAdvancedEmployerAnswer(args: {
   const reviewPlan = await jsonAgent(
     buildReviewerPrompt({
       outputKind: 'employer answer',
-      jobDescription: `${args.jobDescription}\n\nEmployer Question:\n${args.question}`,
+      jobDescription: planningContext,
       draft,
       finalItems: context.finalItems,
       coveragePlan: context.coveragePlan,
@@ -696,7 +792,7 @@ export async function generateAdvancedEmployerAnswer(args: {
     ? await textAgent(
         buildRevisionPrompt({
           outputKind: 'employer answer',
-          jobDescription: `${args.jobDescription}\n\nEmployer Question:\n${args.question}`,
+          jobDescription: planningContext,
           draft,
           finalItems: context.finalItems,
           coveragePlan: context.coveragePlan,
@@ -715,6 +811,7 @@ export async function generateAdvancedEmployerAnswer(args: {
       synthesisPlan: context.synthesisPlan,
       reviewPlan,
       finalItems: context.finalItems,
+      agentSteps: [...context.agentSteps, shouldRevise ? 'reviewer: requested final revision before delivery' : 'reviewer: approved draft without revision'],
     }),
   };
 }
