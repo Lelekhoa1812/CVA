@@ -18,6 +18,17 @@ type RankedEvidence = {
   justification: string;
 };
 
+type AdvancedTrace = {
+  mode?: "advanced";
+  roleFocus?: string;
+  missingCriticalRequirements?: string[];
+  supplementalEvidenceTitles?: string[];
+  uncoveredRequirements?: string[];
+  reviewerNotes?: string[];
+  finalEvidenceCount?: number;
+  coverageSummary?: string[];
+};
+
 type SavedDraft = {
   company: string;
   jobDescription: string;
@@ -25,16 +36,48 @@ type SavedDraft = {
   idealWordCount: string;
   answerStyle: string;
   shouldSelect: boolean;
+  advancedMode: boolean;
   indices: number[] | null;
   rankings: RankedEvidence[];
   result: string;
   employerQuestionResult: string;
+  advancedTrace: AdvancedTrace | null;
+  questionAdvancedTrace: AdvancedTrace | null;
   manualSelection: { projects: number[]; experiences: number[] };
   enableManualSelection: boolean;
   showManualEvidence: boolean;
 };
 
-const DRAFT_STORAGE_KEY = "cv-assistant.generate.cover-letter.v2";
+const DRAFT_STORAGE_KEY = "cv-assistant.generate.cover-letter.v3";
+
+function normalizeTrace(value: unknown): AdvancedTrace | null {
+  if (!value || typeof value !== "object") return null;
+  const trace = value as AdvancedTrace;
+  return {
+    mode: trace.mode === "advanced" ? "advanced" : undefined,
+    roleFocus: typeof trace.roleFocus === "string" ? trace.roleFocus : "",
+    missingCriticalRequirements: Array.isArray(trace.missingCriticalRequirements)
+      ? trace.missingCriticalRequirements.filter((item): item is string => typeof item === "string")
+      : [],
+    supplementalEvidenceTitles: Array.isArray(trace.supplementalEvidenceTitles)
+      ? trace.supplementalEvidenceTitles.filter((item): item is string => typeof item === "string")
+      : [],
+    uncoveredRequirements: Array.isArray(trace.uncoveredRequirements)
+      ? trace.uncoveredRequirements.filter((item): item is string => typeof item === "string")
+      : [],
+    reviewerNotes: Array.isArray(trace.reviewerNotes)
+      ? trace.reviewerNotes.filter((item): item is string => typeof item === "string")
+      : [],
+    finalEvidenceCount: typeof trace.finalEvidenceCount === "number" ? trace.finalEvidenceCount : undefined,
+    coverageSummary: Array.isArray(trace.coverageSummary)
+      ? trace.coverageSummary.filter((item): item is string => typeof item === "string")
+      : [],
+  };
+}
+
+function normalizeNumberArray(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((item): item is number => Number.isInteger(item)) : [];
+}
 
 function loadSavedDraft(): SavedDraft | null {
   if (typeof window === "undefined") return null;
@@ -52,18 +95,17 @@ function loadSavedDraft(): SavedDraft | null {
       idealWordCount: typeof parsed.idealWordCount === "string" ? parsed.idealWordCount : "",
       answerStyle: typeof parsed.answerStyle === "string" ? parsed.answerStyle : "",
       shouldSelect: typeof parsed.shouldSelect === "boolean" ? parsed.shouldSelect : true,
-      indices: Array.isArray(parsed.indices) ? parsed.indices.filter((value) => Number.isInteger(value)) : null,
+      advancedMode: typeof parsed.advancedMode === "boolean" ? parsed.advancedMode : false,
+      indices: Array.isArray(parsed.indices) ? normalizeNumberArray(parsed.indices) : null,
       rankings: Array.isArray(parsed.rankings) ? (parsed.rankings as RankedEvidence[]) : [],
       result: typeof parsed.result === "string" ? parsed.result : "",
       employerQuestionResult:
         typeof parsed.employerQuestionResult === "string" ? parsed.employerQuestionResult : "",
+      advancedTrace: normalizeTrace(parsed.advancedTrace),
+      questionAdvancedTrace: normalizeTrace(parsed.questionAdvancedTrace),
       manualSelection: {
-        projects: Array.isArray(parsed.manualSelection?.projects)
-          ? parsed.manualSelection!.projects.filter((value) => Number.isInteger(value))
-          : [],
-        experiences: Array.isArray(parsed.manualSelection?.experiences)
-          ? parsed.manualSelection!.experiences.filter((value) => Number.isInteger(value))
-          : [],
+        projects: normalizeNumberArray(parsed.manualSelection?.projects),
+        experiences: normalizeNumberArray(parsed.manualSelection?.experiences),
       },
       enableManualSelection: typeof parsed.enableManualSelection === "boolean" ? parsed.enableManualSelection : false,
       showManualEvidence: typeof parsed.showManualEvidence === "boolean" ? parsed.showManualEvidence : true,
@@ -73,6 +115,68 @@ function loadSavedDraft(): SavedDraft | null {
   }
 }
 
+function TracePanel({ trace, title }: { trace: AdvancedTrace | null; title: string }) {
+  if (!trace) return null;
+
+  const supplemental = trace.supplementalEvidenceTitles || [];
+  const gaps = trace.missingCriticalRequirements || [];
+  const uncovered = trace.uncoveredRequirements || [];
+  const reviewerNotes = trace.reviewerNotes || [];
+  const coverage = trace.coverageSummary || [];
+
+  return (
+    <div className="interactive-card space-y-4 border-sky-200/70 bg-sky-50/60 dark:border-sky-500/20 dark:bg-sky-500/10">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-foreground text-sm font-semibold">{title}</p>
+          {trace.roleFocus ? (
+            <p className="text-muted-foreground mt-1 text-xs leading-6">{trace.roleFocus}</p>
+          ) : null}
+        </div>
+        <span className="metric-chip">{trace.finalEvidenceCount || 0} evidence</span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="surface-subtle rounded-2xl p-3">
+          <p className="text-muted-foreground text-[11px] uppercase tracking-[0.18em]">Added evidence</p>
+          {supplemental.length ? (
+            <ul className="mt-2 space-y-1 text-xs leading-6 text-muted-foreground">
+              {supplemental.slice(0, 4).map((item) => (
+                <li key={item}>• {item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground mt-2 text-xs leading-6">No extra evidence was needed.</p>
+          )}
+        </div>
+
+        <div className="surface-subtle rounded-2xl p-3">
+          <p className="text-muted-foreground text-[11px] uppercase tracking-[0.18em]">Gap review</p>
+          {[...gaps, ...uncovered, ...reviewerNotes].length ? (
+            <ul className="mt-2 space-y-1 text-xs leading-6 text-muted-foreground">
+              {[...gaps, ...uncovered, ...reviewerNotes].slice(0, 4).map((item) => (
+                <li key={item}>• {item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground mt-2 text-xs leading-6">No critical unsupported gap remained.</p>
+          )}
+        </div>
+      </div>
+
+      {coverage.length ? (
+        <div className="flex flex-wrap gap-2">
+          {coverage.slice(0, 6).map((item) => (
+            <span key={item} className="metric-chip bg-white/70 dark:bg-white/10">
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function GeneratePage() {
   const [company, setCompany] = useState("");
   const [jobDescription, setJobDescription] = useState("");
@@ -80,6 +184,7 @@ export default function GeneratePage() {
   const [idealWordCount, setIdealWordCount] = useState("");
   const [answerStyle, setAnswerStyle] = useState("");
   const [shouldSelect, setShouldSelect] = useState(true);
+  const [advancedMode, setAdvancedMode] = useState(false);
   const [indices, setIndices] = useState<number[] | null>(null);
   const [rankings, setRankings] = useState<RankedEvidence[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,6 +192,8 @@ export default function GeneratePage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [result, setResult] = useState("");
   const [employerQuestionResult, setEmployerQuestionResult] = useState("");
+  const [advancedTrace, setAdvancedTrace] = useState<AdvancedTrace | null>(null);
+  const [questionAdvancedTrace, setQuestionAdvancedTrace] = useState<AdvancedTrace | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -114,7 +221,7 @@ export default function GeneratePage() {
       return;
     }
     const data = await res.json();
-    setIndices(data.indices);
+    setIndices(Array.isArray(data.indices) ? data.indices : null);
     setRankings(Array.isArray(data.rankings) ? data.rankings : []);
   }
 
@@ -137,22 +244,27 @@ export default function GeneratePage() {
   async function generate() {
     setLoading(true);
     setResult("");
+    setAdvancedTrace(null);
     setError(null);
     try {
       const finalIndices = getFinalIndices();
       const res = await fetch(buildApiUrl("/api/generate/cover-letter"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, jobDescription, indices: finalIndices }),
+        body: JSON.stringify({ company, jobDescription, indices: finalIndices, advancedMode }),
       });
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError("Failed to generate");
+        setError(typeof data.error === "string" ? data.error : "Failed to generate");
         return;
       }
 
-      const data = await res.json();
-      setResult(data.coverLetter);
+      setResult(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      setAdvancedTrace(normalizeTrace(data.advancedTrace));
+      if (Array.isArray(data.indices) && !enableManualSelection) {
+        setIndices(data.indices.filter((value: unknown): value is number => Number.isInteger(value)));
+      }
     } catch {
       setError("Failed to generate");
     } finally {
@@ -165,6 +277,7 @@ export default function GeneratePage() {
 
     setQuestionLoading(true);
     setEmployerQuestionResult("");
+    setQuestionAdvancedTrace(null);
     setQuestionError(null);
     try {
       const finalIndices = getFinalIndices();
@@ -178,17 +291,21 @@ export default function GeneratePage() {
           idealWordCount,
           answerStyle,
           indices: finalIndices,
+          advancedMode,
         }),
       });
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setQuestionError(data.error || "Failed to answer employer question");
+        setQuestionError(typeof data.error === "string" ? data.error : "Failed to answer employer question");
         return;
       }
 
-      const data = await res.json();
-      setEmployerQuestionResult(data.answer);
+      setEmployerQuestionResult(typeof data.answer === "string" ? data.answer : "");
+      setQuestionAdvancedTrace(normalizeTrace(data.advancedTrace));
+      if (Array.isArray(data.indices) && !enableManualSelection) {
+        setIndices(data.indices.filter((value: unknown): value is number => Number.isInteger(value)));
+      }
     } catch {
       setQuestionError("Failed to answer employer question");
     } finally {
@@ -203,11 +320,6 @@ export default function GeneratePage() {
     setError(null);
 
     try {
-      // Motivation vs Logic:
-      // Motivation: The cover-letter page needs a formal business-letter PDF without duplicating layout
-      // rules in the browser or asking the user to reformat the generated text manually.
-      // Logic: Keep the client focused on orchestration, then send the generated letter to the export route
-      // that owns the "Modern Executive" template and returns a ready-to-download PDF blob.
       const res = await fetch(buildApiUrl("/api/generate/cover-letter/pdf"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -262,7 +374,7 @@ export default function GeneratePage() {
         const data = await res.json();
         setProfile(data.profile || null);
       }
-    })();
+    })().catch(() => setProfile(null));
   }, []);
 
   useEffect(() => {
@@ -278,10 +390,13 @@ export default function GeneratePage() {
     setIdealWordCount(draft.idealWordCount);
     setAnswerStyle(draft.answerStyle);
     setShouldSelect(draft.shouldSelect);
+    setAdvancedMode(draft.advancedMode);
     setIndices(draft.indices);
     setRankings(draft.rankings);
     setResult(draft.result);
     setEmployerQuestionResult(draft.employerQuestionResult);
+    setAdvancedTrace(draft.advancedTrace);
+    setQuestionAdvancedTrace(draft.questionAdvancedTrace);
     setManualSelection(draft.manualSelection);
     setEnableManualSelection(draft.enableManualSelection);
     setShowManualEvidence(draft.showManualEvidence);
@@ -300,6 +415,8 @@ export default function GeneratePage() {
     if ((jobChanged || selectionEnabled) && shouldSelect && jobDescription.trim()) {
       setIndices(null);
       setRankings([]);
+      setAdvancedTrace(null);
+      setQuestionAdvancedTrace(null);
     }
 
     previousDraftRef.current = {
@@ -321,10 +438,13 @@ export default function GeneratePage() {
           idealWordCount,
           answerStyle,
           shouldSelect,
+          advancedMode,
           indices,
           rankings,
           result,
           employerQuestionResult,
+          advancedTrace,
+          questionAdvancedTrace,
           manualSelection,
           enableManualSelection,
           showManualEvidence,
@@ -340,10 +460,13 @@ export default function GeneratePage() {
     idealWordCount,
     answerStyle,
     shouldSelect,
+    advancedMode,
     indices,
     rankings,
     result,
     employerQuestionResult,
+    advancedTrace,
+    questionAdvancedTrace,
     manualSelection,
     enableManualSelection,
     showManualEvidence,
@@ -351,21 +474,22 @@ export default function GeneratePage() {
   ]);
 
   const evidenceCount = useMemo(() => {
+    if (advancedTrace?.finalEvidenceCount) return advancedTrace.finalEvidenceCount;
     if (enableManualSelection) {
       return manualSelection.projects.length + manualSelection.experiences.length;
     }
     return indices?.length || 0;
-  }, [enableManualSelection, indices, manualSelection.experiences.length, manualSelection.projects.length]);
+  }, [advancedTrace?.finalEvidenceCount, enableManualSelection, indices, manualSelection.experiences.length, manualSelection.projects.length]);
 
   return (
     <ModuleShell
       eyebrow="Cover Letter Module"
       title="Build a cover letter around evidence, not generic claims."
-      description="Use job context, AI selection, and manual curation together so your final letter sounds tailored and confident."
+      description="Use job context, AI selection, manual curation, and advanced evidence planning so the final letter sounds targeted and credible."
       stats={[
         { label: "Selection mode", value: enableManualSelection ? "Manual" : shouldSelect ? "AI Coaching" : "Open" },
         { label: "Evidence chosen", value: `${evidenceCount}` },
-        { label: "Output mode", value: result ? "Ready" : "Drafting" },
+        { label: "Generation", value: advancedMode ? "Advanced" : result ? "Standard" : "Drafting" },
       ]}
       aside={
         <div className="space-y-6">
@@ -373,8 +497,7 @@ export default function GeneratePage() {
             <p className="section-kicker">Letter Strategy</p>
             <h2 className="text-foreground font-display text-3xl">Narrative with proof</h2>
             <p className="text-muted-foreground text-sm leading-7">
-              The highest-conversion letters connect company needs to a handful of relevant
-              experiences instead of repeating the resume.
+              The strongest letters map job requirements to credible evidence, then close any gaps with truthful adjacent experience.
             </p>
           </div>
 
@@ -382,7 +505,7 @@ export default function GeneratePage() {
             {[
               "Frame why this company matters to you",
               "Select evidence that maps to role requirements",
-              "End with confidence and momentum",
+              "Use Advanced Mode when the JD has many must-have signals",
             ].map((item) => (
               <div key={item} className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
                 <span className="status-dot" />
@@ -440,7 +563,7 @@ export default function GeneratePage() {
               <SectionHeading
                 eyebrow="Evidence Selection"
                 title="Control what the letter can reference"
-                description="Use AI Coaching for speed, or hand-pick the evidence you want included."
+                description="Use AI Coaching for speed, or hand-pick the evidence you want included. Advanced Mode can then inspect and expand the evidence set."
                 action={
                   shouldSelect ? (
                     <button onClick={selectRelevant} className="button-secondary">
@@ -450,8 +573,6 @@ export default function GeneratePage() {
                 }
               />
 
-              {/* Motivation: evidence selection used to feel like separate utility toggles with weak narrative context.
-                  Logic: treat selection as a guided strategy step so the user understands how proof flows into the final letter. */}
               <div className="mt-8 grid gap-4 lg:grid-cols-2">
                 <label className="interactive-card flex cursor-pointer gap-3">
                   <input
@@ -504,9 +625,6 @@ export default function GeneratePage() {
                     </button>
                   </div>
 
-                  {/* Motivation vs Logic:
-                      Motivation: Manual curation should foreground work history before side projects and let users collapse long evidence lists without leaving selection mode.
-                      Logic: Render experiences ahead of projects and keep a small local visibility toggle so selections persist while the list is hidden. */}
                   {showManualEvidence ? (
                     <div className="grid gap-4 lg:grid-cols-2">
                       <div className="interactive-card space-y-3">
@@ -579,27 +697,25 @@ export default function GeneratePage() {
                     <span className="metric-chip">{rankings.length} items</span>
                   </div>
                   <StaggerGroup className="space-y-2">
-                    {rankings.map((item, index) => {
-                      return (
-                        <StaggerItem key={`${item.type}-${item.index}`}>
-                          <div className="surface-subtle flex items-start gap-3 rounded-2xl p-3">
-                            <span className="status-dot mt-2" />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <div className="text-foreground text-sm font-medium">{item.title}</div>
-                                <span className="text-muted-foreground text-[11px] uppercase tracking-[0.2em]">
-                                  {index + 1}
-                                </span>
-                              </div>
-                              <div className="text-muted-foreground mt-1 text-[11px] uppercase tracking-[0.2em]">
-                                {item.type}
-                              </div>
-                              <div className="text-muted-foreground mt-2 text-xs leading-6">{item.justification}</div>
+                    {rankings.map((item, index) => (
+                      <StaggerItem key={`${item.type}-${item.index}`}>
+                        <div className="surface-subtle flex items-start gap-3 rounded-2xl p-3">
+                          <span className="status-dot mt-2" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-foreground text-sm font-medium">{item.title}</div>
+                              <span className="text-muted-foreground text-[11px] uppercase tracking-[0.2em]">
+                                {index + 1}
+                              </span>
                             </div>
+                            <div className="text-muted-foreground mt-1 text-[11px] uppercase tracking-[0.2em]">
+                              {item.type}
+                            </div>
+                            <div className="text-muted-foreground mt-2 text-xs leading-6">{item.justification}</div>
                           </div>
-                        </StaggerItem>
-                      );
-                    })}
+                        </div>
+                      </StaggerItem>
+                    ))}
                   </StaggerGroup>
                 </div>
               ) : null}
@@ -617,13 +733,34 @@ export default function GeneratePage() {
               />
 
               <div className="mt-6 space-y-4">
+                <label className="interactive-card flex cursor-pointer gap-3 border-sky-200/70 bg-sky-50/60 dark:border-sky-500/20 dark:bg-sky-500/10">
+                  <input
+                    type="checkbox"
+                    checked={advancedMode}
+                    onChange={(event) => setAdvancedMode(event.target.checked)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <div className="space-y-1">
+                    <p className="text-foreground text-sm font-semibold">Advanced Mode</p>
+                    <p className="text-muted-foreground text-xs leading-6">
+                      Run planner, evidence-retrieval, synthesis, and reviewer loops before writing the final answer.
+                    </p>
+                  </div>
+                </label>
+
                 <button
                   onClick={generate}
                   disabled={loading || !company.trim() || !jobDescription.trim()}
                   className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Generating cover letter..." : "Generate Cover Letter"}
+                  {loading
+                    ? advancedMode
+                      ? "Running advanced cover letter agent..."
+                      : "Generating cover letter..."
+                    : "Generate Cover Letter"}
                 </button>
+
+                <TracePanel trace={advancedTrace} title="Advanced planner trace" />
 
                 <div className="result-well rounded-[1.4rem] p-4">
                   {result ? (
@@ -668,7 +805,7 @@ export default function GeneratePage() {
               <SectionHeading
                 eyebrow="Answer Employer Question"
                 title="Turn a prompt into a tailored response"
-                description="Use the same evidence selection as the cover letter, then add the employer's question, a target length, and a preferred answer style."
+                description="Use the same evidence selection and Advanced Mode setting, then add the employer's question, a target length, and a preferred answer style."
               />
 
               <div className="mt-6 space-y-4">
@@ -715,8 +852,14 @@ export default function GeneratePage() {
                   disabled={questionLoading || !employerQuestion.trim()}
                   className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {questionLoading ? "Answering employer question..." : "Generate Employer Answer"}
+                  {questionLoading
+                    ? advancedMode
+                      ? "Running advanced answer agent..."
+                      : "Answering employer question..."
+                    : "Generate Employer Answer"}
                 </button>
+
+                <TracePanel trace={questionAdvancedTrace} title="Advanced answer trace" />
 
                 <div className="result-well rounded-[1.4rem] p-4">
                   {employerQuestionResult ? (
@@ -763,7 +906,13 @@ export default function GeneratePage() {
                 <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
                   <span className="text-muted-foreground text-sm">Mode</span>
                   <span className="text-foreground text-sm font-medium">
-                    {enableManualSelection ? "Manual curation" : shouldSelect ? "AI Coaching" : "Open generation"}
+                    {advancedMode
+                      ? "Advanced agent loop"
+                      : enableManualSelection
+                        ? "Manual curation"
+                        : shouldSelect
+                          ? "AI Coaching"
+                          : "Open generation"}
                   </span>
                 </div>
                 <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
@@ -773,8 +922,7 @@ export default function GeneratePage() {
                 <div className="surface-subtle rounded-2xl px-4 py-4">
                   <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">Recommendation</p>
                   <p className="text-muted-foreground mt-2 text-sm leading-7">
-                    Keep the letter anchored to two or three strong proof points. Specificity reads
-                    as confidence; breadth often reads as filler.
+                    Keep the letter anchored to a few strong proof points. Turn on Advanced Mode when you want the system to check missing JD skills, tools, qualifications, and qualities before drafting.
                   </p>
                 </div>
               </div>
