@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFDocument, type PDFFont, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from 'pdf-lib';
 import { getAuthFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { UserModel, type Profile as DbProfile } from '@/lib/models/User';
@@ -9,27 +9,79 @@ import { getCoverLetterContactDetails } from '@/lib/cover-letter';
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
-const PAGE_MARGIN_X = 62;
-const PAGE_TOP_MARGIN = 58;
-const PAGE_BOTTOM_MARGIN = 58;
 const MAX_PDF_BYTES = 512 * 1024;
 
-const BODY_FONT_SIZE = 10.9;
-const BODY_LINE_HEIGHT = 16.4;
-const COMPACT_BODY_FONT_SIZE = 10.25;
-const COMPACT_BODY_LINE_HEIGHT = 14.9;
-const HEADER_NAME_SIZE = 21;
-const HEADER_INFO_SIZE = 8.4;
-const DATE_FONT_SIZE = 9.6;
-const RECIPIENT_FONT_SIZE = 10.2;
-const SECTION_SPACING = 13;
+const INK = rgb(0.085, 0.105, 0.135);
+const MUTED = rgb(0.34, 0.38, 0.44);
+const ACCENT = rgb(0.055, 0.145, 0.285);
+const ACCENT_SOFT = rgb(0.86, 0.905, 0.955);
+const PANEL = rgb(0.972, 0.978, 0.986);
+const BORDER = rgb(0.80, 0.845, 0.90);
+const WHITE = rgb(1, 1, 1);
 
-const INK = rgb(0.1, 0.14, 0.2);
-const MUTED = rgb(0.35, 0.4, 0.47);
-const ACCENT = rgb(0.08, 0.2, 0.38);
-const ACCENT_LIGHT = rgb(0.83, 0.89, 0.95);
-const PANEL = rgb(0.965, 0.975, 0.985);
-const BORDER = rgb(0.84, 0.88, 0.92);
+type RenderPreset = {
+  name: 'premium' | 'compact' | 'micro';
+  marginX: number;
+  topMargin: number;
+  bottomMargin: number;
+  bodySize: number;
+  bodyLineHeight: number;
+  headerNameSize: number;
+  headerInfoSize: number;
+  metaSize: number;
+  paragraphGap: number;
+  furniture: boolean;
+  justify: boolean;
+  preferStandardFonts: boolean;
+};
+
+const RENDER_PRESETS: RenderPreset[] = [
+  {
+    name: 'premium',
+    marginX: 62,
+    topMargin: 56,
+    bottomMargin: 58,
+    bodySize: 10.9,
+    bodyLineHeight: 16.4,
+    headerNameSize: 21,
+    headerInfoSize: 8.4,
+    metaSize: 9.5,
+    paragraphGap: 9,
+    furniture: true,
+    justify: true,
+    preferStandardFonts: false,
+  },
+  {
+    name: 'compact',
+    marginX: 56,
+    topMargin: 50,
+    bottomMargin: 50,
+    bodySize: 10.15,
+    bodyLineHeight: 14.8,
+    headerNameSize: 18.5,
+    headerInfoSize: 7.8,
+    metaSize: 8.8,
+    paragraphGap: 6.5,
+    furniture: true,
+    justify: false,
+    preferStandardFonts: true,
+  },
+  {
+    name: 'micro',
+    marginX: 50,
+    topMargin: 46,
+    bottomMargin: 46,
+    bodySize: 9.65,
+    bodyLineHeight: 13.9,
+    headerNameSize: 17.25,
+    headerInfoSize: 7.3,
+    metaSize: 8.3,
+    paragraphGap: 5.5,
+    furniture: false,
+    justify: false,
+    preferStandardFonts: true,
+  },
+];
 
 function normalizeLine(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -39,10 +91,7 @@ function looksLikeDateLine(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return false;
 
-  return (
-    /\b\d{1,2}\s+[A-Za-z]+\s+\d{4}\b/.test(trimmed) ||
-    /\b[A-Za-z]+\s+\d{1,2},\s+\d{4}\b/.test(trimmed)
-  );
+  return /\b\d{1,2}\s+[A-Za-z]+\s+\d{4}\b/.test(trimmed) || /\b[A-Za-z]+\s+\d{1,2},\s+\d{4}\b/.test(trimmed);
 }
 
 function looksLikeRecipientLine(value: string, company: string) {
@@ -113,12 +162,7 @@ function extractLetterParagraphs(args: {
   if (!rawBlocks.length) return [];
 
   const normalizedName = normalizeLine(args.profile.name);
-  const contactTokens = [
-    args.profile.phone,
-    args.profile.email,
-    args.profile.website,
-    args.profile.linkedin,
-  ]
+  const contactTokens = [args.profile.phone, args.profile.email, args.profile.website, args.profile.linkedin]
     .map((value) => normalizeLine(value || ''))
     .filter(Boolean);
 
@@ -134,13 +178,12 @@ function extractLetterParagraphs(args: {
   });
 
   let startIndex = firstBlockLooksLikeHeader ? 1 : 0;
-
-  const secondBlock = rawBlocks[startIndex];
+  const nextBlock = rawBlocks[startIndex];
   if (
-    secondBlock &&
-    secondBlock.length <= 4 &&
-    secondBlock.every((line) => line.length <= 80) &&
-    secondBlock.some((line) => looksLikeDateLine(line) || looksLikeRecipientLine(line, args.company))
+    nextBlock &&
+    nextBlock.length <= 4 &&
+    nextBlock.every((line) => line.length <= 82) &&
+    nextBlock.some((line) => looksLikeDateLine(line) || looksLikeRecipientLine(line, args.company))
   ) {
     startIndex += 1;
   }
@@ -158,7 +201,7 @@ function isStandardFontSafe(value: string) {
 }
 
 function drawRightAlignedText(args: {
-  page: ReturnType<PDFDocument['addPage']>;
+  page: PDFPage;
   text: string;
   xRight: number;
   y: number;
@@ -176,56 +219,89 @@ function drawRightAlignedText(args: {
   });
 }
 
+function drawCharacterSpacedText(args: {
+  page: PDFPage;
+  text: string;
+  x: number;
+  y: number;
+  size: number;
+  font: PDFFont;
+  color: ReturnType<typeof rgb>;
+  tracking: number;
+}) {
+  let cursor = args.x;
+  for (const char of args.text) {
+    args.page.drawText(char, { x: cursor, y: args.y, size: args.size, font: args.font, color: args.color });
+    cursor += args.font.widthOfTextAtSize(char, args.size) + args.tracking;
+  }
+}
+
+function fallbackParagraphs(coverLetter: string) {
+  return coverLetter
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function createFonts(pdf: PDFDocument, textCorpus: string, preset: RenderPreset) {
+  const canUseStandard = preset.preferStandardFonts && isStandardFontSafe(textCorpus);
+  if (canUseStandard) {
+    return {
+      regular: await pdf.embedFont(StandardFonts.Helvetica),
+      bold: await pdf.embedFont(StandardFonts.HelveticaBold),
+    };
+  }
+
+  return embedNotoSansFonts(pdf, { subset: true });
+}
+
 async function renderCoverLetterPdf(args: {
   coverLetter: string;
   company: string;
   contactDetails: ReturnType<typeof getCoverLetterContactDetails>;
   paragraphs: string[];
   formattedDate: string;
-  compact: boolean;
+  preset: RenderPreset;
 }) {
   const pdf = await PDFDocument.create();
-  const textCorpus = [
-    args.coverLetter,
-    args.company,
-    args.contactDetails.name,
-    ...args.contactDetails.letterheadLines,
-  ].join('\n');
-  const useStandardFonts = args.compact && isStandardFontSafe(textCorpus);
-  const fonts = useStandardFonts
-    ? {
-        regular: await pdf.embedFont(StandardFonts.Helvetica),
-        bold: await pdf.embedFont(StandardFonts.HelveticaBold),
-      }
-    : await embedNotoSansFonts(pdf, { subset: true });
+  pdf.setTitle(`${args.company || 'Candidate'} Cover Letter`);
+  pdf.setAuthor(args.contactDetails.name || 'CV Assistant');
+  pdf.setSubject('Cover Letter');
+  pdf.setCreator('CV Assistant');
+  pdf.setProducer('CV Assistant');
+
+  const textCorpus = [args.coverLetter, args.company, args.contactDetails.name, ...args.contactDetails.letterheadLines].join('\n');
+  const fonts = await createFonts(pdf, textCorpus, args.preset);
   const regularFont = fonts.regular;
   const boldFont = fonts.bold;
 
   let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let pageNumber = 1;
-  const left = PAGE_MARGIN_X;
-  const right = PAGE_WIDTH - PAGE_MARGIN_X;
+  const left = args.preset.marginX;
+  const right = PAGE_WIDTH - args.preset.marginX;
   const contentWidth = right - left;
-  const bodyFontSize = args.compact ? COMPACT_BODY_FONT_SIZE : BODY_FONT_SIZE;
-  const bodyLineHeight = args.compact ? COMPACT_BODY_LINE_HEIGHT : BODY_LINE_HEIGHT;
-  const paragraphGap = args.compact ? 6 : 9;
-  let y = PAGE_HEIGHT - PAGE_TOP_MARGIN;
+  let y = PAGE_HEIGHT - args.preset.topMargin;
 
   function drawPageFurniture() {
-    page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 14, width: PAGE_WIDTH, height: 14, color: ACCENT });
-    page.drawRectangle({ x: 38, y: PAGE_BOTTOM_MARGIN - 4, width: 2.2, height: PAGE_HEIGHT - 108, color: ACCENT_LIGHT });
+    if (args.preset.furniture) {
+      page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 15, width: PAGE_WIDTH, height: 15, color: ACCENT });
+      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: 6, color: ACCENT_SOFT });
+      page.drawRectangle({ x: 38, y: args.preset.bottomMargin - 3, width: 2, height: PAGE_HEIGHT - args.preset.topMargin - args.preset.bottomMargin + 4, color: ACCENT_SOFT });
+    }
+
     page.drawLine({
-      start: { x: left, y: PAGE_BOTTOM_MARGIN - 16 },
-      end: { x: right, y: PAGE_BOTTOM_MARGIN - 16 },
+      start: { x: left, y: args.preset.bottomMargin - 18 },
+      end: { x: right, y: args.preset.bottomMargin - 18 },
       thickness: 0.45,
       color: BORDER,
     });
+
     drawRightAlignedText({
       page,
       text: `Page ${pageNumber}`,
       xRight: right,
-      y: PAGE_BOTTOM_MARGIN - 32,
-      size: 7.6,
+      y: args.preset.bottomMargin - 33,
+      size: 7.2,
       font: regularFont,
       color: MUTED,
     });
@@ -235,131 +311,161 @@ async function renderCoverLetterPdf(args: {
     pageNumber += 1;
     page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     drawPageFurniture();
-    y = PAGE_HEIGHT - PAGE_TOP_MARGIN - 18;
+    y = PAGE_HEIGHT - args.preset.topMargin - 14;
   }
 
   function ensureSpace(requiredHeight: number) {
-    if (y - requiredHeight < PAGE_BOTTOM_MARGIN) {
+    if (y - requiredHeight < args.preset.bottomMargin) {
       addPage();
     }
   }
 
   function drawLabelValue(label: string, valueLines: string[], x: number, width: number) {
-    page.drawText(label.toUpperCase(), {
+    drawCharacterSpacedText({
+      page,
+      text: label.toUpperCase(),
       x,
       y,
-      size: 7.2,
+      size: 7,
       font: boldFont,
       color: ACCENT,
+      tracking: 0.8,
     });
     y -= 12;
 
-    for (const line of valueLines.flatMap((value) => wrapTextLines(value, regularFont, DATE_FONT_SIZE, width))) {
+    for (const line of valueLines.flatMap((value) => wrapTextLines(value, regularFont, args.preset.metaSize, width))) {
       page.drawText(line, {
         x,
         y,
-        size: DATE_FONT_SIZE,
+        size: args.preset.metaSize,
         font: regularFont,
         color: INK,
       });
-      y -= DATE_FONT_SIZE + 3.5;
+      y -= args.preset.metaSize + 3.2;
     }
   }
 
-  function drawJustifiedParagraph(paragraph: string) {
-    const lines = buildJustifiedTextLines(paragraph, regularFont, bodyFontSize, contentWidth);
-    ensureSpace(lines.length * bodyLineHeight + paragraphGap + 2);
+  function drawParagraph(paragraph: string) {
+    const paragraphLines = paragraph.includes('\n')
+      ? paragraph.split('\n').flatMap((line) => wrapTextLines(line, regularFont, args.preset.bodySize, contentWidth))
+      : buildJustifiedTextLines(paragraph, regularFont, args.preset.bodySize, contentWidth).map((line) => line.text);
 
-    for (const line of lines) {
-      if (!args.compact && line.justify && line.words.length > 1) {
-        const wordsWidth = line.words.reduce((total, word) => total + regularFont.widthOfTextAtSize(word, bodyFontSize), 0);
+    ensureSpace(paragraphLines.length * args.preset.bodyLineHeight + args.preset.paragraphGap + 2);
+
+    if (paragraph.includes('\n')) {
+      for (const line of paragraphLines) {
+        page.drawText(line, { x: left, y, size: args.preset.bodySize, font: regularFont, color: INK });
+        y -= args.preset.bodyLineHeight;
+      }
+      y -= args.preset.paragraphGap;
+      return;
+    }
+
+    const justifiedLines = buildJustifiedTextLines(paragraph, regularFont, args.preset.bodySize, contentWidth);
+    for (const line of justifiedLines) {
+      if (args.preset.justify && line.justify && line.words.length > 1) {
+        const wordsWidth = line.words.reduce((total, word) => total + regularFont.widthOfTextAtSize(word, args.preset.bodySize), 0);
         const gap = Math.max(3, (contentWidth - wordsWidth) / (line.words.length - 1));
         let x = left;
         for (const word of line.words) {
-          page.drawText(word, { x, y, size: bodyFontSize, font: regularFont, color: INK });
-          x += regularFont.widthOfTextAtSize(word, bodyFontSize) + gap;
+          page.drawText(word, { x, y, size: args.preset.bodySize, font: regularFont, color: INK });
+          x += regularFont.widthOfTextAtSize(word, args.preset.bodySize) + gap;
         }
       } else {
-        page.drawText(line.text, { x: left, y, size: bodyFontSize, font: regularFont, color: INK });
+        page.drawText(line.text, { x: left, y, size: args.preset.bodySize, font: regularFont, color: INK });
       }
-      y -= bodyLineHeight;
+      y -= args.preset.bodyLineHeight;
     }
 
-    y -= paragraphGap;
+    y -= args.preset.paragraphGap;
   }
 
   drawPageFurniture();
 
   const headerName = args.contactDetails.name || 'Candidate';
-  const headerLines = wrapTextLines(headerName, boldFont, HEADER_NAME_SIZE, Math.floor(contentWidth * 0.64));
-  for (const line of headerLines) {
-    page.drawText(line, { x: left, y, size: HEADER_NAME_SIZE, font: boldFont, color: INK });
-    y -= HEADER_NAME_SIZE + 1;
+  const headerNameLines = wrapTextLines(headerName, boldFont, args.preset.headerNameSize, Math.floor(contentWidth * 0.64));
+  for (const line of headerNameLines) {
+    page.drawText(line, { x: left, y, size: args.preset.headerNameSize, font: boldFont, color: INK });
+    y -= args.preset.headerNameSize + 0.8;
   }
 
   drawRightAlignedText({
     page,
     text: 'COVER LETTER',
     xRight: right,
-    y: PAGE_HEIGHT - PAGE_TOP_MARGIN - 1,
-    size: 8.4,
+    y: PAGE_HEIGHT - args.preset.topMargin + 1,
+    size: 8.3,
     font: boldFont,
     color: ACCENT,
   });
 
   const contactLines = args.contactDetails.letterheadLines.flatMap((line) =>
-    wrapTextLines(line, regularFont, HEADER_INFO_SIZE, contentWidth),
+    wrapTextLines(line, regularFont, args.preset.headerInfoSize, contentWidth),
   );
   if (contactLines.length) {
-    y -= 5;
+    y -= 4;
     for (const line of contactLines) {
-      page.drawText(line, { x: left, y, size: HEADER_INFO_SIZE, font: regularFont, color: MUTED });
-      y -= HEADER_INFO_SIZE + 2.2;
+      page.drawText(line, { x: left, y, size: args.preset.headerInfoSize, font: regularFont, color: MUTED });
+      y -= args.preset.headerInfoSize + 2;
     }
   }
 
-  y -= SECTION_SPACING;
-  page.drawLine({
-    start: { x: left, y },
-    end: { x: right, y },
-    thickness: 1.2,
-    color: ACCENT,
-  });
-  y -= 22;
+  y -= args.preset.name === 'micro' ? 10 : 14;
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 1.1, color: ACCENT });
+  y -= args.preset.name === 'micro' ? 16 : 22;
 
-  const panelHeight = args.compact ? 58 : 64;
-  ensureSpace(panelHeight + 18);
+  const panelHeight = args.preset.name === 'micro' ? 48 : args.preset.name === 'compact' ? 54 : 64;
+  ensureSpace(panelHeight + 16);
   page.drawRectangle({
     x: left,
-    y: y - panelHeight + 10,
+    y: y - panelHeight + 9,
     width: contentWidth,
     height: panelHeight,
-    color: PANEL,
+    color: args.preset.furniture ? PANEL : WHITE,
     borderColor: BORDER,
-    borderWidth: 0.55,
+    borderWidth: 0.5,
   });
 
   const panelTop = y - 8;
   const columnWidth = (contentWidth - 32) / 2;
   y = panelTop;
-  drawLabelValue('Date', [args.formattedDate], left + 16, columnWidth);
+  drawLabelValue('Date', [args.formattedDate], left + 15, columnWidth);
   y = panelTop;
   drawLabelValue('To', ['Hiring Team', args.company || 'Target Company'].filter(Boolean), left + 24 + columnWidth, columnWidth);
-  y = panelTop - panelHeight + 2;
+  y = panelTop - panelHeight + 1;
 
-  const bodyParagraphs = args.paragraphs.length
-    ? args.paragraphs
-    : args.coverLetter
-        .split(/\n+/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-
+  const bodyParagraphs = args.paragraphs.length ? args.paragraphs : fallbackParagraphs(args.coverLetter);
   for (const paragraph of bodyParagraphs) {
-    drawJustifiedParagraph(paragraph);
+    drawParagraph(paragraph);
   }
 
-  const bytes = await pdf.save({ useObjectStreams: true });
-  return bytes;
+  return pdf.save({ useObjectStreams: true, addDefaultPage: false });
+}
+
+async function renderWithCompressionFallback(args: {
+  coverLetter: string;
+  company: string;
+  contactDetails: ReturnType<typeof getCoverLetterContactDetails>;
+  paragraphs: string[];
+  formattedDate: string;
+}) {
+  const renders = [] as { bytes: Uint8Array; preset: RenderPreset }[];
+
+  for (const preset of RENDER_PRESETS) {
+    const bytes = await renderCoverLetterPdf({ ...args, preset });
+    renders.push({ bytes, preset });
+    if (bytes.length <= MAX_PDF_BYTES) {
+      return { bytes, compressed: preset.name !== 'premium', presetName: preset.name, withinLimit: true };
+    }
+  }
+
+  const smallest = renders.reduce((best, current) => (current.bytes.length < best.bytes.length ? current : best));
+  return {
+    bytes: smallest.bytes,
+    compressed: true,
+    presetName: smallest.preset.name,
+    withinLimit: smallest.bytes.length <= MAX_PDF_BYTES,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -386,27 +492,13 @@ export async function POST(req: NextRequest) {
     timeZone: 'Australia/Melbourne',
   }).format(new Date());
 
-  let compressed = false;
-  let bytes = await renderCoverLetterPdf({
+  const { bytes, compressed, presetName, withinLimit } = await renderWithCompressionFallback({
     coverLetter,
     company,
     contactDetails,
     paragraphs,
     formattedDate,
-    compact: false,
   });
-
-  if (bytes.length > MAX_PDF_BYTES) {
-    compressed = true;
-    bytes = await renderCoverLetterPdf({
-      coverLetter,
-      company,
-      contactDetails,
-      paragraphs,
-      formattedDate,
-      compact: true,
-    });
-  }
 
   const filename = `${company ? `${toFilenameFragment(company)}-` : ''}cover-letter.pdf`;
 
@@ -417,6 +509,8 @@ export async function POST(req: NextRequest) {
       'Content-Disposition': `attachment; filename="${filename}"`,
       'X-CV-Assistant-PDF-Size': String(bytes.length),
       'X-CV-Assistant-Compressed': compressed ? 'true' : 'false',
+      'X-CV-Assistant-PDF-Preset': presetName,
+      'X-CV-Assistant-Within-512KB': withinLimit ? 'true' : 'false',
     },
   });
 }
