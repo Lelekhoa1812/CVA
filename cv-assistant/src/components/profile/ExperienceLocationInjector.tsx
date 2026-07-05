@@ -21,7 +21,7 @@ type ProfilePayload = {
 
 function makeLocationField(initialValue: string, onSave: (value: string) => void) {
   const wrapper = document.createElement("label");
-  wrapper.className = "space-y-2 cv-experience-location-field";
+  wrapper.className = "space-y-2 cv-experience-location-field md:col-span-2";
 
   const header = document.createElement("div");
   header.className = "flex items-center justify-between gap-4";
@@ -35,7 +35,7 @@ function makeLocationField(initialValue: string, onSave: (value: string) => void
   hint.textContent = "Optional";
 
   const input = document.createElement("input");
-  input.className = "input-premium";
+  input.className = "input-premium w-full";
   input.value = initialValue;
   input.placeholder = "";
 
