@@ -42,13 +42,7 @@ const jdAnalysisSchema = z.object({
   mustHaveTechnologies: z.array(z.string()).default([]),
   optionalTechnologies: z.array(z.string()).default([]),
   softSkills: z.array(z.string()).default([]),
-  priorities: z.array(
-    z.object({
-      name: z.string(),
-      weight: z.number(),
-      rationale: z.string(),
-    }),
-  ).default([]),
+  priorities: z.array(z.object({ name: z.string(), weight: z.number(), rationale: z.string() })).default([]),
 });
 
 const consultantBoardSchema = z.object({
@@ -87,7 +81,6 @@ type JDAnalysis = z.infer<typeof jdAnalysisSchema>;
 type ConsultantBoardPlan = z.infer<typeof consultantBoardSchema>;
 type ScoreDetails = z.infer<typeof scoreSchema>;
 type AtsReview = z.infer<typeof atsReviewSchema>;
-
 type RankedItem = ResumeItemRef & ScoreDetails;
 
 export type AICoachingResult = {
@@ -123,15 +116,7 @@ function collectResumeItems(profile: ResumeProfile): ResumeItemRef[] {
   const projects = (profile.projects || []).map((project, index) => {
     const summary = normalizeWhitespace(project.summary);
     const description = normalizeWhitespace(project.description);
-    return {
-      type: 'project' as const,
-      index,
-      originalOrder: index,
-      name: normalizeWhitespace(project.name) || `Project ${index + 1}`,
-      summary,
-      description,
-      originalContent: description || summary,
-    };
+    return { type: 'project' as const, index, originalOrder: index, name: normalizeWhitespace(project.name) || `Project ${index + 1}`, summary, description, originalContent: description || summary };
   });
 
   const experiences = (profile.experiences || []).map((experience, index) => {
@@ -141,9 +126,7 @@ function collectResumeItems(profile: ResumeProfile): ResumeItemRef[] {
       type: 'experience' as const,
       index,
       originalOrder: projects.length + index,
-      name:
-        normalizeWhitespace(`${experience.companyName || ''} ${experience.role || ''}`) ||
-        `Experience ${index + 1}`,
+      name: normalizeWhitespace(`${experience.companyName || ''} ${experience.role || ''}`) || `Experience ${index + 1}`,
       summary,
       description,
       originalContent: description || summary,
@@ -153,14 +136,9 @@ function collectResumeItems(profile: ResumeProfile): ResumeItemRef[] {
   return [...projects, ...experiences];
 }
 
-async function mapWithConcurrencyLimit<T, R>(
-  items: T[],
-  limit: number,
-  mapper: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
+async function mapWithConcurrencyLimit<T, R>(items: T[], limit: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
-
   async function worker() {
     while (nextIndex < items.length) {
       const currentIndex = nextIndex;
@@ -168,23 +146,17 @@ async function mapWithConcurrencyLimit<T, R>(
       results[currentIndex] = await mapper(items[currentIndex], currentIndex);
     }
   }
-
-  const workerCount = Math.min(limit, items.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
   return results;
 }
 
 async function analyzeJobDescription(jobDescription: string): Promise<JDAnalysis> {
   const wordCount = jobDescription.trim().split(/\s+/).filter(Boolean).length;
   if (wordCount < MIN_JOB_DESCRIPTION_WORDS) {
-    throw new AICoachingValidationError(
-      `Job description is too short. Please add at least ${MIN_JOB_DESCRIPTION_WORDS} words so AI Coaching has enough context.`,
-    );
+    throw new AICoachingValidationError(`Job description is too short. Please add at least ${MIN_JOB_DESCRIPTION_WORDS} words so AI Coaching has enough context.`);
   }
 
-  const raw = await generateJsonSafe(
-    'hard',
-    `You are the JD Analyst on a board of technical career consultants.
+  const raw = await generateJsonSafe('hard', `You are the JD Analyst on a board of technical career consultants.
 
 Analyze the job description and return strict JSON with these exact keys:
 {
@@ -208,24 +180,16 @@ Rules:
 - Return JSON only.
 
 Job description:
-${jobDescription}`,
-  );
+${jobDescription}`);
 
   const analysis = jdAnalysisSchema.parse(raw);
-  if (!analysis.isValid) {
-    throw new AICoachingValidationError(
-      analysis.relevanceReason || 'The job description does not look specific enough for AI Coaching.',
-    );
-  }
-
+  if (!analysis.isValid) throw new AICoachingValidationError(analysis.relevanceReason || 'The job description does not look specific enough for AI Coaching.');
   return analysis;
 }
 
 async function buildConsultantBoardPlan(jobDescription: string, analysis: JDAnalysis, items: ResumeItemRef[]): Promise<ConsultantBoardPlan> {
   try {
-    const raw = await generateJsonSafe(
-      'hard',
-      `You are a board of resume consultants: an ATS analyst, a technical recruiter, a hiring manager, a resume editor, and a layout strategist.
+    const raw = await generateJsonSafe('hard', `You are a board of resume consultants: an ATS analyst, a technical recruiter, a hiring manager, a resume editor, and a layout strategist.
 
 Create a resume-tailoring plan from the JD and candidate evidence. Return strict JSON:
 {
@@ -251,21 +215,12 @@ Job description:
 ${jobDescription}
 
 Candidate evidence:
-${JSON.stringify(items.map((item) => ({ type: item.type, index: item.index, name: item.name, summary: item.summary, description: item.description })))}
-`,
-    );
-
+${JSON.stringify(items.map((item) => ({ type: item.type, index: item.index, name: item.name, summary: item.summary, description: item.description })))}`);
     return consultantBoardSchema.parse(raw);
   } catch (error) {
     console.warn('Consultant board planning failed, using fallback board:', error);
     return {
-      requirementCoverage: analysis.priorities.map((priority) => ({
-        requirement: priority.name,
-        priority: priority.weight >= 80 ? 'critical' : priority.weight >= 55 ? 'important' : 'preferred',
-        coverage: 'partial',
-        evidenceTypePreference: 'experience',
-        rewriteInstruction: priority.rationale,
-      })),
+      requirementCoverage: analysis.priorities.map((priority) => ({ requirement: priority.name, priority: priority.weight >= 80 ? 'critical' : priority.weight >= 55 ? 'important' : 'preferred', coverage: 'partial', evidenceTypePreference: 'experience', rewriteInstruction: priority.rationale })),
       atsKeywords: [...analysis.mustHaveTechnologies, ...analysis.optionalTechnologies, ...analysis.softSkills],
       missingSignals: [],
       consultantNotes: ['Fallback consultant board used.'],
@@ -276,20 +231,9 @@ ${JSON.stringify(items.map((item) => ({ type: item.type, index: item.index, name
 }
 
 async function scoreResumeItem(item: ResumeItemRef, analysis: JDAnalysis, board: ConsultantBoardPlan): Promise<ScoreDetails> {
-  const fallback: ScoreDetails = {
-    score: 0,
-    directTechnicalMatch: 0,
-    industryRelevance: 0,
-    complexityScale: 0,
-    matchedKeywords: [],
-    missingSignals: [],
-    rationale: 'Scoring failed, so this item was deprioritized.',
-  };
-
+  const fallback: ScoreDetails = { score: 0, directTechnicalMatch: 0, industryRelevance: 0, complexityScale: 0, matchedKeywords: [], missingSignals: [], rationale: 'Scoring failed, so this item was deprioritized.' };
   try {
-    const raw = await generateJsonSafe(
-      'hard',
-      `You are the Evidence Curator on a board of technical career consultants.
+    const raw = await generateJsonSafe('hard', `You are the Evidence Curator on a board of technical career consultants.
 
 Score exactly one resume item against the analyzed job description and consultant board plan. Return strict JSON:
 {
@@ -317,25 +261,9 @@ Consultant board plan:
 ${JSON.stringify(board)}
 
 Resume item:
-${JSON.stringify({
-  type: item.type,
-  name: item.name,
-  summary: item.summary,
-  description: item.description,
-  originalContent: item.originalContent,
-})}`,
-    );
-
+${JSON.stringify({ type: item.type, name: item.name, summary: item.summary, description: item.description, originalContent: item.originalContent })}`);
     const parsed = scoreSchema.parse(raw);
-    return {
-      score: clampScore(parsed.score),
-      directTechnicalMatch: clampScore(parsed.directTechnicalMatch),
-      industryRelevance: clampScore(parsed.industryRelevance),
-      complexityScale: clampScore(parsed.complexityScale),
-      matchedKeywords: parsed.matchedKeywords,
-      missingSignals: parsed.missingSignals,
-      rationale: parsed.rationale,
-    };
+    return { score: clampScore(parsed.score), directTechnicalMatch: clampScore(parsed.directTechnicalMatch), industryRelevance: clampScore(parsed.industryRelevance), complexityScale: clampScore(parsed.complexityScale), matchedKeywords: parsed.matchedKeywords, missingSignals: parsed.missingSignals, rationale: parsed.rationale };
   } catch (error) {
     console.warn('AI Coaching scoring failed for item:', item.name, error);
     return fallback;
@@ -343,40 +271,17 @@ ${JSON.stringify({
 }
 
 function normalizeBulletOutput(text: string, fallbackText: string, maxBullets: number): string {
-  const cleaned = (text || '')
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/^Here are .*?:/i, '')
-    .trim();
-
-  const lines = cleaned
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^[-*•\d.)\s]+/, '').trim())
-    .filter(Boolean)
-    .slice(0, maxBullets)
-    .map((line) => `- ${line.replace(/[—–]/g, '-')}`);
-
-  if (lines.length > 0) {
-    return lines.join('\n');
-  }
-
-  return fallbackText;
+  const cleaned = (text || '').replace(/```[\s\S]*?```/g, '').replace(/^Here are .*?:/i, '').trim();
+  const lines = cleaned.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => line.replace(/^[-*•\d.)\s]+/, '').trim()).filter(Boolean).slice(0, maxBullets).map((line) => `- ${line.replace(/[—–]/g, '-')}`);
+  return lines.length > 0 ? lines.join('\n') : fallbackText;
 }
 
 async function rewriteResumeItem(item: RankedItem, analysis: JDAnalysis, board: ConsultantBoardPlan): Promise<string> {
-  if (!item.originalContent.trim()) {
-    return '';
-  }
-
+  if (!item.originalContent.trim()) return '';
   const model = getModel('hard');
   const maxBullets = item.type === 'experience' ? 3 : 2;
   try {
-    const result = await model.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [{
-          text: `You are the Resume Rewrite Agent in a consultant board with an ATS analyst, recruiter, hiring manager, and layout strategist.
+    const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: `You are the Resume Rewrite Agent in a consultant board with an ATS analyst, recruiter, hiring manager, and layout strategist.
 
 Rewrite exactly one ${item.type} into ${item.type === 'experience' ? '2-3' : '1-2'} dense, high-impact resume bullets for the target role.
 
@@ -395,28 +300,10 @@ Consultant board plan:
 ${JSON.stringify(board)}
 
 Scoring context:
-${JSON.stringify({
-  score: item.score,
-  directTechnicalMatch: item.directTechnicalMatch,
-  industryRelevance: item.industryRelevance,
-  complexityScale: item.complexityScale,
-  matchedKeywords: item.matchedKeywords,
-  missingSignals: item.missingSignals,
-  rationale: item.rationale,
-})}
+${JSON.stringify({ score: item.score, directTechnicalMatch: item.directTechnicalMatch, industryRelevance: item.industryRelevance, complexityScale: item.complexityScale, matchedKeywords: item.matchedKeywords, missingSignals: item.missingSignals, rationale: item.rationale })}
 
 Resume item:
-${JSON.stringify({
-  type: item.type,
-  name: item.name,
-  summary: item.summary,
-  description: item.description,
-  originalContent: item.originalContent,
-})}`,
-        }],
-      }],
-    });
-
+${JSON.stringify({ type: item.type, name: item.name, summary: item.summary, description: item.description, originalContent: item.originalContent })}` }] }] });
     return normalizeBulletOutput(result.response.text(), item.originalContent, maxBullets);
   } catch (error) {
     console.warn('AI Coaching rewrite failed for item:', item.name, error);
@@ -427,44 +314,69 @@ ${JSON.stringify({
 function compareRankedItems(a: RankedItem, b: RankedItem): number {
   const aExperienceBias = a.type === 'experience' ? 12 : 0;
   const bExperienceBias = b.type === 'experience' ? 12 : 0;
-  return (
-    (b.score + bExperienceBias) - (a.score + aExperienceBias) ||
-    b.directTechnicalMatch - a.directTechnicalMatch ||
-    b.industryRelevance - a.industryRelevance ||
-    b.complexityScale - a.complexityScale ||
-    a.originalOrder - b.originalOrder
-  );
+  return (b.score + bExperienceBias) - (a.score + aExperienceBias) || b.directTechnicalMatch - a.directTechnicalMatch || b.industryRelevance - a.industryRelevance || b.complexityScale - a.complexityScale || a.originalOrder - b.originalOrder;
+}
+
+function tokeniseSignal(value: string) {
+  const stop = new Set(['and', 'the', 'for', 'with', 'from', 'that', 'this', 'into', 'using', 'role', 'work', 'team', 'systems', 'experience', 'skills']);
+  return (value.toLowerCase().match(/[a-z][a-z0-9+#.\-]{2,}/g) || []).filter((token) => !stop.has(token));
+}
+
+function itemUtility(item: RankedItem, coveredSignals: Set<string>) {
+  const signals = [...new Set([...item.matchedKeywords, ...tokeniseSignal(item.rationale)])];
+  const newSignals = signals.filter((signal) => !coveredSignals.has(signal.toLowerCase())).length;
+  const experienceTrust = item.type === 'experience' ? 8 : 0;
+  const projectPenalty = item.type === 'project' ? 5 : 0;
+  return item.score * 0.46 + item.directTechnicalMatch * 0.30 + item.industryRelevance * 0.14 + item.complexityScale * 0.10 + newSignals * 4 + experienceTrust - projectPenalty;
 }
 
 function selectRetainedItems(rankedItems: RankedItem[]) {
-  const sorted = [...rankedItems].sort(compareRankedItems);
-  const experiences = sorted.filter((item) => item.type === 'experience');
-  const projects = sorted.filter((item) => item.type === 'project');
+  const eligible = [...rankedItems]
+    .filter((item) => item.originalContent.trim())
+    .sort(compareRankedItems);
+  if (eligible.length === 0) return [];
+
+  const topScore = eligible[0].score;
+  const hardFloor = Math.max(52, Math.min(72, topScore - 24));
   const retained: RankedItem[] = [];
+  const coveredSignals = new Set<string>();
+  let lastUtility = Number.POSITIVE_INFINITY;
 
-  for (const item of experiences) {
+  for (const item of eligible) {
     if (retained.length >= MAX_RESUME_ITEMS) break;
+    const strongDirectMatch = item.directTechnicalMatch >= 62 && item.score >= hardFloor - 6;
+    const strongOverall = item.score >= hardFloor;
+    const strongProjectSupport = item.type === 'project' && item.score >= hardFloor + 8 && item.directTechnicalMatch >= 68;
+    const hasKeywordSignal = item.matchedKeywords.length >= 2 && item.score >= hardFloor - 4;
+    const utility = itemUtility(item, coveredSignals);
+    const tooWeak = item.score < Math.max(45, topScore - 38) && item.directTechnicalMatch < 55 && item.matchedKeywords.length < 2;
+    const diminishingReturn = retained.length >= 3 && utility < 48 && utility < lastUtility - 18;
+
+    if (tooWeak || diminishingReturn) continue;
+    if (!strongOverall && !strongDirectMatch && !strongProjectSupport && !hasKeywordSignal) continue;
+
     retained.push(item);
+    lastUtility = Math.min(lastUtility, utility);
+    for (const keyword of item.matchedKeywords) coveredSignals.add(keyword.toLowerCase());
+    for (const signal of tokeniseSignal(item.rationale).slice(0, 8)) coveredSignals.add(signal.toLowerCase());
   }
 
-  for (const item of projects) {
-    if (retained.length >= MAX_RESUME_ITEMS) break;
-    retained.push(item);
+  if (retained.length === 0) retained.push(eligible[0]);
+
+  const hasExperience = retained.some((item) => item.type === 'experience');
+  if (!hasExperience) {
+    const bestExperience = eligible.find((item) => item.type === 'experience' && item.score >= Math.max(45, topScore - 35));
+    if (bestExperience) retained.push(bestExperience);
   }
 
-  return retained.sort(compareRankedItems);
+  return retained
+    .filter((item, index, list) => list.findIndex((other) => other.type === item.type && other.index === item.index) === index)
+    .sort(compareRankedItems);
 }
 
-async function reviewTailoredResume(args: {
-  analysis: JDAnalysis;
-  board: ConsultantBoardPlan;
-  retainedItems: RankedItem[];
-  contentEnhancementData: Record<string, string>;
-}): Promise<AtsReview> {
+async function reviewTailoredResume(args: { analysis: JDAnalysis; board: ConsultantBoardPlan; retainedItems: RankedItem[]; contentEnhancementData: Record<string, string> }): Promise<AtsReview> {
   try {
-    const raw = await generateJsonSafe(
-      'hard',
-      `You are the final ATS reviewer on a resume consultant board.
+    const raw = await generateJsonSafe('hard', `You are the final ATS reviewer on a resume consultant board.
 
 Review the tailored resume evidence and rewrites. Return strict JSON:
 {
@@ -491,73 +403,40 @@ Selected evidence:
 ${JSON.stringify(args.retainedItems.map((item) => ({ type: item.type, index: item.index, name: item.name, score: item.score, matchedKeywords: item.matchedKeywords })))}
 
 Rewritten content:
-${JSON.stringify(args.contentEnhancementData)}
-`,
-    );
-
+${JSON.stringify(args.contentEnhancementData)}`);
     const parsed = atsReviewSchema.parse(raw);
-    return {
-      estimatedAtsScore: clampScore(parsed.estimatedAtsScore),
-      strengths: parsed.strengths,
-      residualGaps: parsed.residualGaps,
-      revisionInstructions: parsed.revisionInstructions,
-    };
+    return { estimatedAtsScore: clampScore(parsed.estimatedAtsScore), strengths: parsed.strengths, residualGaps: parsed.residualGaps, revisionInstructions: parsed.revisionInstructions };
   } catch (error) {
     console.warn('ATS board review failed, using fallback:', error);
-    return {
-      estimatedAtsScore: 76,
-      strengths: ['Experience-first evidence selected and rewritten for the target JD.'],
-      residualGaps: args.board.missingSignals,
-      revisionInstructions: 'Renderer should keep content dense, prioritize experience, and prune projects first if the resume exceeds two pages.',
-    };
+    return { estimatedAtsScore: 76, strengths: ['Experience-first evidence selected and rewritten for the target JD.'], residualGaps: args.board.missingSignals, revisionInstructions: 'Renderer should keep content dense, prioritize experience, and prune projects first if the resume exceeds two pages.' };
   }
 }
 
-export async function runAICoaching(params: {
-  jobDescription: string;
-  profile: ResumeProfile;
-}): Promise<AICoachingResult> {
+export async function runAICoaching(params: { jobDescription: string; profile: ResumeProfile }): Promise<AICoachingResult> {
   const { jobDescription, profile } = params;
   const items = collectResumeItems(profile);
-
-  if (items.length === 0) {
-    throw new AICoachingValidationError('Add at least one project or experience before using AI Coaching.');
-  }
+  if (items.length === 0) throw new AICoachingValidationError('Add at least one project or experience before using AI Coaching.');
 
   const jdAnalysis = await analyzeJobDescription(jobDescription);
   const consultantBoard = await buildConsultantBoardPlan(jobDescription, jdAnalysis, items);
-
-  const rankedItems = await mapWithConcurrencyLimit(items, 3, async (item) => {
-    const scores = await scoreResumeItem(item, jdAnalysis, consultantBoard);
-    return { ...item, ...scores };
-  });
-
+  const rankedItems = await mapWithConcurrencyLimit(items, 3, async (item) => ({ ...item, ...(await scoreResumeItem(item, jdAnalysis, consultantBoard)) }));
   rankedItems.sort(compareRankedItems);
   const retainedItems = selectRetainedItems(rankedItems);
+  consultantBoard.consultantNotes = [
+    ...consultantBoard.consultantNotes,
+    `Evidence selector retained ${retainedItems.length} of ${rankedItems.length} available items based on score, direct JD match, signal coverage, and diminishing returns.`,
+  ];
 
-  const rewrites = await mapWithConcurrencyLimit(retainedItems, 2, async (item) => {
-    const rewrittenContent = await rewriteResumeItem(item, jdAnalysis, consultantBoard);
-    return [`${item.type}-${item.index}`, rewrittenContent] as const;
-  });
+  const rewrites = await mapWithConcurrencyLimit(retainedItems, 2, async (item) => [
+    `${item.type}-${item.index}`,
+    await rewriteResumeItem(item, jdAnalysis, consultantBoard),
+  ] as const);
 
   const contentEnhancementData = Object.fromEntries(rewrites);
-  const atsReview = await reviewTailoredResume({
-    analysis: jdAnalysis,
-    board: consultantBoard,
-    retainedItems,
-    contentEnhancementData,
-  });
-
-  const selectedProjects = retainedItems
-    .filter((item) => item.type === 'project')
-    .map((item) => item.index);
-  const selectedExperiences = retainedItems
-    .filter((item) => item.type === 'experience')
-    .map((item) => item.index);
-
+  const atsReview = await reviewTailoredResume({ analysis: jdAnalysis, board: consultantBoard, retainedItems, contentEnhancementData });
   return {
-    selectedProjects,
-    selectedExperiences,
+    selectedProjects: retainedItems.filter((item) => item.type === 'project').map((item) => item.index),
+    selectedExperiences: retainedItems.filter((item) => item.type === 'experience').map((item) => item.index),
     contentEnhancementData,
     rankedItems,
     jdAnalysis,
