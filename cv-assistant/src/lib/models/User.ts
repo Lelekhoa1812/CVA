@@ -10,6 +10,7 @@ const ProjectSchema = new Schema({
 const ExperienceSchema = new Schema({
   companyName: { type: String, required: true },
   role: { type: String, required: true },
+  location: { type: String, default: '' },
   timeFrom: { type: String, default: '' },
   timeTo: { type: String, default: '' },
   description: { type: String, default: '' },
@@ -30,7 +31,6 @@ const ProfileSchema = new Schema({
   email: { type: String, default: '' },
   workEmail: { type: String, default: '' },
   phone: { type: String, default: '' },
-  location: { type: String, default: '' },
   website: { type: String, default: '' },
   linkedin: { type: String, default: '' },
   profileSummary: { type: String, default: '' },
