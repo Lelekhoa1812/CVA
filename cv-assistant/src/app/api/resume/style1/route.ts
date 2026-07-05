@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     template: 'style1',
     profile,
     request: {
-      ...body,
+      ...(body || {}),
       selectedProjects,
       selectedExperiences,
       skills: typeof body?.skills === 'string' ? body.skills : '',
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       'X-CV-Assistant-Resume-Density': result.telemetry.density,
       'X-CV-Assistant-Resume-Selected-Experiences': String(result.telemetry.selectedExperiences),
       'X-CV-Assistant-Resume-Selected-Projects': String(result.telemetry.selectedProjects),
-      'X-CV-Assistant-Resume-Times-Style': result.telemetry.usingTimes ? 'true' : 'fallback-unicode',
+      'X-CV-Assistant-Resume-Times-Style': result.telemetry.usingTimes ? 'true' : 'fallback',
       'X-CV-Assistant-Resume-Truncated': result.telemetry.truncatedToTwoPages ? 'true' : 'false',
     },
   });
