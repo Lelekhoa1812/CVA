@@ -1,7 +1,12 @@
 // Root Cause vs Logic:
-// Root cause: the resume-selection cap drifted because some PDF routes hard-coded `7`, while other flows already
-// read from shared constants, creating mismatched validation between UI and server paths.
-// Logic: keep the cap in one exported constant and have every selection-aware route import it so increasing the
-// allowed projects/experiences to `20` stays synchronized across preview, generation, and AI coaching.
+// Root cause: resume selection, AI coaching, and PDF rendering need different budgets. A broad evidence pool can be
+// larger than the final two-page resume, but the renderer must still enforce a strict page ceiling and add backfill
+// only when there is useful space.
+// Logic: keep MAX_RESUME_ITEMS as the candidate evidence pool and expose explicit page/fill constants for render-time
+// pruning, compacting, and experience-first backfill.
 export const MAX_RESUME_ITEMS = 20;
 export const MIN_JOB_DESCRIPTION_WORDS = 20;
+export const MAX_RESUME_PAGES = 2;
+export const TARGET_MIN_PAGE_FILL_RATIO = 0.62;
+export const DEFAULT_FINAL_EXPERIENCE_BUDGET = 6;
+export const DEFAULT_FINAL_PROJECT_BUDGET = 4;
