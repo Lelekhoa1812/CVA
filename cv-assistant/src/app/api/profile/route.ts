@@ -28,6 +28,7 @@ type IncomingExperience = WithCreatedAt &
   WithId & {
     companyName?: string;
     role?: string;
+    location?: string;
     timeFrom?: string;
     timeTo?: string;
     description?: string;
@@ -53,7 +54,6 @@ const PROFILE_SCALAR_FIELDS = [
   'email',
   'workEmail',
   'phone',
-  'location',
   'website',
   'linkedin',
   'profileSummary',
@@ -111,6 +111,7 @@ function normalizeExperienceTimeline<T extends IncomingExperience>(items?: T[]) 
 
       return {
         ...item,
+        location: cleanString(item.location),
         createdAt,
         updatedAt,
         ...metadata,
@@ -121,7 +122,6 @@ function normalizeExperienceTimeline<T extends IncomingExperience>(items?: T[]) 
 
 function sortProfileCollections<T extends SerializableProfile | null | undefined>(profile: T) {
   if (!profile) return profile;
-
   return {
     ...profile,
     projects: sortByCreatedAtDescending(profile.projects || []),
@@ -135,7 +135,6 @@ function serializeProfile<T extends SerializableProfile | null | undefined>(prof
 
 function coerceSerializableProfile(value: unknown) {
   if (!value) return null;
-
   if (
     typeof value === 'object' &&
     value !== null &&
@@ -143,7 +142,6 @@ function coerceSerializableProfile(value: unknown) {
   ) {
     return (value as { toObject: () => SerializableProfile }).toObject();
   }
-
   return value as SerializableProfile;
 }
 
@@ -159,11 +157,12 @@ function getProjectContentHash(project: Pick<IncomingProject, 'name' | 'descript
 }
 
 function getExperienceContentHash(
-  experience: Pick<IncomingExperience, 'companyName' | 'role' | 'timeFrom' | 'timeTo' | 'description'>,
+  experience: Pick<IncomingExperience, 'companyName' | 'role' | 'location' | 'timeFrom' | 'timeTo' | 'description'>,
 ) {
   return createStableHash({
     companyName: cleanString(experience.companyName).trim(),
     role: cleanString(experience.role).trim(),
+    location: cleanString(experience.location).trim(),
     timeFrom: cleanString(experience.timeFrom).trim(),
     timeTo: cleanString(experience.timeTo).trim(),
     description: cleanString(experience.description).trim(),
@@ -173,9 +172,7 @@ function getExperienceContentHash(
 function normalizeScalarFields(profileInput: IncomingProfile, existingProfile?: SerializableProfile | null) {
   return PROFILE_SCALAR_FIELDS.reduce<Record<string, string>>((accumulator, field) => {
     const hasIncomingField = hasOwnField(profileInput, field);
-    accumulator[field] = cleanString(
-      hasIncomingField ? profileInput[field] : existingProfile?.[field],
-    );
+    accumulator[field] = cleanString(hasIncomingField ? profileInput[field] : existingProfile?.[field]);
     return accumulator;
   }, {});
 }
@@ -188,11 +185,7 @@ function normalizeCollectionInput<T extends WithCreatedAt>(
   const hasIncomingField = hasOwnField(profileInput, field);
   const selectedItems = hasIncomingField ? profileInput[field] : existingItems;
   const items = Array.isArray(selectedItems) ? selectedItems : [];
-
-  if (field === 'experiences') {
-    return normalizeExperienceTimeline(items as IncomingExperience[]) as unknown as T[];
-  }
-
+  if (field === 'experiences') return normalizeExperienceTimeline(items as IncomingExperience[]) as unknown as T[];
   return normalizeTimeline(items);
 }
 
@@ -211,6 +204,7 @@ function serializeExperienceForHash(item: IncomingExperience | (IncomingExperien
     _id: toIdString(item._id),
     companyName: cleanString(item.companyName),
     role: cleanString(item.role),
+    location: cleanString(item.location),
     timeFrom: cleanString(item.timeFrom),
     timeTo: cleanString(item.timeTo),
     description: cleanString(item.description),
@@ -230,19 +224,13 @@ function serializeExperienceForHash(item: IncomingExperience | (IncomingExperien
 
 function profilesMatch(a: SerializableProfile | null | undefined, b: Record<string, unknown>) {
   if (!a) return false;
-
   for (const field of PROFILE_SCALAR_FIELDS) {
-    if (cleanString(a[field]) !== cleanString(b[field])) {
-      return false;
-    }
+    if (cleanString(a[field]) !== cleanString(b[field])) return false;
   }
-
   return (
     createStableHash({
       projects: (a.projects || []).map((item) => serializeProjectForHash(item as IncomingProject & WithId)),
-      experiences: (a.experiences || []).map((item) =>
-        serializeExperienceForHash(item as IncomingExperience & WithId),
-      ),
+      experiences: (a.experiences || []).map((item) => serializeExperienceForHash(item as IncomingExperience & WithId)),
     }) ===
     createStableHash({
       projects: (b.projects as IncomingProject[]).map((item) => serializeProjectForHash(item)),
@@ -253,7 +241,6 @@ function profilesMatch(a: SerializableProfile | null | undefined, b: Record<stri
 
 function createSummarizer() {
   const model = getModel('easy');
-
   return async (text: string) => {
     const res = await model.generateContent({
       contents: [
@@ -269,7 +256,6 @@ ${text}
         },
       ],
     });
-
     return res.response.text().trim();
   };
 }
@@ -279,12 +265,7 @@ async function resolveProjects(
   existingProjects: IncomingProject[],
   summarize: (text: string) => Promise<string>,
 ) {
-  const existingById = new Map(
-    existingProjects
-      .map((item) => [toIdString(item._id), item] as const)
-      .filter(([id]) => Boolean(id)),
-  );
-
+  const existingById = new Map(existingProjects.map((item) => [toIdString(item._id), item] as const).filter(([id]) => Boolean(id)));
   return Promise.all(
     incomingProjects.map(async (project) => {
       const existing = existingById.get(toIdString(project._id));
@@ -292,7 +273,6 @@ async function resolveProjects(
         Boolean(project._needsSummary) ||
         !cleanString(existing?.summary) ||
         getProjectContentHash(project) !== getProjectContentHash(existing || {});
-
       return {
         ...(existing?._id ? { _id: existing._id } : {}),
         name: cleanString(project.name),
@@ -311,12 +291,7 @@ async function resolveExperiences(
   existingExperiences: IncomingExperience[],
   summarize: (text: string) => Promise<string>,
 ) {
-  const existingById = new Map(
-    existingExperiences
-      .map((item) => [toIdString(item._id), item] as const)
-      .filter(([id]) => Boolean(id)),
-  );
-
+  const existingById = new Map(existingExperiences.map((item) => [toIdString(item._id), item] as const).filter(([id]) => Boolean(id)));
   return Promise.all(
     incomingExperiences.map(async (experience) => {
       const existing = existingById.get(toIdString(experience._id));
@@ -326,11 +301,11 @@ async function resolveExperiences(
       const createdAt = experience.createdAt ? new Date(experience.createdAt) : existing?.createdAt ? new Date(existing.createdAt) : new Date();
       const updatedAt = contentChanged ? new Date() : experience.updatedAt ? new Date(experience.updatedAt) : existing?.updatedAt ? new Date(existing.updatedAt) : createdAt;
       const orderingMetadata = deriveExperienceOrderingMetadata(experience);
-
       return {
         ...(existing?._id ? { _id: existing._id } : {}),
         companyName: cleanString(experience.companyName),
         role: cleanString(experience.role),
+        location: cleanString(experience.location),
         timeFrom: cleanString(experience.timeFrom),
         timeTo: cleanString(experience.timeTo),
         description: cleanString(experience.description),
@@ -348,7 +323,6 @@ async function resolveExperiences(
 export async function GET(req: NextRequest) {
   const auth = getAuthFromCookies(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   await connectToDatabase();
   const user = await UserModel.findById(auth.userId).lean();
   return NextResponse.json({ profile: serializeProfile(coerceSerializableProfile(user?.profile)) });
@@ -357,49 +331,34 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const auth = getAuthFromCookies(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const body = (await req.json()) as IncomingProfile;
   await connectToDatabase();
-
   const existingUser = await UserModel.findById(auth.userId).lean();
-  if (!existingUser) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
+  if (!existingUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
   const existingProfile = serializeProfile(coerceSerializableProfile(existingUser.profile));
   const scalarFields = normalizeScalarFields(body, existingProfile || null);
   const normalizedProjects = normalizeCollectionInput(body, 'projects', (existingProfile?.projects || []) as IncomingProject[]);
   const normalizedExperiences = normalizeCollectionInput(body, 'experiences', (existingProfile?.experiences || []) as IncomingExperience[]);
   const summarize = createSummarizer();
-
   const [projects, resolvedExperiences] = await Promise.all([
     resolveProjects(normalizedProjects, (existingProfile?.projects || []) as IncomingProject[], summarize),
     resolveExperiences(normalizedExperiences, (existingProfile?.experiences || []) as IncomingExperience[], summarize),
   ]);
-
   const experiences = sortExperiencesByRecency(resolvedExperiences);
   const nextProfile = { ...scalarFields, projects, experiences };
-
-  if (profilesMatch(existingProfile || null, nextProfile)) {
-    return NextResponse.json({ ok: true, profile: existingProfile });
-  }
+  if (profilesMatch(existingProfile || null, nextProfile)) return NextResponse.json({ ok: true, profile: existingProfile });
 
   const updateDoc: Record<string, unknown> = {};
   for (const field of PROFILE_SCALAR_FIELDS) {
-    if (cleanString(existingProfile?.[field]) !== scalarFields[field]) {
-      updateDoc[`profile.${field}`] = scalarFields[field];
-    }
+    if (cleanString(existingProfile?.[field]) !== scalarFields[field]) updateDoc[`profile.${field}`] = scalarFields[field];
   }
-
   if (createStableHash({ projects: (existingProfile?.projects || []).map((item) => serializeProjectForHash(item as IncomingProject & WithId)) }) !== createStableHash({ projects: projects.map((item) => serializeProjectForHash(item)) })) {
     updateDoc['profile.projects'] = projects;
   }
-
   if (createStableHash({ experiences: (existingProfile?.experiences || []).map((item) => serializeExperienceForHash(item as IncomingExperience & WithId)) }) !== createStableHash({ experiences: experiences.map((item) => serializeExperienceForHash(item)) })) {
     updateDoc['profile.experiences'] = experiences;
   }
-
   const updated = await UserModel.findByIdAndUpdate(auth.userId, { $set: updateDoc }, { new: true, upsert: false });
-
   return NextResponse.json({ ok: true, profile: serializeProfile(updated ? coerceSerializableProfile(updated.profile) : nextProfile) });
 }
