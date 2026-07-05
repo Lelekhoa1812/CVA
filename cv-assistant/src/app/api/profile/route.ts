@@ -53,6 +53,7 @@ const PROFILE_SCALAR_FIELDS = [
   'email',
   'workEmail',
   'phone',
+  'location',
   'website',
   'linkedin',
   'profileSummary',
@@ -132,9 +133,6 @@ function serializeProfile<T extends SerializableProfile | null | undefined>(prof
   return sortProfileCollections(profile);
 }
 
-/* Root Cause vs Logic:
-   Root Cause: the save route returned `updated.profile` straight from a live Mongoose document, and spreading that subdocument into the API response dropped scalar identity fields even though Mongo had already saved them.
-   Logic: coerce any hydrated Mongoose profile document into a plain serializable object before sorting or responding so post-save UI hydration sees the same complete shape as a fresh lean fetch. */
 function coerceSerializableProfile(value: unknown) {
   if (!value) return null;
 
@@ -323,23 +321,10 @@ async function resolveExperiences(
     incomingExperiences.map(async (experience) => {
       const existing = existingById.get(toIdString(experience._id));
       const contentChanged = getExperienceContentHash(experience) !== getExperienceContentHash(existing || {});
-      const shouldRefreshSummary =
-        Boolean(experience._needsSummary) ||
-        !cleanString(existing?.summary) ||
-        contentChanged;
+      const shouldRefreshSummary = Boolean(experience._needsSummary) || !cleanString(existing?.summary) || contentChanged;
       const timeframe = `${cleanString(experience.timeFrom)} - ${cleanString(experience.timeTo)}`;
-      const createdAt = experience.createdAt
-        ? new Date(experience.createdAt)
-        : existing?.createdAt
-          ? new Date(existing.createdAt)
-          : new Date();
-      const updatedAt = contentChanged
-        ? new Date()
-        : experience.updatedAt
-          ? new Date(experience.updatedAt)
-          : existing?.updatedAt
-            ? new Date(existing.updatedAt)
-            : createdAt;
+      const createdAt = experience.createdAt ? new Date(experience.createdAt) : existing?.createdAt ? new Date(existing.createdAt) : new Date();
+      const updatedAt = contentChanged ? new Date() : experience.updatedAt ? new Date(experience.updatedAt) : existing?.updatedAt ? new Date(existing.updatedAt) : createdAt;
       const orderingMetadata = deriveExperienceOrderingMetadata(experience);
 
       return {
@@ -353,9 +338,7 @@ async function resolveExperiences(
         updatedAt,
         ...orderingMetadata,
         summary: shouldRefreshSummary
-          ? await summarize(
-              `${cleanString(experience.companyName)} - ${cleanString(experience.role)} (${timeframe})\n${cleanString(experience.description)}`,
-            )
+          ? await summarize(`${cleanString(experience.companyName)} - ${cleanString(experience.role)} (${timeframe})\n${cleanString(experience.description)}`)
           : cleanString(existing?.summary) || cleanString(experience.summary),
       };
     }),
@@ -385,93 +368,38 @@ export async function PUT(req: NextRequest) {
 
   const existingProfile = serializeProfile(coerceSerializableProfile(existingUser.profile));
   const scalarFields = normalizeScalarFields(body, existingProfile || null);
-  /* Root Cause vs Logic:
-     Root Cause: the route normalized missing `projects` or `experiences` fields as empty arrays, so any partial PUT payload
-     could unintentionally wipe previously saved items and make them disappear on the next refresh.
-     Logic: treat omitted collections as "keep the stored value" and only interpret an explicit array payload as a collection update. */
-  const normalizedProjects = normalizeCollectionInput(
-    body,
-    'projects',
-    (existingProfile?.projects || []) as IncomingProject[],
-  );
-  const normalizedExperiences = normalizeCollectionInput(
-    body,
-    'experiences',
-    (existingProfile?.experiences || []) as IncomingExperience[],
-  );
+  const normalizedProjects = normalizeCollectionInput(body, 'projects', (existingProfile?.projects || []) as IncomingProject[]);
+  const normalizedExperiences = normalizeCollectionInput(body, 'experiences', (existingProfile?.experiences || []) as IncomingExperience[]);
   const summarize = createSummarizer();
 
-  /* Root Cause vs Logic:
-     Root Cause: the old save path regenerated summaries inline for submitted arrays and then wrote the whole profile object back,
-     which made even small edits feel slow and visually disruptive because unchanged items were reprocessed with every save.
-     Logic: diff each project and experience against the stored profile using stable content hashes, summarize only the items whose
-     meaning changed, and only send Mongo the profile paths whose values actually changed. */
   const [projects, resolvedExperiences] = await Promise.all([
     resolveProjects(normalizedProjects, (existingProfile?.projects || []) as IncomingProject[], summarize),
-    resolveExperiences(
-      normalizedExperiences,
-      (existingProfile?.experiences || []) as IncomingExperience[],
-      summarize,
-    ),
+    resolveExperiences(normalizedExperiences, (existingProfile?.experiences || []) as IncomingExperience[], summarize),
   ]);
 
-  /* Motivation vs Logic:
-     Motivation: experience cards should automatically reindex by role recency instead of lingering in save-order, so Experience 01 always reflects the most recent work.
-     Logic: derive sortable end-date metadata on every save, persist it alongside updated timestamps, and let the backend reorder the array before it is stored or returned. */
   const experiences = sortExperiencesByRecency(resolvedExperiences);
-
-  const nextProfile = {
-    ...scalarFields,
-    projects,
-    experiences,
-  };
+  const nextProfile = { ...scalarFields, projects, experiences };
 
   if (profilesMatch(existingProfile || null, nextProfile)) {
     return NextResponse.json({ ok: true, profile: existingProfile });
   }
 
   const updateDoc: Record<string, unknown> = {};
-
   for (const field of PROFILE_SCALAR_FIELDS) {
     if (cleanString(existingProfile?.[field]) !== scalarFields[field]) {
       updateDoc[`profile.${field}`] = scalarFields[field];
     }
   }
 
-  if (
-    createStableHash({
-      projects: (existingProfile?.projects || []).map((item) =>
-        serializeProjectForHash(item as IncomingProject & WithId),
-      ),
-    }) !==
-    createStableHash({
-      projects: projects.map((item) => serializeProjectForHash(item)),
-    })
-  ) {
+  if (createStableHash({ projects: (existingProfile?.projects || []).map((item) => serializeProjectForHash(item as IncomingProject & WithId)) }) !== createStableHash({ projects: projects.map((item) => serializeProjectForHash(item)) })) {
     updateDoc['profile.projects'] = projects;
   }
 
-  if (
-    createStableHash({
-      experiences: (existingProfile?.experiences || []).map((item) =>
-        serializeExperienceForHash(item as IncomingExperience & WithId),
-      ),
-    }) !==
-    createStableHash({
-      experiences: experiences.map((item) => serializeExperienceForHash(item)),
-    })
-  ) {
+  if (createStableHash({ experiences: (existingProfile?.experiences || []).map((item) => serializeExperienceForHash(item as IncomingExperience & WithId)) }) !== createStableHash({ experiences: experiences.map((item) => serializeExperienceForHash(item)) })) {
     updateDoc['profile.experiences'] = experiences;
   }
 
-  const updated = await UserModel.findByIdAndUpdate(
-    auth.userId,
-    { $set: updateDoc },
-    { new: true, upsert: false },
-  );
+  const updated = await UserModel.findByIdAndUpdate(auth.userId, { $set: updateDoc }, { new: true, upsert: false });
 
-  return NextResponse.json({
-    ok: true,
-    profile: serializeProfile(updated ? coerceSerializableProfile(updated.profile) : nextProfile),
-  });
+  return NextResponse.json({ ok: true, profile: serializeProfile(updated ? coerceSerializableProfile(updated.profile) : nextProfile) });
 }
