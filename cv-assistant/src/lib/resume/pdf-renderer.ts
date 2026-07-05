@@ -46,7 +46,6 @@ type CandidateItem = { type: 'experience' | 'project'; index: number; title: str
 type Fonts = { regular: PDFFont; bold: PDFFont; italic: PDFFont; usingTimes: boolean };
 type RenderAttempt = { bytes: Uint8Array; pageCount: number; lastPageFillRatio: number; density: DensityPreset; items: CandidateItem[]; usingTimes: boolean };
 type PreparedNarrative = { summary: string; skills: string };
-
 type DrawContext = ReturnType<typeof createDrawContext>;
 
 export type ResumePdfResult = {
@@ -278,6 +277,37 @@ function drawJustifiedLine(page: PDFPage, line: string, x: number, y: number, wi
   for (const word of words) { drawText(page, word, cursor, y, size, font, color); cursor += font.widthOfTextAtSize(word, size) + gap; }
 }
 
+function measureParagraphHeight(text: string, font: PDFFont, size: number, width: number, lineHeight: number) {
+  const paragraphs = normalizeBody(text).split(/\n\s*\n/).map((block) => normalizeInline(block)).filter(Boolean);
+  return paragraphs.reduce((height, paragraph) => height + wrapTextLines(paragraph, font, size, width).length * lineHeight, 0);
+}
+
+function measureBulletsHeight(text: string, fonts: Fonts, preset: DensityPreset, width: number, maxBullets: number) {
+  const bulletSize = preset.bodySize;
+  const indent = fonts.regular.widthOfTextAtSize('• ', bulletSize) + 3;
+  return splitBullets(text, maxBullets).reduce((height, bullet) => {
+    const lines = wrapTextLines(normalizeInline(bullet), fonts.regular, bulletSize, Math.max(width - indent, 80));
+    return height + lines.length * preset.lineHeight + preset.bulletGap;
+  }, 0);
+}
+
+function measureTitleHeight(item: CandidateItem, fonts: Fonts, preset: DensityPreset, width: number) {
+  const metaText = [item.location, item.meta].filter(Boolean).join(' | ');
+  const metaWidth = metaText ? fonts.italic.widthOfTextAtSize(metaText, preset.metaSize) : 0;
+  const titleWidth = metaText ? width - metaWidth - 12 : width;
+  const titleLines = wrapTextLines(item.title, fonts.bold, preset.titleSize, Math.max(80, titleWidth));
+  return titleLines.length * (preset.titleSize + 1.1) + (item.subtitle ? preset.metaSize + 0.5 : 0);
+}
+
+function measureItemHeight(item: CandidateItem, fonts: Fonts, preset: DensityPreset, width: number) {
+  const maxBullets = item.type === 'experience' ? preset.maxExperienceBullets : preset.maxProjectBullets;
+  return measureTitleHeight(item, fonts, preset, width) + measureBulletsHeight(item.body, fonts, preset, width - 1.5, maxBullets) + preset.itemGap;
+}
+
+function measureBoxParagraph(text: string, fonts: Fonts, preset: DensityPreset, width: number, size = preset.bodySize, lineHeight = preset.lineHeight) {
+  return measureParagraphHeight(text, fonts.regular, size, width, lineHeight);
+}
+
 function createDrawContext(args: { pdf: PDFDocument; fonts: Fonts; preset: DensityPreset; accent: RGB }) {
   let page = args.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let pageNumber = 1;
@@ -374,23 +404,41 @@ function drawItemList(ctx: DrawContext, fonts: Fonts, preset: DensityPreset, ite
   ctx.section(label, x, width, !card);
   for (const item of items) {
     if (card) {
-      ctx.ensure(36);
-      ctx.page.drawRectangle({ x: x - 3, y: ctx.y - 5, width: width + 6, height: preset.titleSize + preset.metaSize + 9, color: PALE, borderColor: RULE, borderWidth: 0.25 });
+      const contentHeight = measureItemHeight(item, fonts, preset, width - 6);
+      const cardHeight = contentHeight + 9;
+      ctx.ensure(cardHeight + preset.itemGap);
+      const topY = ctx.y + 3;
+      ctx.page.drawRectangle({ x: x - 4, y: topY - cardHeight, width: width + 8, height: cardHeight, color: PALE, borderColor: RULE, borderWidth: 0.25 });
+      ctx.y -= 3;
+      drawTitleLine(ctx, fonts, preset, item, x + 3, width - 6, accent);
+      ctx.bullets(item.body, x + 4.5, width - 7.5, item.type === 'experience' ? preset.maxExperienceBullets : preset.maxProjectBullets);
+      const cardBottom = topY - cardHeight;
+      if (ctx.y > cardBottom + 3) ctx.y = cardBottom + 3;
+      ctx.y -= preset.itemGap;
+    } else {
+      drawTitleLine(ctx, fonts, preset, item, x, width, accent);
+      ctx.bullets(item.body, x + 1.5, width - 1.5, item.type === 'experience' ? preset.maxExperienceBullets : preset.maxProjectBullets);
+      ctx.y -= preset.itemGap;
     }
-    drawTitleLine(ctx, fonts, preset, item, x, width, accent);
-    ctx.bullets(item.body, x + 1.5, width - 1.5, item.type === 'experience' ? preset.maxExperienceBullets : preset.maxProjectBullets);
-    ctx.y -= preset.itemGap;
   }
 }
 
-function drawRailSection(page: PDFPage, fonts: Fonts, preset: DensityPreset, title: string, body: string, x: number, y: number, width: number, accent: RGB) {
+function drawRailSectionBox(ctx: DrawContext, fonts: Fonts, preset: DensityPreset, title: string, body: string, x: number, y: number, width: number, accent: RGB, fill = WHITE) {
   const clean = normalizeInline(body);
   if (!clean) return y;
-  drawText(page, title.toUpperCase(), x, y, Math.max(6.4, preset.sectionSize - 2.2), fonts.bold, accent);
-  y -= preset.lineHeight;
-  const lines = wrapTextLines(clean, fonts.regular, Math.max(5.95, preset.bodySize - 0.65), width);
-  for (const line of lines.slice(0, 12)) { drawText(page, line, x, y, Math.max(5.95, preset.bodySize - 0.65), fonts.regular, INK); y -= Math.max(6.9, preset.lineHeight - 1.15); }
-  return y - 4;
+  const titleSize = Math.max(6.4, preset.sectionSize - 2.2);
+  const bodySize = Math.max(5.95, preset.bodySize - 0.65);
+  const bodyLineHeight = Math.max(6.9, preset.lineHeight - 1.15);
+  const rawLines = wrapTextLines(clean, fonts.regular, bodySize, width - 10);
+  const maxLines = Math.max(1, Math.floor((y - ctx.bottom - titleSize - 12) / bodyLineHeight));
+  const lines = rawLines.slice(0, Math.max(1, maxLines));
+  const boxHeight = titleSize + 5 + lines.length * bodyLineHeight + 7;
+  if (y - boxHeight < ctx.bottom) return y;
+  ctx.page.drawRectangle({ x: x - 4, y: y - boxHeight + 3, width: width + 8, height: boxHeight, color: fill, borderColor: RULE, borderWidth: 0.22 });
+  drawText(ctx.page, title.toUpperCase(), x, y - 4, titleSize, fonts.bold, accent);
+  let cursor = y - titleSize - 7;
+  for (const line of lines) { drawText(ctx.page, line, x, cursor, bodySize, fonts.regular, INK); cursor -= bodyLineHeight; }
+  return y - boxHeight - 5;
 }
 
 function drawTemplate1(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPreset; profile: ResumePdfProfile; items: CandidateItem[]; narrative: PreparedNarrative; accent: RGB }) {
@@ -406,8 +454,12 @@ function drawTemplate1(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPr
 function drawTemplate2(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPreset; profile: ResumePdfProfile; items: CandidateItem[]; narrative: PreparedNarrative; accent: RGB }) {
   drawHeaderLeft(args.ctx, args.profile, args.fonts, args.preset, args.accent);
   if (args.narrative.skills) {
-    args.ctx.page.drawRectangle({ x: args.ctx.left, y: args.ctx.y - 20, width: args.ctx.width, height: 24, color: tintFromAccent(args.accent), borderColor: RULE, borderWidth: 0.25 });
-    args.ctx.paragraph(args.narrative.skills, args.ctx.left + 5, args.ctx.width - 10, Math.max(args.preset.bodySize - 0.2, 6.1), args.fonts.regular, INK, args.preset.lineHeight - 0.2);
+    const skillSize = Math.max(args.preset.bodySize - 0.2, 6.1);
+    const skillLineHeight = args.preset.lineHeight - 0.2;
+    const bandHeight = Math.max(24, measureBoxParagraph(args.narrative.skills, args.fonts, args.preset, args.ctx.width - 10, skillSize, skillLineHeight) + 10);
+    args.ctx.ensure(bandHeight + 4);
+    args.ctx.page.drawRectangle({ x: args.ctx.left, y: args.ctx.y - bandHeight + 5, width: args.ctx.width, height: bandHeight, color: tintFromAccent(args.accent), borderColor: RULE, borderWidth: 0.25 });
+    args.ctx.paragraph(args.narrative.skills, args.ctx.left + 5, args.ctx.width - 10, skillSize, args.fonts.regular, INK, skillLineHeight);
     args.ctx.y -= 4;
   }
   if (args.narrative.summary) { args.ctx.section('Profile'); args.ctx.paragraph(args.narrative.summary, args.ctx.left, args.ctx.width); }
@@ -424,10 +476,10 @@ function drawTemplate3(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPr
   const mainWidth = args.ctx.right - mainX;
   args.ctx.page.drawRectangle({ x: railX - 5, y: args.ctx.bottom, width: railWidth + 10, height: args.ctx.top - args.ctx.bottom, color: SOFT, borderColor: RULE, borderWidth: 0.25 });
   let railY = args.ctx.top - 6;
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Contact', buildContactLine(args.profile), railX + 3, railY, railWidth - 6, args.accent);
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Education', [args.profile.school, args.profile.major, args.profile.studyPeriod].map(normalizeInline).filter(Boolean).join(', '), railX + 3, railY, railWidth - 6, args.accent);
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Skills', args.narrative.skills, railX + 3, railY, railWidth - 6, args.accent);
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Languages', args.profile.languages || '', railX + 3, railY, railWidth - 6, args.accent);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Contact', buildContactLine(args.profile), railX + 3, railY, railWidth - 6, args.accent, WHITE);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Education', [args.profile.school, args.profile.major, args.profile.studyPeriod].map(normalizeInline).filter(Boolean).join(', '), railX + 3, railY, railWidth - 6, args.accent, WHITE);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Skills', args.narrative.skills, railX + 3, railY, railWidth - 6, args.accent, WHITE);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Languages', args.profile.languages || '', railX + 3, railY, railWidth - 6, args.accent, WHITE);
   drawText(args.ctx.page, normalizeInline(args.profile.name) || 'Your Name', mainX, args.ctx.y, args.preset.nameSize + 1, args.fonts.bold, args.accent);
   args.ctx.y -= args.preset.nameSize + 6;
   drawRule(args.ctx.page, mainX, args.ctx.right, args.ctx.y, args.accent, 0.7);
@@ -438,17 +490,23 @@ function drawTemplate3(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPr
 }
 
 function drawTemplate4(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPreset; profile: ResumePdfProfile; items: CandidateItem[]; narrative: PreparedNarrative; accent: RGB }) {
-  const bannerHeight = 54;
+  const contact = buildContactLine(args.profile);
+  const contactLines = contact ? wrapTextLines(contact, args.fonts.regular, args.preset.contactSize, args.ctx.width - 24).slice(0, 2) : [];
+  const bannerHeight = Math.max(54, args.preset.nameSize + contactLines.length * (args.preset.contactSize + 1.2) + 22);
+  args.ctx.ensure(bannerHeight + 6);
   args.ctx.page.drawRectangle({ x: args.ctx.left, y: args.ctx.y - bannerHeight + 8, width: args.ctx.width, height: bannerHeight, color: args.accent });
   drawText(args.ctx.page, normalizeInline(args.profile.name) || 'Your Name', args.ctx.left + 12, args.ctx.y - 11, args.preset.nameSize, args.fonts.bold, WHITE);
-  const contact = buildContactLine(args.profile);
-  if (contact) args.ctx.paragraph(contact, args.ctx.left + 12, args.ctx.width - 24, args.preset.contactSize, args.fonts.regular, WHITE, args.preset.contactSize + 1.1);
+  contactLines.forEach((line, index) => drawText(args.ctx.page, line, args.ctx.left + 12, args.ctx.y - 11 - args.preset.nameSize - 2 - index * (args.preset.contactSize + 1.2), args.preset.contactSize, args.fonts.regular, WHITE));
   args.ctx.y -= bannerHeight + 3;
   if (args.narrative.summary) { args.ctx.section('Executive Summary', args.ctx.left, args.ctx.width, false); args.ctx.paragraph(args.narrative.summary, args.ctx.left, args.ctx.width); }
   if (args.narrative.skills) {
     args.ctx.section('Capability Stack', args.ctx.left, args.ctx.width, false);
-    args.ctx.page.drawRectangle({ x: args.ctx.left - 2, y: args.ctx.y - 16, width: args.ctx.width + 4, height: 20, color: tintFromAccent(args.accent), borderColor: RULE, borderWidth: 0.25 });
-    args.ctx.paragraph(args.narrative.skills, args.ctx.left + 3, args.ctx.width - 6, Math.max(args.preset.bodySize - 0.15, 6.2), args.fonts.regular, INK, args.preset.lineHeight - 0.2);
+    const skillSize = Math.max(args.preset.bodySize - 0.15, 6.2);
+    const skillLineHeight = args.preset.lineHeight - 0.2;
+    const stackHeight = Math.max(20, measureBoxParagraph(args.narrative.skills, args.fonts, args.preset, args.ctx.width - 8, skillSize, skillLineHeight) + 9);
+    args.ctx.ensure(stackHeight + 4);
+    args.ctx.page.drawRectangle({ x: args.ctx.left - 2, y: args.ctx.y - stackHeight + 5, width: args.ctx.width + 4, height: stackHeight, color: tintFromAccent(args.accent), borderColor: RULE, borderWidth: 0.25 });
+    args.ctx.paragraph(args.narrative.skills, args.ctx.left + 3, args.ctx.width - 6, skillSize, args.fonts.regular, INK, skillLineHeight);
     args.ctx.y -= 3;
   }
   drawItemList(args.ctx, args.fonts, args.preset, args.items.filter((item) => item.type === 'experience'), 'Experience Cards', args.ctx.left, args.ctx.width, args.accent, true);
@@ -459,17 +517,20 @@ function drawTemplate4(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPr
 function drawTemplate5(args: { ctx: DrawContext; fonts: Fonts; preset: DensityPreset; profile: ResumePdfProfile; items: CandidateItem[]; narrative: PreparedNarrative; accent: RGB }) {
   drawText(args.ctx.page, normalizeInline(args.profile.name) || 'Your Name', args.ctx.left, args.ctx.y, args.preset.nameSize + 1.5, args.fonts.bold, args.accent);
   args.ctx.y -= args.preset.nameSize + 4;
-  const bandHeight = 24;
+  const bandSize = Math.max(args.preset.bodySize - 0.25, 6.1);
+  const bandLineHeight = args.preset.lineHeight - 0.3;
+  const bandHeight = Math.max(24, measureBoxParagraph(args.narrative.skills, args.fonts, args.preset, args.ctx.width - 14, bandSize, bandLineHeight) + 11);
+  args.ctx.ensure(bandHeight + 8);
   args.ctx.page.drawRectangle({ x: args.ctx.left, y: args.ctx.y - bandHeight + 5, width: args.ctx.width, height: bandHeight, color: tintFromAccent(args.accent), borderColor: RULE, borderWidth: 0.25 });
-  args.ctx.paragraph(args.narrative.skills, args.ctx.left + 7, args.ctx.width - 14, Math.max(args.preset.bodySize - 0.25, 6.1), args.fonts.regular, INK, args.preset.lineHeight - 0.3);
+  args.ctx.paragraph(args.narrative.skills, args.ctx.left + 7, args.ctx.width - 14, bandSize, args.fonts.regular, INK, bandLineHeight);
   args.ctx.y -= 6;
   const railWidth = 136;
   const mainWidth = args.ctx.width - railWidth - 18;
   const railX = args.ctx.left + mainWidth + 18;
   let railY = args.ctx.y;
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Contact', buildContactLine(args.profile), railX, railY, railWidth, args.accent);
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Education', [args.profile.school, args.profile.major, args.profile.studyPeriod].map(normalizeInline).filter(Boolean).join(', '), railX, railY, railWidth, args.accent);
-  railY = drawRailSection(args.ctx.page, args.fonts, args.preset, 'Languages', args.profile.languages || '', railX, railY, railWidth, args.accent);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Contact', buildContactLine(args.profile), railX, railY, railWidth, args.accent, PALE);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Education', [args.profile.school, args.profile.major, args.profile.studyPeriod].map(normalizeInline).filter(Boolean).join(', '), railX, railY, railWidth, args.accent, PALE);
+  railY = drawRailSectionBox(args.ctx, args.fonts, args.preset, 'Languages', args.profile.languages || '', railX, railY, railWidth, args.accent, PALE);
   if (args.narrative.summary) { args.ctx.section('Profile Ledger', args.ctx.left, mainWidth); args.ctx.paragraph(args.narrative.summary, args.ctx.left, mainWidth); }
   drawItemList(args.ctx, args.fonts, args.preset, args.items.filter((item) => item.type === 'experience'), 'Career Ledger', args.ctx.left, mainWidth, args.accent);
   drawItemList(args.ctx, args.fonts, args.preset, args.items.filter((item) => item.type === 'project'), 'Technical Proof', args.ctx.left, mainWidth, args.accent);
