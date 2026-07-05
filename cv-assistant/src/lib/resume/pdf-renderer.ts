@@ -117,7 +117,6 @@ const TARGET_MIN_LAST_PAGE_FILL = 0.60;
 const INK = rgb(0.055, 0.055, 0.055);
 const MUTED = rgb(0.30, 0.30, 0.30);
 const RULE = rgb(0.55, 0.55, 0.55);
-const SOFT = rgb(0.965, 0.965, 0.965);
 
 const DENSITIES: DensityPreset[] = [
   { key: 'professional', marginX: 30, marginY: 24, nameSize: 18, contactSize: 6.5, sectionSize: 10.4, titleSize: 8.35, metaSize: 7.2, bodySize: 7.15, lineHeight: 8.55, sectionGap: 3.7, itemGap: 2.4, bulletGap: 0.8, maxExperienceBullets: 4, maxProjectBullets: 3 },
@@ -126,22 +125,11 @@ const DENSITIES: DensityPreset[] = [
 ];
 
 function normalizeInline(value?: string | null) {
-  return (value || '')
-    .replace(/[—–]/g, '-')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (value || '').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
 }
 
 function normalizeBody(value?: string | null) {
-  return (value || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/[—–]/g, '-')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (value || '').replace(/\r\n/g, '\n').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function isStandardFontSafe(value: string) {
@@ -169,38 +157,17 @@ function applyStylePreferenceDensity(preset: DensityPreset, stylePreferences?: S
   const preferredBody = parsePreferredBodySize(stylePreferences);
   if (!preferredBody) return preset;
   const delta = preferredBody - preset.bodySize;
-  return {
-    ...preset,
-    bodySize: preferredBody,
-    lineHeight: Math.max(preferredBody + 1.05, preset.lineHeight + delta),
-    titleSize: Math.max(preferredBody + 0.7, preset.titleSize + delta * 0.55),
-    sectionSize: Math.max(preferredBody + 1.75, preset.sectionSize + delta * 0.55),
-  };
+  return { ...preset, bodySize: preferredBody, lineHeight: Math.max(preferredBody + 1.05, preset.lineHeight + delta), titleSize: Math.max(preferredBody + 0.7, preset.titleSize + delta * 0.55), sectionSize: Math.max(preferredBody + 1.75, preset.sectionSize + delta * 0.55) };
 }
 
 function splitBulletSource(text: string): string[] {
   const plain = stripMarkdownForPdf(normalizeBody(text));
   if (!plain) return [];
-
-  const lineBullets = plain
-    .split(/\n+/)
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim())
-    .filter(Boolean);
+  const lineBullets = plain.split(/\n+/).map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim()).filter(Boolean);
   if (lineBullets.length > 1) return lineBullets;
-
-  const markerBullets = plain
-    .replace(/\s+[•]\s+/g, '\n')
-    .replace(/\s+-\s+(?=[A-Z0-9])/g, '\n')
-    .split('\n')
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim())
-    .filter(Boolean);
+  const markerBullets = plain.replace(/\s+[•]\s+/g, '\n').replace(/\s+-\s+(?=[A-Z0-9])/g, '\n').split('\n').map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim()).filter(Boolean);
   if (markerBullets.length > 1) return markerBullets;
-
-  const sentenceBullets = plain
-    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 18);
-
+  const sentenceBullets = plain.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map((line) => line.trim()).filter((line) => line.length > 18);
   return sentenceBullets.length ? sentenceBullets : [plain];
 }
 
@@ -214,40 +181,27 @@ function compactWords(text: string, maxWords: number) {
 }
 
 function compactSkillsFallback(skillsText: string, jobDescription?: string) {
-  const sourceItems = formatResumeSkillsParagraph(skillsText)
-    .split(/[,;\n]+/)
-    .map((item) => normalizeInline(item))
-    .filter(Boolean);
+  const sourceItems = formatResumeSkillsParagraph(skillsText).split(/[,;\n]+/).map((item) => normalizeInline(item)).filter(Boolean);
   const jd = (jobDescription || '').toLowerCase();
-  const scored = sourceItems
-    .map((item, index) => {
-      const tokens = item.toLowerCase().match(/[a-z][a-z0-9+#.\-]{2,}/g) || [];
-      const score = tokens.reduce((total, token) => total + (jd.includes(token) ? 4 : 0), 0) + Math.max(0, 16 - index * 0.08);
-      return { item, score };
-    })
-    .sort((a, b) => b.score - a.score);
+  const scored = sourceItems.map((item, index) => {
+    const tokens = item.toLowerCase().match(/[a-z][a-z0-9+#.\-]{2,}/g) || [];
+    const score = tokens.reduce((total, token) => total + (jd.includes(token) ? 4 : 0), 0) + Math.max(0, 16 - index * 0.08);
+    return { item, score };
+  }).sort((a, b) => b.score - a.score);
   return scored.slice(0, 38).map((entry) => entry.item).join(', ');
 }
 
 function compactSummaryFallback(profile: ResumePdfProfile, jobDescription?: string) {
   const raw = normalizeInline(profile.profileSummary);
   if (raw) return compactWords(raw, 58);
-
-  const roleSignals = (profile.experiences || [])
-    .slice(0, 3)
-    .map((experience) => experience.role)
-    .filter(Boolean)
-    .join(', ');
+  const roleSignals = (profile.experiences || []).slice(0, 3).map((experience) => experience.role).filter(Boolean).join(', ');
   const stack = compactSkillsFallback(resolveResumeSkillsText('', '', profile.skills), jobDescription).split(', ').slice(0, 12).join(', ');
   return compactWords(`AI and Software Engineer focused on ${roleSignals || normalizeInline(profile.major) || 'production software delivery'}, with hands-on capability across ${stack}. Builds reliable systems, automation workflows, data products, and stakeholder-ready engineering outcomes.`, 58);
 }
 
 function buildContactLine(profile: ResumePdfProfile) {
   const preferredEmail = normalizeInline(profile.workEmail) || normalizeInline(profile.email);
-  return [preferredEmail, profile.phone, profile.location, profile.website, profile.linkedin]
-    .map((item) => normalizeInline(item))
-    .filter(Boolean)
-    .join(' - ');
+  return [preferredEmail, profile.phone, profile.location, profile.website, profile.linkedin].map((item) => normalizeInline(item)).filter(Boolean).join(' - ');
 }
 
 function deriveKeywords(jobDescription?: string) {
@@ -265,70 +219,36 @@ function scoreAts(text: string, jobDescription?: string, pages = 1) {
   return Math.max(0, Math.min(100, Math.round(52 + coverage * 48 - pagePenalty)));
 }
 
-function collectItems(args: {
-  profile: ResumePdfProfile;
-  request: ResumeRenderRequest;
-  enhancedProjects: Record<number, string>;
-  enhancedExperiences: Record<number, string>;
-}) {
+function collectItems(args: { profile: ResumePdfProfile; request: ResumeRenderRequest; enhancedProjects: Record<number, string>; enhancedExperiences: Record<number, string> }) {
   const contentEnhancementData = args.request.contentEnhancementData || {};
-  const experiences = (args.profile.experiences || [])
-    .map((experience, index) => ({ experience, index }))
-    .filter(({ index }) => args.request.selectedExperiences.includes(index))
-    .map(({ experience, index }) => {
-      const role = normalizeInline(experience.role);
-      const company = normalizeInline(experience.companyName);
-      const title = role || company || 'Experience';
-      const subtitle = company && role ? company : '';
-      const meta = [experience.timeFrom, experience.timeTo].map(normalizeInline).filter(Boolean).join(' - ');
-      const body = normalizeBody(contentEnhancementData[`experience-${index}`] || args.enhancedExperiences[index] || experience.description || experience.summary);
-      return { type: 'experience' as const, index, title, subtitle, meta, body, weight: 1000 - index };
-    });
-
-  const projects = (args.profile.projects || [])
-    .map((project, index) => ({ project, index }))
-    .filter(({ index }) => args.request.selectedProjects.includes(index))
-    .map(({ project, index }) => {
-      const body = normalizeBody(contentEnhancementData[`project-${index}`] || args.enhancedProjects[index] || project.description || project.summary);
-      return { type: 'project' as const, index, title: normalizeInline(project.name) || 'Project', subtitle: '', meta: '', body, weight: 410 - index };
-    });
-
+  const experiences = (args.profile.experiences || []).map((experience, index) => ({ experience, index })).filter(({ index }) => args.request.selectedExperiences.includes(index)).map(({ experience, index }) => {
+    const role = normalizeInline(experience.role);
+    const company = normalizeInline(experience.companyName);
+    const title = role || company || 'Experience';
+    const subtitle = company && role ? company : '';
+    const meta = [experience.timeFrom, experience.timeTo].map(normalizeInline).filter(Boolean).join(' - ');
+    const body = normalizeBody(contentEnhancementData[`experience-${index}`] || args.enhancedExperiences[index] || experience.description || experience.summary);
+    return { type: 'experience' as const, index, title, subtitle, meta, body, weight: 1000 - index };
+  });
+  const projects = (args.profile.projects || []).map((project, index) => ({ project, index })).filter(({ index }) => args.request.selectedProjects.includes(index)).map(({ project, index }) => {
+    const body = normalizeBody(contentEnhancementData[`project-${index}`] || args.enhancedProjects[index] || project.description || project.summary);
+    return { type: 'project' as const, index, title: normalizeInline(project.name) || 'Project', subtitle: '', meta: '', body, weight: 410 - index };
+  });
   return [...experiences, ...projects].filter((item) => item.title || item.body);
 }
 
 function collectBackfillItems(profile: ResumePdfProfile, selected: CandidateItem[]) {
   const selectedKeys = new Set(selected.map((item) => `${item.type}-${item.index}`));
-  const experiences = (profile.experiences || []).map((experience, index) => ({
-    type: 'experience' as const,
-    index,
-    title: normalizeInline(experience.role) || normalizeInline(experience.companyName) || 'Experience',
-    subtitle: normalizeInline(experience.companyName),
-    meta: [experience.timeFrom, experience.timeTo].map(normalizeInline).filter(Boolean).join(' - '),
-    body: normalizeBody(experience.description || experience.summary),
-    weight: 860 - index,
-  }));
-  const projects = (profile.projects || []).map((project, index) => ({
-    type: 'project' as const,
-    index,
-    title: normalizeInline(project.name) || 'Project',
-    subtitle: '',
-    meta: '',
-    body: normalizeBody(project.description || project.summary),
-    weight: 300 - index,
-  }));
-
-  return [...experiences, ...projects]
-    .filter((item) => !selectedKeys.has(`${item.type}-${item.index}`) && (item.title || item.body))
-    .sort((a, b) => b.weight - a.weight);
+  const experiences = (profile.experiences || []).map((experience, index) => ({ type: 'experience' as const, index, title: normalizeInline(experience.role) || normalizeInline(experience.companyName) || 'Experience', subtitle: normalizeInline(experience.companyName), meta: [experience.timeFrom, experience.timeTo].map(normalizeInline).filter(Boolean).join(' - '), body: normalizeBody(experience.description || experience.summary), weight: 860 - index }));
+  const projects = (profile.projects || []).map((project, index) => ({ type: 'project' as const, index, title: normalizeInline(project.name) || 'Project', subtitle: '', meta: '', body: normalizeBody(project.description || project.summary), weight: 300 - index }));
+  return [...experiences, ...projects].filter((item) => !selectedKeys.has(`${item.type}-${item.index}`) && (item.title || item.body)).sort((a, b) => b.weight - a.weight);
 }
 
 async function maybeEnhanceContent(args: { profile: ResumePdfProfile; request: ResumeRenderRequest }) {
   const enhancedProjects: Record<number, string> = {};
   const enhancedExperiences: Record<number, string> = {};
   let enhancedSkills: string | undefined;
-
   if (!args.request.enhance) return { enhancedSkills, enhancedProjects, enhancedExperiences };
-
   try {
     const model = getModel('hard');
     const jd = args.request.jobDescription ? `\nTarget job description:\n${args.request.jobDescription}` : '';
@@ -337,18 +257,13 @@ async function maybeEnhanceContent(args: { profile: ResumePdfProfile; request: R
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       return res.response.text().trim();
     }
-
-    if (args.request.skills) {
-      enhancedSkills = await improve(`Rewrite these resume skills into one dense ATS-friendly comma-separated line. Prioritize JD-matching skills already supported by the source. Do not invent technologies.${jd}${qaNotes}\nSkills:\n${args.request.skills}`);
-    }
-
+    if (args.request.skills) enhancedSkills = await improve(`Rewrite these resume skills into one dense ATS-friendly comma-separated line. Prioritize JD-matching skills already supported by the source. Do not invent technologies.${jd}${qaNotes}\nSkills:\n${args.request.skills}`);
     for (const idx of args.request.selectedExperiences) {
       const experience = args.profile.experiences?.[idx];
       const source = experience?.description || experience?.summary || '';
       if (!experience || !source.trim()) continue;
       enhancedExperiences[idx] = await improve(`Rewrite this work experience into 4 strong, dense resume bullets for the target role. Preserve supported technologies, ownership, scope, outcomes, and qualities. Do not invent employers, metrics, credentials, or technologies. Return newline bullets only.${jd}${qaNotes}\nCompany: ${experience.companyName || ''}\nRole: ${experience.role || ''}\nSource:\n${source}`);
     }
-
     for (const idx of args.request.selectedProjects) {
       const project = args.profile.projects?.[idx];
       const source = project?.description || project?.summary || '';
@@ -358,18 +273,12 @@ async function maybeEnhanceContent(args: { profile: ResumePdfProfile; request: R
   } catch (error) {
     console.warn('Shared resume enhancement skipped:', error);
   }
-
   return { enhancedSkills, enhancedProjects, enhancedExperiences };
 }
 
 async function maybePrepareNarrative(args: { profile: ResumePdfProfile; request: ResumeRenderRequest; enhancedSkills?: string; items: CandidateItem[] }): Promise<PreparedNarrative> {
-  const fallback = {
-    summary: compactSummaryFallback(args.profile, args.request.jobDescription),
-    skills: compactSkillsFallback(resolveResumeSkillsText(args.enhancedSkills, args.request.skills, args.profile.skills), args.request.jobDescription),
-  };
-
+  const fallback = { summary: compactSummaryFallback(args.profile, args.request.jobDescription), skills: compactSkillsFallback(resolveResumeSkillsText(args.enhancedSkills, args.request.skills, args.profile.skills), args.request.jobDescription) };
   if (!args.request.jobDescription || (!args.request.autoFit && !args.request.enhance)) return fallback;
-
   try {
     const raw = await generateJsonSafe('easy', `You are a senior resume editor. Build compact resume Summary and Skills content matching the JD while staying truthful to candidate evidence.
 Return strict JSON: {"summary":"2 concise sentences, max 58 words", "skills":"comma-separated skills, max 38 items"}
@@ -379,10 +288,7 @@ Rules:
 - Summary must be compact and desirable, not a long keyword dump.
 Job description:\n${args.request.jobDescription}\nCandidate evidence:\n${JSON.stringify({ profileSummary: args.profile.profileSummary, skills: args.profile.skills, selectedItems: args.items.map((item) => ({ type: item.type, title: item.title, body: item.body })) })}`);
     const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-    return {
-      summary: compactWords(typeof source.summary === 'string' ? source.summary : fallback.summary, 58),
-      skills: compactSkillsFallback(typeof source.skills === 'string' ? source.skills : fallback.skills, args.request.jobDescription),
-    };
+    return { summary: compactWords(typeof source.summary === 'string' ? source.summary : fallback.summary, 58), skills: compactSkillsFallback(typeof source.skills === 'string' ? source.skills : fallback.skills, args.request.jobDescription) };
   } catch {
     return fallback;
   }
@@ -408,22 +314,13 @@ function drawRule(page: PDFPage, x1: number, x2: number, y: number, color: RGB, 
 function drawJustifiedLine(page: PDFPage, line: string, x: number, y: number, width: number, size: number, font: PDFFont, color: RGB, justify: boolean) {
   const clean = normalizeInline(line);
   const words = clean.split(/\s+/).filter(Boolean);
-  if (!justify || words.length < 2) {
-    drawText(page, clean, x, y, size, font, color);
-    return;
-  }
+  if (!justify || words.length < 2) { drawText(page, clean, x, y, size, font, color); return; }
   const textWidth = font.widthOfTextAtSize(clean, size);
-  if (textWidth >= width || width - textWidth > 35) {
-    drawText(page, clean, x, y, size, font, color);
-    return;
-  }
+  if (textWidth >= width || width - textWidth > 35) { drawText(page, clean, x, y, size, font, color); return; }
   const wordsWidth = words.reduce((total, word) => total + font.widthOfTextAtSize(word, size), 0);
   const gap = (width - wordsWidth) / (words.length - 1);
   let cursor = x;
-  for (const word of words) {
-    drawText(page, word, cursor, y, size, font, color);
-    cursor += font.widthOfTextAtSize(word, size) + gap;
-  }
+  for (const word of words) { drawText(page, word, cursor, y, size, font, color); cursor += font.widthOfTextAtSize(word, size) + gap; }
 }
 
 function createDrawContext(args: { pdf: PDFDocument; fonts: Fonts; preset: DensityPreset; accent: RGB }) {
@@ -434,29 +331,15 @@ function createDrawContext(args: { pdf: PDFDocument; fonts: Fonts; preset: Densi
   const top = PAGE_HEIGHT - args.preset.marginY;
   const bottom = args.preset.marginY;
   let y = top;
-
-  function newPage() {
-    page = args.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    pageNumber += 1;
-    y = top;
-  }
-
-  function ensure(height: number) {
-    if (y - height < bottom) newPage();
-  }
-
+  function newPage() { page = args.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]); pageNumber += 1; y = top; }
+  function ensure(height: number) { if (y - height < bottom) newPage(); }
   function paragraph(text: string, x: number, width: number, size = args.preset.bodySize, font = args.fonts.regular, color = INK, lineHeight = args.preset.lineHeight) {
     const paragraphs = normalizeBody(text).split(/\n\s*\n/).map((block) => normalizeInline(block)).filter(Boolean);
     for (const block of paragraphs) {
       const lines = wrapTextLines(block, font, size, width);
-      for (let i = 0; i < lines.length; i += 1) {
-        ensure(lineHeight);
-        drawJustifiedLine(page, lines[i], x, y, width, size, font, color, i < lines.length - 1);
-        y -= lineHeight;
-      }
+      for (let i = 0; i < lines.length; i += 1) { ensure(lineHeight); drawJustifiedLine(page, lines[i], x, y, width, size, font, color, i < lines.length - 1); y -= lineHeight; }
     }
   }
-
   function bullets(text: string, x: number, width: number, maxBullets: number) {
     const bulletSize = args.preset.bodySize;
     const marker = '•';
@@ -466,30 +349,19 @@ function createDrawContext(args: { pdf: PDFDocument; fonts: Fonts; preset: Densi
       if (!lines.length) continue;
       ensure(lines.length * args.preset.lineHeight + args.preset.bulletGap);
       drawText(page, marker, x, y, bulletSize, args.fonts.regular, INK);
-      for (let i = 0; i < lines.length; i += 1) {
-        drawJustifiedLine(page, lines[i], x + indent, y, width - indent, bulletSize, args.fonts.regular, INK, i < lines.length - 1);
-        y -= args.preset.lineHeight;
-      }
+      for (let i = 0; i < lines.length; i += 1) { drawJustifiedLine(page, lines[i], x + indent, y, width - indent, bulletSize, args.fonts.regular, INK, i < lines.length - 1); y -= args.preset.lineHeight; }
       y -= args.preset.bulletGap;
     }
   }
-
   function section(title: string, x = left, width = right - left) {
-    ensure(args.preset.sectionSize + args.preset.sectionGap * 2 + 4);
+    ensure(args.preset.sectionSize + args.preset.titleSize + args.preset.sectionGap * 2 + 5);
     y -= args.preset.sectionGap;
     drawText(page, title, x, y, args.preset.sectionSize, args.fonts.bold, args.accent);
     y -= args.preset.sectionSize + 1.8;
     drawRule(page, x, x + width, y, args.accent, 0.55);
-    y -= args.preset.sectionGap;
+    y -= Math.max(args.preset.titleSize + 1.2, args.preset.bodySize + 1.2, args.preset.sectionGap + 3.5);
   }
-
-  return {
-    get page() { return page; },
-    get y() { return y; },
-    set y(value: number) { y = value; },
-    get pageNumber() { return pageNumber; },
-    left, right, top, bottom, width: right - left, ensure, newPage, paragraph, bullets, section,
-  };
+  return { get page() { return page; }, get y() { return y; }, set y(value: number) { y = value; }, get pageNumber() { return pageNumber; }, left, right, top, bottom, width: right - left, ensure, newPage, paragraph, bullets, section };
 }
 
 function drawCentered(page: PDFPage, text: string, y: number, font: PDFFont, size: number, color = INK) {
@@ -505,14 +377,11 @@ function drawHeader(ctx: ReturnType<typeof createDrawContext>, profile: ResumePd
   const contact = buildContactLine(profile);
   if (contact) {
     const lines = wrapTextLines(contact, fonts.regular, preset.contactSize, ctx.width);
-    for (const line of lines.slice(0, 2)) {
-      drawCentered(ctx.page, line, ctx.y, fonts.regular, preset.contactSize, MUTED);
-      ctx.y -= preset.contactSize + 1.2;
-    }
+    for (const line of lines.slice(0, 2)) { drawCentered(ctx.page, line, ctx.y, fonts.regular, preset.contactSize, MUTED); ctx.y -= preset.contactSize + 1.2; }
   }
   ctx.y -= 2.5;
   drawRule(ctx.page, ctx.left, ctx.right, ctx.y, accent, 0.55);
-  ctx.y -= 4;
+  ctx.y -= Math.max(preset.bodySize + 1.2, 7.8);
 }
 
 function drawTitleLine(ctx: ReturnType<typeof createDrawContext>, fonts: Fonts, preset: DensityPreset, item: CandidateItem, x: number, width: number, accent: RGB) {
@@ -520,82 +389,39 @@ function drawTitleLine(ctx: ReturnType<typeof createDrawContext>, fonts: Fonts, 
   const titleWidth = item.meta ? width - metaWidth - 12 : width;
   const titleLines = wrapTextLines(item.title, fonts.bold, preset.titleSize, titleWidth);
   ctx.ensure(titleLines.length * (preset.titleSize + 1.1) + (item.subtitle ? preset.metaSize + 0.5 : 0));
-  titleLines.forEach((line, index) => {
-    drawText(ctx.page, line, x, ctx.y, preset.titleSize, fonts.bold, accent);
-    if (index === 0 && item.meta) drawText(ctx.page, item.meta, x + width - metaWidth, ctx.y, preset.metaSize, fonts.italic, MUTED);
-    ctx.y -= preset.titleSize + 1.1;
-  });
-  if (item.subtitle) {
-    drawText(ctx.page, item.subtitle, x, ctx.y + 1.5, preset.metaSize, fonts.italic, INK);
-    ctx.y -= preset.metaSize + 0.5;
-  }
+  titleLines.forEach((line, index) => { drawText(ctx.page, line, x, ctx.y, preset.titleSize, fonts.bold, accent); if (index === 0 && item.meta) drawText(ctx.page, item.meta, x + width - metaWidth, ctx.y, preset.metaSize, fonts.italic, MUTED); ctx.y -= preset.titleSize + 1.1; });
+  if (item.subtitle) { drawText(ctx.page, item.subtitle, x, ctx.y + 1.5, preset.metaSize, fonts.italic, INK); ctx.y -= preset.metaSize + 0.5; }
 }
 
 function drawEducation(ctx: ReturnType<typeof createDrawContext>, profile: ResumePdfProfile, fonts: Fonts, preset: DensityPreset, accent: RGB) {
   if (!profile.school && !profile.major) return;
   ctx.section('Education');
-  const school = normalizeInline(profile.school) || 'Education';
-  const period = normalizeInline(profile.studyPeriod);
-  const item: CandidateItem = { type: 'experience', index: -1, title: school, subtitle: normalizeInline(profile.major), meta: period, body: '', weight: 0 };
+  const item: CandidateItem = { type: 'experience', index: -1, title: normalizeInline(profile.school) || 'Education', subtitle: normalizeInline(profile.major), meta: normalizeInline(profile.studyPeriod), body: '', weight: 0 };
   drawTitleLine(ctx, fonts, preset, item, ctx.left, ctx.width, accent);
   ctx.y -= preset.itemGap;
 }
 
-function drawResumeLayout(args: {
-  ctx: ReturnType<typeof createDrawContext>;
-  fonts: Fonts;
-  preset: DensityPreset;
-  profile: ResumePdfProfile;
-  items: CandidateItem[];
-  narrative: PreparedNarrative;
-  accent: RGB;
-}) {
+function drawResumeLayout(args: { ctx: ReturnType<typeof createDrawContext>; fonts: Fonts; preset: DensityPreset; profile: ResumePdfProfile; items: CandidateItem[]; narrative: PreparedNarrative; accent: RGB }) {
   drawHeader(args.ctx, args.profile, args.fonts, args.preset, args.accent);
-
-  if (args.narrative.summary) {
-    args.ctx.section('Summary');
-    args.ctx.paragraph(args.narrative.summary, args.ctx.left, args.ctx.width, args.preset.bodySize, args.fonts.regular, INK, args.preset.lineHeight);
-  }
-
+  if (args.narrative.summary) { args.ctx.section('Summary'); args.ctx.paragraph(args.narrative.summary, args.ctx.left, args.ctx.width, args.preset.bodySize, args.fonts.regular, INK, args.preset.lineHeight); }
   const experiences = args.items.filter((item) => item.type === 'experience');
   if (experiences.length) {
     args.ctx.section('Professional Experience');
-    for (const item of experiences) {
-      drawTitleLine(args.ctx, args.fonts, args.preset, item, args.ctx.left, args.ctx.width, args.accent);
-      args.ctx.bullets(item.body, args.ctx.left + 1.5, args.ctx.width - 1.5, args.preset.maxExperienceBullets);
-      args.ctx.y -= args.preset.itemGap;
-    }
+    for (const item of experiences) { drawTitleLine(args.ctx, args.fonts, args.preset, item, args.ctx.left, args.ctx.width, args.accent); args.ctx.bullets(item.body, args.ctx.left + 1.5, args.ctx.width - 1.5, args.preset.maxExperienceBullets); args.ctx.y -= args.preset.itemGap; }
   }
-
   drawEducation(args.ctx, args.profile, args.fonts, args.preset, args.accent);
-
   const projects = args.items.filter((item) => item.type === 'project');
   if (projects.length) {
     args.ctx.section('Projects');
-    for (const item of projects) {
-      drawTitleLine(args.ctx, args.fonts, args.preset, item, args.ctx.left, args.ctx.width, args.accent);
-      args.ctx.bullets(item.body, args.ctx.left + 1.5, args.ctx.width - 1.5, args.preset.maxProjectBullets);
-      args.ctx.y -= args.preset.itemGap;
-    }
+    for (const item of projects) { drawTitleLine(args.ctx, args.fonts, args.preset, item, args.ctx.left, args.ctx.width, args.accent); args.ctx.bullets(item.body, args.ctx.left + 1.5, args.ctx.width - 1.5, args.preset.maxProjectBullets); args.ctx.y -= args.preset.itemGap; }
   }
-
-  if (args.narrative.skills) {
-    args.ctx.section('Skills');
-    args.ctx.paragraph(args.narrative.skills, args.ctx.left, args.ctx.width, Math.max(args.preset.bodySize - 0.1, 6.2), args.fonts.regular, INK, args.preset.lineHeight - 0.2);
-  }
-
-  if (args.profile.languages) {
-    args.ctx.section('Languages');
-    args.ctx.paragraph(args.profile.languages, args.ctx.left, args.ctx.width, args.preset.bodySize, args.fonts.regular, INK, args.preset.lineHeight);
-  }
+  if (args.narrative.skills) { args.ctx.section('Skills'); args.ctx.paragraph(args.narrative.skills, args.ctx.left, args.ctx.width, Math.max(args.preset.bodySize - 0.1, 6.2), args.fonts.regular, INK, args.preset.lineHeight - 0.2); }
+  if (args.profile.languages) { args.ctx.section('Languages'); args.ctx.paragraph(args.profile.languages, args.ctx.left, args.ctx.width, args.preset.bodySize, args.fonts.regular, INK, args.preset.lineHeight); }
 }
 
 async function renderAttempt(args: { template: ResumeTemplateId; profile: ResumePdfProfile; request: ResumeRenderRequest; items: CandidateItem[]; density: DensityPreset; enhancedSkills?: string; narrative?: PreparedNarrative }): Promise<RenderAttempt> {
   const preset = applyStylePreferenceDensity(args.density, args.request.stylePreferences);
-  const narrative = args.narrative || {
-    summary: compactSummaryFallback(args.profile, args.request.jobDescription),
-    skills: compactSkillsFallback(resolveResumeSkillsText(args.enhancedSkills, args.request.skills, args.profile.skills), args.request.jobDescription),
-  };
+  const narrative = args.narrative || { summary: compactSummaryFallback(args.profile, args.request.jobDescription), skills: compactSkillsFallback(resolveResumeSkillsText(args.enhancedSkills, args.request.skills, args.profile.skills), args.request.jobDescription) };
   const textCorpus = [args.profile.name, buildContactLine(args.profile), narrative.summary, narrative.skills, args.profile.languages, args.profile.major, args.profile.school, ...args.items.flatMap((item) => [item.title, item.subtitle, item.meta, item.body])].filter(Boolean).join('\n');
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${normalizeInline(args.profile.name) || 'Candidate'} Resume`);
@@ -635,62 +461,29 @@ export async function renderResumePdf(args: { template: ResumeTemplateId; profil
   const backfill = args.request.autoFit ? collectBackfillItems(args.profile, items) : [];
   const narrative = await maybePrepareNarrative({ profile: args.profile, request: args.request, enhancedSkills: enhanced.enhancedSkills, items });
   let best: RenderAttempt | null = null;
-
   for (let cycle = 0; cycle < 40; cycle += 1) {
     for (const density of DENSITIES) {
       const attempt = await renderAttempt({ template: args.template, profile: args.profile, request: args.request, items, density, enhancedSkills: enhanced.enhancedSkills, narrative });
       best = !best || attempt.pageCount < best.pageCount || attempt.bytes.length < best.bytes.length ? attempt : best;
-
       if (attempt.pageCount <= MAX_PAGES) {
         if (args.request.autoFit && attempt.lastPageFillRatio < TARGET_MIN_LAST_PAGE_FILL && backfill.length > 0) {
           const candidate = backfill.shift();
           if (candidate) {
             const expanded = [...items, candidate].sort((a, b) => b.weight - a.weight);
             const expandedAttempt = await renderAttempt({ template: args.template, profile: args.profile, request: args.request, items: expanded, density, enhancedSkills: enhanced.enhancedSkills, narrative });
-            if (expandedAttempt.pageCount <= MAX_PAGES) {
-              items = expanded;
-              best = expandedAttempt;
-              continue;
-            }
+            if (expandedAttempt.pageCount <= MAX_PAGES) { items = expanded; best = expandedAttempt; continue; }
           }
         }
         const atsText = [args.profile.name, args.profile.major, args.profile.school, narrative.summary, narrative.skills, ...items.flatMap((item) => [item.title, item.subtitle, item.body])].join(' ');
-        return {
-          bytes: attempt.bytes,
-          telemetry: {
-            pageCount: attempt.pageCount,
-            density: attempt.density.key,
-            atsScore: scoreAts(atsText, args.request.jobDescription, attempt.pageCount),
-            selectedExperiences: items.filter((item) => item.type === 'experience').length,
-            selectedProjects: items.filter((item) => item.type === 'project').length,
-            finalItemCount: items.length,
-            lastPageFillRatio: attempt.lastPageFillRatio,
-            usingTimes: attempt.usingTimes,
-            truncatedToTwoPages: false,
-          },
-        };
+        return { bytes: attempt.bytes, telemetry: { pageCount: attempt.pageCount, density: attempt.density.key, atsScore: scoreAts(atsText, args.request.jobDescription, attempt.pageCount), selectedExperiences: items.filter((item) => item.type === 'experience').length, selectedProjects: items.filter((item) => item.type === 'project').length, finalItemCount: items.length, lastPageFillRatio: attempt.lastPageFillRatio, usingTimes: attempt.usingTimes, truncatedToTwoPages: false } };
       }
     }
     if (items.length <= 1) break;
     items = dropWeakestItem(items);
   }
-
   const fallback = best || await renderAttempt({ template: args.template, profile: args.profile, request: args.request, items, density: DENSITIES[DENSITIES.length - 1], enhancedSkills: enhanced.enhancedSkills, narrative });
   const finalBytes = fallback.pageCount > MAX_PAGES ? await truncateToTwoPages(fallback.bytes) : fallback.bytes;
   const finalPageCount = fallback.pageCount > MAX_PAGES ? MAX_PAGES : fallback.pageCount;
   const atsText = [args.profile.name, args.profile.major, args.profile.school, narrative.summary, narrative.skills, ...items.flatMap((item) => [item.title, item.subtitle, item.body])].join(' ');
-  return {
-    bytes: finalBytes,
-    telemetry: {
-      pageCount: finalPageCount,
-      density: fallback.density.key,
-      atsScore: scoreAts(atsText, args.request.jobDescription, finalPageCount),
-      selectedExperiences: items.filter((item) => item.type === 'experience').length,
-      selectedProjects: items.filter((item) => item.type === 'project').length,
-      finalItemCount: items.length,
-      lastPageFillRatio: fallback.lastPageFillRatio,
-      usingTimes: fallback.usingTimes,
-      truncatedToTwoPages: fallback.pageCount > MAX_PAGES,
-    },
-  };
+  return { bytes: finalBytes, telemetry: { pageCount: finalPageCount, density: fallback.density.key, atsScore: scoreAts(atsText, args.request.jobDescription, finalPageCount), selectedExperiences: items.filter((item) => item.type === 'experience').length, selectedProjects: items.filter((item) => item.type === 'project').length, finalItemCount: items.length, lastPageFillRatio: fallback.lastPageFillRatio, usingTimes: fallback.usingTimes, truncatedToTwoPages: fallback.pageCount > MAX_PAGES } };
 }
