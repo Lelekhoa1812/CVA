@@ -30,6 +30,7 @@ const ProfileSchema = new Schema({
   email: { type: String, default: '' },
   workEmail: { type: String, default: '' },
   phone: { type: String, default: '' },
+  location: { type: String, default: '' },
   website: { type: String, default: '' },
   linkedin: { type: String, default: '' },
   profileSummary: { type: String, default: '' },
