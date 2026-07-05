@@ -6,9 +6,6 @@ import { UserModel } from '@/lib/models/User';
 import { runAICoaching, AICoachingValidationError, type ResumeProfile } from '@/lib/resume/ai-coaching';
 import { MAX_RESUME_ITEMS } from '@/lib/resume/constants';
 
-// Root Cause vs Logic:
-// Root Cause: The resume generation payload validation only allowed styles 1-4, so style5 requests failed with "Invalid resume generation payload."
-// Logic: Include style5 in the enum so ledger-style resumes pass schema validation and reach the specialized PDF route.
 const requestSchema = z.object({
   selectedStyle: z.enum(['style1', 'style2', 'style3', 'style4', 'style5']),
   skills: z.string().optional().default(''),
@@ -52,6 +49,7 @@ export async function POST(req: NextRequest) {
   let selectedExperiences = body.selectedExperiences;
   let contentEnhancementData = body.contentEnhancementData;
   let enhance = body.enhance;
+  let coachingTrace: unknown = null;
 
   if (body.ai_coaching_enabled) {
     await connectToDatabase();
@@ -71,6 +69,12 @@ export async function POST(req: NextRequest) {
         ...coachingResult.contentEnhancementData,
       };
       enhance = false;
+      coachingTrace = {
+        jdAnalysis: coachingResult.jdAnalysis,
+        consultantBoard: coachingResult.consultantBoard,
+        atsReview: coachingResult.atsReview,
+        selectedEvidenceCount: selectedProjects.length + selectedExperiences.length,
+      };
     } catch (error) {
       if (error instanceof AICoachingValidationError) {
         return NextResponse.json({ error: error.message }, { status: error.statusCode });
@@ -98,6 +102,9 @@ export async function POST(req: NextRequest) {
       qa: body.qa,
       stylePreferences: body.stylePreferences,
       contentEnhancementData,
+      jobDescription: body.job_description,
+      autoFit: body.ai_coaching_enabled,
+      coachingTrace,
     }),
   });
 
@@ -112,11 +119,26 @@ export async function POST(req: NextRequest) {
   }
 
   const pdfBuffer = await upstream.arrayBuffer();
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
+    'Content-Disposition': upstream.headers.get('Content-Disposition') || 'inline; filename="resume.pdf"',
+  });
+
+  for (const key of [
+    'X-CV-Assistant-Resume-Pages',
+    'X-CV-Assistant-Resume-ATS-Score',
+    'X-CV-Assistant-Resume-Density',
+    'X-CV-Assistant-Resume-Selected-Experiences',
+    'X-CV-Assistant-Resume-Selected-Projects',
+    'X-CV-Assistant-Resume-Times-Style',
+    'X-CV-Assistant-Resume-Truncated',
+  ]) {
+    const value = upstream.headers.get(key);
+    if (value) headers.set(key, value);
+  }
+
   return new NextResponse(pdfBuffer, {
     status: 200,
-    headers: {
-      'Content-Type': upstream.headers.get('Content-Type') || 'application/pdf',
-      'Content-Disposition': upstream.headers.get('Content-Disposition') || 'inline; filename="resume.pdf"',
-    },
+    headers,
   });
 }
