@@ -23,6 +23,7 @@ venv/
 
 .cache/
 .codoptic*
+*codoptic*
 .codeoptic-cache/
 .agent/
 
