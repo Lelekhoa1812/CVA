@@ -111,7 +111,6 @@ function normalizeExperienceTimeline<T extends IncomingExperience>(items?: T[]) 
 
       return {
         ...item,
-        location: cleanString(item.location),
         createdAt,
         updatedAt,
         ...metadata,
@@ -260,6 +259,32 @@ ${text}
   };
 }
 
+function findExistingExperience(
+  experience: IncomingExperience,
+  existingById: Map<string, IncomingExperience>,
+  existingExperiences: IncomingExperience[],
+) {
+  const idMatch = existingById.get(toIdString(experience._id));
+  if (idMatch) return idMatch;
+
+  const company = cleanString(experience.companyName).trim().toLowerCase();
+  const role = cleanString(experience.role).trim().toLowerCase();
+  const timeFrom = cleanString(experience.timeFrom).trim().toLowerCase();
+  const timeTo = cleanString(experience.timeTo).trim().toLowerCase();
+
+  return existingExperiences.find((item) =>
+    cleanString(item.companyName).trim().toLowerCase() === company &&
+    cleanString(item.role).trim().toLowerCase() === role &&
+    cleanString(item.timeFrom).trim().toLowerCase() === timeFrom &&
+    cleanString(item.timeTo).trim().toLowerCase() === timeTo,
+  );
+}
+
+function resolveExperienceLocation(experience: IncomingExperience, existing?: IncomingExperience) {
+  if (hasOwnField(experience, 'location')) return cleanString(experience.location);
+  return cleanString(existing?.location);
+}
+
 async function resolveProjects(
   incomingProjects: IncomingProject[],
   existingProjects: IncomingProject[],
@@ -294,18 +319,20 @@ async function resolveExperiences(
   const existingById = new Map(existingExperiences.map((item) => [toIdString(item._id), item] as const).filter(([id]) => Boolean(id)));
   return Promise.all(
     incomingExperiences.map(async (experience) => {
-      const existing = existingById.get(toIdString(experience._id));
-      const contentChanged = getExperienceContentHash(experience) !== getExperienceContentHash(existing || {});
+      const existing = findExistingExperience(experience, existingById, existingExperiences);
+      const location = resolveExperienceLocation(experience, existing);
+      const normalizedExperience = { ...experience, location };
+      const contentChanged = getExperienceContentHash(normalizedExperience) !== getExperienceContentHash(existing || {});
       const shouldRefreshSummary = Boolean(experience._needsSummary) || !cleanString(existing?.summary) || contentChanged;
       const timeframe = `${cleanString(experience.timeFrom)} - ${cleanString(experience.timeTo)}`;
       const createdAt = experience.createdAt ? new Date(experience.createdAt) : existing?.createdAt ? new Date(existing.createdAt) : new Date();
       const updatedAt = contentChanged ? new Date() : experience.updatedAt ? new Date(experience.updatedAt) : existing?.updatedAt ? new Date(existing.updatedAt) : createdAt;
-      const orderingMetadata = deriveExperienceOrderingMetadata(experience);
+      const orderingMetadata = deriveExperienceOrderingMetadata(normalizedExperience);
       return {
         ...(existing?._id ? { _id: existing._id } : {}),
         companyName: cleanString(experience.companyName),
         role: cleanString(experience.role),
-        location: cleanString(experience.location),
+        location,
         timeFrom: cleanString(experience.timeFrom),
         timeTo: cleanString(experience.timeTo),
         description: cleanString(experience.description),
