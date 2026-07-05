@@ -108,7 +108,7 @@ export default function ExperienceLocationInjector() {
       if (!experiences?.length) return;
 
       const visibleDrafts = readVisibleLocationDrafts();
-      const mergedDrafts = {
+      const mergedDrafts: Record<number, string> = {
         ...draftsRef.current,
         ...Object.fromEntries(visibleDrafts.map((value, index) => [index, value])),
         ...(overrides || {}),
