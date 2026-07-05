@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     template: 'style4',
     profile,
     request: {
-      ...body,
+      ...(body || {}),
       selectedProjects,
       selectedExperiences,
       skills: typeof body?.skills === 'string' ? body.skills : '',
