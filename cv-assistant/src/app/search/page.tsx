@@ -4,80 +4,32 @@ import { FormEvent, startTransition, useEffect, useRef, useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import ModuleShell from "@/components/ui/ModuleShell";
 import SectionHeading from "@/components/ui/SectionHeading";
-import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+import { Reveal } from "@/components/motion/Reveal";
+import CrawlFilters from "@/components/search/CrawlFilters";
+import MobileSearchBar from "@/components/search/MobileSearchBar";
+import PlatformPicker from "@/components/search/PlatformPicker";
+import ResultCard from "@/components/search/ResultCard";
+import ResultToolbar from "@/components/search/ResultToolbar";
+import SourceRail from "@/components/search/SourceRail";
+import { AUTOMATIC_RETRY_MESSAGE, type ResultFilters } from "@/components/search/labels";
 import { defaultSearchRequest } from "@/lib/search/schema";
 import { buildApiUrl } from "@/lib/api";
 import { passesPostFilters } from "@/lib/search/filters";
 import {
   createInitialSourceProgress,
-  EMPLOYMENT_TYPE_OPTIONS,
-  MAX_RESULTS_OPTIONS,
-  POSTED_WITHIN_OPTIONS,
   SEARCH_SOURCES,
   SOURCE_LABELS,
-  type EmploymentType,
   type JobSearchResult,
-  type PostedWithin,
   type SearchFilters,
   type SearchRequest,
   type SearchSource,
   type SearchStreamEvent,
-  type SourceProgressState,
-  type WorkplaceMode,
-  WORKPLACE_MODE_OPTIONS,
 } from "@/lib/search/types";
 
 type CompletionSummary = {
   totalResults: number;
   blockedSources: SearchSource[];
   elapsedMs: number;
-};
-
-const postedLabels: Record<(typeof POSTED_WITHIN_OPTIONS)[number], string> = {
-  any: "Any time",
-  "24h": "Past 24 hours",
-  "3d": "Past 3 days",
-  "7d": "Past 7 days",
-  "14d": "Past 14 days",
-  "30d": "Past 30 days",
-};
-
-const workplaceLabels: Record<(typeof WORKPLACE_MODE_OPTIONS)[number], string> = {
-  any: "Any workplace",
-  remote: "Remote",
-  hybrid: "Hybrid",
-  onsite: "On-site",
-};
-
-const employmentLabels: Record<(typeof EMPLOYMENT_TYPE_OPTIONS)[number], string> = {
-  any: "Any employment type",
-  "full-time": "Full-time",
-  "part-time": "Part-time",
-  contract: "Contract",
-  internship: "Internship",
-};
-
-const MATCH_FILTER_OPTIONS = ["any", "strong", "partial"] as const;
-type MatchFilter = (typeof MATCH_FILTER_OPTIONS)[number];
-const matchLabels: Record<MatchFilter, string> = {
-  any: "Any match",
-  strong: "Strong matches only",
-  partial: "Partial matches only",
-};
-
-type PlatformFilter = SearchSource | "any";
-const PLATFORM_FILTER_OPTIONS: PlatformFilter[] = ["any", ...SEARCH_SOURCES];
-const platformLabels: Record<PlatformFilter, string> = {
-  any: "Any platform",
-  ...SOURCE_LABELS,
-};
-
-type ResultFilters = {
-  match: MatchFilter;
-  platform: PlatformFilter;
-  postedWithin: PostedWithin;
-  workplaceMode: WorkplaceMode;
-  employmentType: EmploymentType;
 };
 
 type AdvancedSearchQuestionDraft = {
@@ -147,21 +99,9 @@ function getDuplicateGroupCount(results: JobSearchResult[], duplicateGroupKey: s
   return results.filter((result) => result.duplicateGroupKey === duplicateGroupKey).length;
 }
 
-function formatDuplicateLabel(count: number) {
-  return count > 1 ? `${count} linked duplicates` : "Unique card";
-}
-
 function formatElapsed(elapsedMs: number) {
   if (elapsedMs < 1000) return `${elapsedMs} ms`;
   return `${(elapsedMs / 1000).toFixed(1)} s`;
-}
-
-function statusClasses(status: SourceProgressState["status"]) {
-  if (status === "complete") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-700 dark:text-emerald-100";
-  if (status === "blocked") return "border-amber-400/30 bg-amber-400/10 text-amber-700 dark:text-amber-100";
-  if (status === "error") return "border-rose-400/30 bg-rose-400/10 text-rose-700 dark:text-rose-100";
-  if (status === "running") return "border-sky-300/30 bg-sky-300/10 text-sky-700 dark:text-sky-100";
-  return "border-border/80 bg-[hsl(var(--surface-1)/0.78)] text-muted-foreground";
 }
 
 export default function SearchPage() {
@@ -190,6 +130,7 @@ export default function SearchPage() {
   const [currentAnswer, setCurrentAnswer] = useState("");
   const [isAdvancedSearchComplete, setIsAdvancedSearchComplete] = useState(false);
   const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -214,6 +155,11 @@ export default function SearchPage() {
           blockedReason: event.blockedReason,
         },
       }));
+      if (event.status === "running" && event.message === AUTOMATIC_RETRY_MESSAGE) {
+        setStatusMessage(`${SOURCE_LABELS[event.source]} is retrying automatically.`);
+      } else if (event.status !== "error" && event.message) {
+        setStatusMessage(event.message);
+      }
       return;
     }
 
@@ -244,9 +190,15 @@ export default function SearchPage() {
     }
 
     if (event.type === "error") {
-      setError(event.message);
+      if (event.fatal || !event.source) {
+        setError(event.message);
+      }
       if (event.fatal) {
         setStatusMessage("The search ended early because the worker failed.");
+      } else if (event.source) {
+        setStatusMessage(
+          `${SOURCE_LABELS[event.source]} could not complete after automatic retries. Other sources continued.`,
+        );
       }
     }
   }
@@ -299,6 +251,7 @@ export default function SearchPage() {
 
       while (true) {
         const { done, value } = await reader.read();
+        if (abortRef.current !== controller) return;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -318,19 +271,18 @@ export default function SearchPage() {
         handleEvent(JSON.parse(trailing) as SearchStreamEvent);
       }
     } catch (searchError) {
-      if (controller.signal.aborted) {
+      if (abortRef.current === controller && controller.signal.aborted) {
         setStatusMessage("Search canceled. Partial results are still available below.");
-      } else {
-        const message =
-          searchError instanceof Error ? searchError.message : "Search failed unexpectedly.";
+      } else if (abortRef.current === controller) {
+        const message = searchError instanceof Error ? searchError.message : "Search failed unexpectedly.";
         setError(message);
         setStatusMessage("The search could not complete.");
       }
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null;
+        setIsSearching(false);
       }
-      setIsSearching(false);
     }
   }
 
@@ -369,6 +321,7 @@ export default function SearchPage() {
     setCurrentQuestion(null);
     setCurrentAnswer("");
     setIsAdvancedSearchComplete(false);
+    setAdvancedOpen(false);
     setForm(defaultSearchRequest);
     setSourceProgress(createInitialSourceProgress());
     setStatusMessage("Ready to scan public job sources.");
@@ -377,9 +330,11 @@ export default function SearchPage() {
   async function prepareAdvancedSearch() {
     if (!form.jobTitle.trim()) {
       setAdvancedSearchError("Please fill in your job title and location first.");
+      setAdvancedOpen(true);
       return;
     }
 
+    setAdvancedOpen(true);
     setIsPreparingAdvancedSearch(true);
     setError(null);
     setAdvancedSearchError(null);
@@ -463,6 +418,7 @@ export default function SearchPage() {
       setAdvancedQuestions(updatedQuestions);
       setAdvancedAnswers(updatedAnswers);
       setCurrentAnswer("");
+      setAdvancedOpen(true);
 
       if (data.isComplete) {
         setIsAdvancedSearchComplete(true);
@@ -503,18 +459,16 @@ export default function SearchPage() {
   // Logic: Store only selected source ids in form state, then derive the "all" view state and visible source cards
   // from that array for both the pre-run brief and the live progress panel.
   const selectedAllSources = form.selectedSources.length === SEARCH_SOURCES.length;
-  const visibleSources =
-    (isSearching || summary ? runSources : form.selectedSources).length > 0
-      ? isSearching || summary
-        ? runSources
-        : form.selectedSources
-      : SEARCH_SOURCES;
+  const selectedForRun = isSearching || summary ? runSources : form.selectedSources;
+  const visibleSources: SearchSource[] = selectedForRun.length > 0 ? selectedForRun : [...SEARCH_SOURCES];
   const blockedCount = visibleSources.filter((source) => sourceProgress[source].status === "blocked").length;
   const activeAdvancedSearchSession = buildAdvancedSearchSession(
     advancedQuestions,
     advancedAnswers,
     normalizeText(advancedSummary),
   );
+  const canSearch =
+    !isSearching && Boolean(form.jobTitle.trim()) && Boolean(form.location.trim()) && form.selectedSources.length > 0;
   const searchFilters: SearchFilters = {
     postedWithin: resultFilters.postedWithin,
     workplaceMode: resultFilters.workplaceMode,
@@ -539,42 +493,41 @@ export default function SearchPage() {
     return true;
   });
   const archivedResultCount = results.length - filteredResults.length;
+  const instructionSummary = formatInstructionExpansionSummary({
+    ...form,
+    advancedSearchSession: activeAdvancedSearchSession,
+  });
 
   return (
     <ModuleShell
-      eyebrow="Search Module"
-      title="Sweep public job boards for the best application URL."
-      description="Search by job title and location, choose the hiring platforms you want, then watch the crawler step through LinkedIn, SEEK, Indeed, CareerOne, Adzuna, and Talent.com with live progress and deduped results."
+      compactMobile
+      className="min-w-0"
+      eyebrow="Search"
+      title="Find roles across public job boards."
+      description="Set a title and location, choose platforms, and follow each board as matches arrive. A platform error retries on its own so the rest of the search keeps going."
       stats={[
         { label: "Run mode", value: isSearching ? "Live" : "Ready" },
         { label: "Results", value: `${results.length}` },
-        { label: "Blocked sources", value: `${blockedCount}` },
+        { label: "Blocked", value: `${blockedCount}` },
       ]}
       aside={
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <p className="section-kicker">Hybrid Discovery</p>
-            <h2 className="text-foreground font-display text-3xl">Best effort, source by source.</h2>
-            <p className="text-muted-foreground text-sm leading-7">
-              LinkedIn is crawled directly, while the other boards use the same hybrid HTML-plus-fallback flow
-              so each source can degrade gracefully instead of taking the whole run down.
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="section-kicker">How it runs</p>
+            <h2 className="text-foreground font-display text-2xl">One board at a time.</h2>
+            <p className="text-muted-foreground text-sm leading-6">
+              Each platform can retry, finish, or drop out. Results already on screen stay put.
             </p>
           </div>
-
-          <div className="space-y-3">
-            {[
-              "Live progress per source",
-              "Cancelable runs with partial results preserved",
-              "Best publicly obtainable application URL on each card",
-            ].map((item) => (
-              <div
-                key={item}
-                className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3"
-              >
-                <span className="status-dot" />
-                <span className="text-foreground text-sm">{item}</span>
-              </div>
-            ))}
+          <div className="space-y-2">
+            {["Live progress per platform", "Cancel and keep partial results", "Best public application link"].map(
+              (item) => (
+                <div key={item} className="surface-subtle flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5">
+                  <span className="status-dot shrink-0" />
+                  <span className="text-foreground min-w-0 text-sm">{item}</span>
+                </div>
+              ),
+            )}
           </div>
         </div>
       }
@@ -582,26 +535,28 @@ export default function SearchPage() {
       {error ? (
         <Reveal>
           <GlassPanel className="border-rose-400/30 p-4">
-            <p className="text-sm text-rose-700 dark:text-rose-100">{error}</p>
+            <p role="alert" className="break-words text-sm text-rose-700 dark:text-rose-100">
+              {error}
+            </p>
           </GlassPanel>
         </Reveal>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Reveal>
-          <GlassPanel className="p-6 sm:p-8">
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-6">
+        <Reveal className={isSearching || summary ? "order-2 xl:order-1" : undefined}>
+          <GlassPanel className="min-w-0 p-4 sm:p-6">
             <SectionHeading
-              eyebrow="Search Brief"
-              title="Define the target before the crawl starts"
-              description="Pick the role, location, hiring platforms, and a focused filter set so the crawler can stay reliable while still narrowing results meaningfully."
+              eyebrow="Brief"
+              title="Set the search"
+              description="Title, location, and the platforms to scan."
             />
 
-            <form className="mt-8 space-y-5" onSubmit={handleSearch}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Job title</span>
+            <form id="job-search-form" className="mt-5 min-w-0 space-y-4" onSubmit={handleSearch}>
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                <label className="min-w-0 space-y-1.5">
+                  <span className="text-muted-foreground text-xs font-medium">Title</span>
                   <input
-                    className="input-premium"
+                    className="input-premium min-h-11"
                     placeholder="Software Engineer"
                     value={form.jobTitle}
                     onChange={(event) => {
@@ -610,25 +565,35 @@ export default function SearchPage() {
                     }}
                   />
                 </label>
-
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Location</span>
+                <label className="min-w-0 space-y-1.5">
+                  <span className="text-muted-foreground text-xs font-medium">Location</span>
                   <input
-                    className="input-premium"
+                    className="input-premium min-h-11"
                     placeholder="Melbourne"
                     value={form.location}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, location: event.target.value }))
-                    }
+                    onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
                   />
                 </label>
               </div>
 
-              <label className="space-y-2">
-                <span className="text-foreground text-sm font-medium">Search instruction (optional)</span>
+              <fieldset className="min-w-0 space-y-2">
+                <legend className="text-muted-foreground text-xs font-medium">Platforms</legend>
+                <PlatformPicker
+                  selectedSources={form.selectedSources}
+                  allSelected={selectedAllSources}
+                  onToggleAll={toggleAllSources}
+                  onToggleSource={toggleSource}
+                />
+                {form.selectedSources.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">Select at least one platform.</p>
+                ) : null}
+              </fieldset>
+
+              <label className="block min-w-0 space-y-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Instruction</span>
                 <textarea
-                  className="input-premium min-h-28"
-                  placeholder="Optional: tell us what matters most, such as ideal roles, industries, tools, culture, or work setup."
+                  className="input-premium min-h-20 sm:min-h-24"
+                  placeholder="Optional. Tools, industries, or work setup."
                   value={form.searchInstruction || ""}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -637,362 +602,187 @@ export default function SearchPage() {
                     }))
                   }
                 />
-                <span className="text-muted-foreground block text-xs leading-6">
-                  Use this to highlight preferences; leave it blank for a broad search.
-                </span>
               </label>
 
-              <fieldset className="space-y-3">
-                <legend className="text-foreground text-sm font-medium">Hiring platforms</legend>
+              <CrawlFilters
+                filters={form.filters}
+                maxResultsPerSource={form.maxResultsPerSource}
+                onFiltersChange={(filters) => setForm((current) => ({ ...current, filters }))}
+                onMaxResultsChange={(maxResultsPerSource) =>
+                  setForm((current) => ({ ...current, maxResultsPerSource }))
+                }
+              />
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <label className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedAllSources}
-                      onChange={(event) => toggleAllSources(event.target.checked)}
-                    />
-                    <span className="text-sm text-foreground">All platforms</span>
-                  </label>
-
-                  {SEARCH_SOURCES.map((source) => (
-                    <label
-                      key={source}
-                      className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.selectedSources.includes(source)}
-                        onChange={(event) => toggleSource(source, event.target.checked)}
-                      />
-                      <span className="text-sm text-foreground">{SOURCE_LABELS[source]}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Posted within</span>
-                  <select
-                    className="input-premium"
-                    value={form.filters.postedWithin}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        filters: {
-                          ...current.filters,
-                          postedWithin: event.target.value as SearchRequest["filters"]["postedWithin"],
-                        },
-                      }))
-                    }
-                  >
-                    {POSTED_WITHIN_OPTIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {postedLabels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Workplace mode</span>
-                  <select
-                    className="input-premium"
-                    value={form.filters.workplaceMode}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        filters: {
-                          ...current.filters,
-                          workplaceMode: event.target.value as SearchRequest["filters"]["workplaceMode"],
-                        },
-                      }))
-                    }
-                  >
-                    {WORKPLACE_MODE_OPTIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {workplaceLabels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Employment type</span>
-                  <select
-                    className="input-premium"
-                    value={form.filters.employmentType}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        filters: {
-                          ...current.filters,
-                          employmentType: event.target.value as SearchRequest["filters"]["employmentType"],
-                        },
-                      }))
-                    }
-                  >
-                    {EMPLOYMENT_TYPE_OPTIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {employmentLabels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Max results per source</span>
-                  <select
-                    className="input-premium"
-                    value={form.maxResultsPerSource}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        maxResultsPerSource: Number(event.target.value) as SearchRequest["maxResultsPerSource"],
-                      }))
-                    }
-                  >
-                    {MAX_RESULTS_OPTIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {value} results
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="surface-subtle space-y-4 rounded-[1.4rem] p-4 sm:p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-foreground text-sm font-medium">Advanced Search</p>
-                  </div>
+              <div className="surface-subtle min-w-0 rounded-2xl px-3">
+                <button
+                  className="flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-between gap-3 text-left text-sm font-medium text-foreground"
+                  type="button"
+                  aria-expanded={advancedOpen}
+                  onClick={() => setAdvancedOpen((open) => !open)}
+                >
+                  <span>Advanced Q&A</span>
+                  <span className="text-muted-foreground shrink-0 text-xs font-normal">
+                    {isAdvancedSearchComplete
+                      ? "Ready"
+                      : currentQuestion
+                        ? `Question ${advancedQuestions.length + 1}`
+                        : "Optional"}
+                  </span>
+                </button>
+                {advancedOpen ? (
+                <div className="space-y-4 pb-3">
                   <button
-                    className="button-secondary"
+                    className="button-secondary min-h-11"
                     type="button"
                     onClick={prepareAdvancedSearch}
                     disabled={isSearching || isPreparingAdvancedSearch}
                   >
-                    {isPreparingAdvancedSearch ? "Preparing..." : advancedQuestions.length ? "Refresh Questions" : "Start Advanced Search"}
+                    {isPreparingAdvancedSearch
+                      ? "Preparing..."
+                      : advancedQuestions.length
+                        ? "Refresh questions"
+                        : "Start questions"}
                   </button>
-                </div>
 
-                {advancedSearchError ? (
-                  <div className="rounded-lg border border-rose-400/30 bg-rose-400/10 p-3">
-                    <p className="text-sm text-rose-700 dark:text-rose-100">{advancedSearchError}</p>
-                  </div>
-                ) : null}
+                  {advancedSearchError ? (
+                    <div className="rounded-lg border border-rose-400/30 bg-rose-400/10 p-3">
+                      <p className="break-words text-sm text-rose-700 dark:text-rose-100">{advancedSearchError}</p>
+                    </div>
+                  ) : null}
 
-                {isAdvancedSearchComplete && advancedSummary ? (
-                  <div className="surface-subtle rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4">
-                    <p className="text-sm leading-7 text-emerald-700 dark:text-emerald-100">
-                      <span className="font-semibold">Complete:</span> {advancedSummary}
-                    </p>
-                    {advancedQuestions.length > 0 ? (
-                      <p className="text-muted-foreground mt-2 text-xs">
-                        {advancedQuestions.length} question{advancedQuestions.length !== 1 ? "s" : ""} answered
+                  {isAdvancedSearchComplete && advancedSummary ? (
+                    <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-3">
+                      <p className="break-words text-sm leading-6 text-emerald-700 dark:text-emerald-100">
+                        <span className="font-semibold">Complete:</span> {advancedSummary}
                       </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                      {advancedQuestions.length > 0 ? (
+                        <p className="text-muted-foreground mt-2 text-xs">
+                          {advancedQuestions.length} question{advancedQuestions.length === 1 ? "" : "s"} answered
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-                {currentQuestion ? (
-                  <div className="space-y-4">
-                    {advancedQuestions.length > 0 ? (
-                      <div className="text-muted-foreground text-xs">
-                        Question {advancedQuestions.length + 1} of 5
-                      </div>
-                    ) : null}
-                    
+                  {currentQuestion ? (
                     <div className="space-y-3">
-                      <label className="space-y-2">
+                      {advancedQuestions.length > 0 ? (
+                        <p className="text-muted-foreground text-xs">Question {advancedQuestions.length + 1} of 5</p>
+                      ) : null}
+                      <label className="block min-w-0 space-y-1.5">
                         <span className="text-foreground text-sm font-medium">{currentQuestion.prompt}</span>
                         <textarea
-                          className="input-premium min-h-24"
+                          className="input-premium min-h-20"
                           placeholder="Add your answer"
                           value={currentAnswer}
                           onChange={(event) => setCurrentAnswer(event.target.value)}
                           disabled={isLoadingNextQuestion}
                         />
                         {currentQuestion.helperText ? (
-                          <span className="text-muted-foreground block text-xs leading-6">
+                          <span className="text-muted-foreground block text-xs leading-5">
                             {currentQuestion.helperText}
                           </span>
                         ) : null}
                       </label>
-
                       <button
-                        className="button-primary"
+                        className="button-primary min-h-11 disabled:cursor-not-allowed disabled:opacity-60"
                         type="button"
                         onClick={submitCurrentAnswer}
                         disabled={isLoadingNextQuestion || !currentAnswer.trim()}
                       >
-                        {isLoadingNextQuestion ? "Loading next question..." : "Submit Answer"}
+                        {isLoadingNextQuestion ? "Loading next question..." : "Submit answer"}
                       </button>
-                    </div>
-
-                    {advancedQuestions.length > 0 ? (
-                      <div className="surface-subtle rounded-lg p-3">
-                        <p className="text-muted-foreground text-xs font-medium">Previous answers:</p>
-                        <div className="mt-2 space-y-2">
-                          {advancedQuestions.map((q, index) => (
-                            <div key={q.id} className="text-xs">
-                              <span className="text-foreground font-medium">Q{index + 1}:</span>{" "}
-                              <span className="text-muted-foreground">{advancedAnswers[q.id] || "—"}</span>
-                            </div>
-                          ))}
+                      {advancedQuestions.length > 0 ? (
+                        <div className="surface-subtle rounded-2xl p-3">
+                          <p className="text-muted-foreground text-xs font-medium">Previous answers</p>
+                          <div className="mt-2 space-y-2">
+                            {advancedQuestions.map((question, index) => (
+                              <p key={question.id} className="break-words text-xs">
+                                <span className="text-foreground font-medium">Q{index + 1}:</span>{" "}
+                                <span className="text-muted-foreground">{advancedAnswers[question.id] || "—"}</span>
+                              </p>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="hidden min-w-0 gap-2 sm:flex">
                 <button
-                  className="button-primary"
-                  disabled={
-                    isSearching ||
-                    !form.jobTitle.trim() ||
-                    !form.location.trim() ||
-                    form.selectedSources.length === 0
-                  }
+                  className="button-primary min-h-11 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!canSearch}
                   type="submit"
                 >
-                  {isSearching ? "Searching..." : "Start Search"}
+                  {isSearching ? "Searching…" : "Search"}
                 </button>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={cancelSearch}
-                  disabled={!isSearching}
-                >
-                  Cancel Run
+                <button className="button-secondary min-h-11" type="button" onClick={cancelSearch} disabled={!isSearching}>
+                  Cancel
                 </button>
-                <button className="button-secondary" type="button" onClick={resetSearch}>
-                  Reset Results
+                <button className="button-secondary min-h-11" type="button" onClick={resetSearch}>
+                  Reset
                 </button>
               </div>
             </form>
           </GlassPanel>
         </Reveal>
 
-        <Reveal delay={0.06}>
-          <GlassPanel className="p-6 sm:p-7">
-            <SectionHeading
-              eyebrow="Run Status"
-              title="What the worker is doing now"
-              description={statusMessage}
+        <Reveal delay={0.06} className={isSearching || summary ? "order-1 xl:order-2" : undefined}>
+          <GlassPanel className="min-w-0 p-4 sm:p-5">
+            <SourceRail
+              sources={visibleSources}
+              sourceProgress={sourceProgress}
+              isSearching={isSearching}
+              statusMessage={statusMessage}
+              summary={summary}
             />
-
-            <div className="mt-6 space-y-4">
-              <div className="surface-subtle rounded-[1.35rem] p-4">
-                <div className="text-muted-foreground text-xs uppercase tracking-[0.22em]">Current state</div>
-                <div className="text-foreground mt-2 text-lg font-semibold">
-                  {isSearching ? "Crawl in progress" : "Idle"}
-                </div>
-                <div className="text-muted-foreground mt-2 text-sm leading-7">{statusMessage}</div>
-              </div>
-
-              {summary ? (
-                <div className="surface-subtle text-muted-foreground rounded-[1.35rem] p-4 text-sm">
-                  Finished in <span className="text-foreground font-semibold">{formatElapsed(summary.elapsedMs)}</span>
-                  {" with "}
-                  <span className="text-foreground font-semibold">{summary.totalResults}</span> results.
-                </div>
-              ) : null}
-            </div>
           </GlassPanel>
         </Reveal>
       </div>
 
       <Reveal delay={0.08}>
-        <GlassPanel className="p-6 sm:p-8">
-          <SectionHeading
-            eyebrow="Source Progress"
-            title="Track each board independently"
-            description="Each source can finish, block, or degrade separately without stopping the rest of the run."
-          />
-
-          <StaggerGroup className="mt-8 grid gap-4 lg:grid-cols-3">
-            {visibleSources.map((source) => {
-              const progress = sourceProgress[source];
-              return (
-                <StaggerItem key={source}>
-                  <div className={`rounded-[1.4rem] border p-5 ${statusClasses(progress.status)}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.24em] opacity-70">Source</div>
-                        <div className="mt-2 font-display text-2xl text-current">
-                          {SOURCE_LABELS[source]}
-                        </div>
-                      </div>
-                      <span className="metric-chip border-current/20 bg-black/10 text-current">
-                        {progress.status}
-                      </span>
-                    </div>
-
-                    <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-2xl border border-current/15 bg-current/5 px-4 py-3">
-                        <div className="text-xs uppercase tracking-[0.18em] opacity-70">Pages</div>
-                        <div className="mt-1 text-xl font-semibold text-current">
-                          {progress.pagesScanned}
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-current/15 bg-current/5 px-4 py-3">
-                        <div className="text-xs uppercase tracking-[0.18em] opacity-70">Matches</div>
-                        <div className="mt-1 text-xl font-semibold text-current">
-                          {progress.resultsFound}
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="mt-4 text-sm leading-7 text-current/85">
-                      {progress.blockedReason || progress.message || "Queued"}
-                    </p>
-                  </div>
-                </StaggerItem>
-              );
-            })}
-          </StaggerGroup>
-        </GlassPanel>
-      </Reveal>
-
-      <Reveal delay={0.12}>
-        <GlassPanel className="p-6 sm:p-8">
+        <GlassPanel className="min-w-0 p-4 sm:p-6">
           <SectionHeading
             eyebrow="Results"
-            title="Review deduped application targets"
-            description="Cards prefer an external apply destination when the board exposes one, then fall back to the best board URL we could obtain publicly."
+            title="Application targets"
+            description="Cards keep the best public application link, with the listing page as a fallback."
             action={
               summary ? (
                 <div className="metric-chip">
-                  {summary.totalResults} results in {formatElapsed(summary.elapsedMs)}
+                  {summary.totalResults} in {formatElapsed(summary.elapsedMs)}
                 </div>
               ) : (
-                <div className="metric-chip">{results.length} queued results</div>
+                <div className="metric-chip">{results.length} results</div>
               )
             }
           />
 
-          {(form.searchInstruction || activeAdvancedSearchSession || archivedDuplicateGroups.length > 0) ? (
-            <div className="surface-subtle mt-6 rounded-[1.35rem] p-4 text-sm leading-7 text-muted-foreground">
-              {formatInstructionExpansionSummary({
-                ...form,
-                advancedSearchSession: activeAdvancedSearchSession,
-              }) ? (
-                <p>
-                  <span className="text-foreground font-semibold">AI brief:</span>{" "}
-                  {formatInstructionExpansionSummary({
-                    ...form,
-                    advancedSearchSession: activeAdvancedSearchSession,
-                  })}
+          {instructionSummary || archivedDuplicateGroups.length > 0 || archivedResultCount > 0 ? (
+            <div className="surface-subtle mt-4 min-w-0 space-y-2 rounded-2xl p-3 text-sm leading-6 text-muted-foreground">
+              {instructionSummary ? (
+                <p className="break-words">
+                  <span className="text-foreground font-semibold">AI brief:</span> {instructionSummary}
                 </p>
               ) : null}
               {archivedDuplicateGroups.length > 0 ? (
-                <p>
-                  <span className="text-foreground font-semibold">Archived duplicate groups:</span> {archivedDuplicateGroups.length}
-                </p>
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <p>
+                    <span className="text-foreground font-semibold">Archived groups:</span>{" "}
+                    {archivedDuplicateGroups.length}
+                  </p>
+                  {archivedDuplicateGroups.map((key, index) => (
+                    <button
+                      key={key}
+                      className="button-secondary min-h-11"
+                      type="button"
+                      onClick={() => toggleDuplicateArchive(key)}
+                    >
+                      {archivedDuplicateGroups.length > 1 ? `Unarchive group ${index + 1}` : "Unarchive linked duplicates"}
+                    </button>
+                  ))}
+                </div>
               ) : null}
               {archivedResultCount > 0 ? (
                 <p>
@@ -1002,175 +792,24 @@ export default function SearchPage() {
             </div>
           ) : null}
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Match strength</span>
-              <select
-                className="input-premium"
-                value={resultFilters.match}
-                onChange={(event) =>
-                  setResultFilters((current) => ({
-                    ...current,
-                    match: event.target.value as MatchFilter,
-                  }))
-                }
-              >
-                {MATCH_FILTER_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {matchLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Platform</span>
-              <select
-                className="input-premium"
-                value={resultFilters.platform}
-                onChange={(event) =>
-                  setResultFilters((current) => ({
-                    ...current,
-                    platform: event.target.value as PlatformFilter,
-                  }))
-                }
-              >
-                {PLATFORM_FILTER_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {platformLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Posted within</span>
-              <select
-                className="input-premium"
-                value={resultFilters.postedWithin}
-                onChange={(event) =>
-                  setResultFilters((current) => ({
-                    ...current,
-                    postedWithin: event.target.value as PostedWithin,
-                  }))
-                }
-              >
-                {POSTED_WITHIN_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {postedLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Workplace mode</span>
-              <select
-                className="input-premium"
-                value={resultFilters.workplaceMode}
-                onChange={(event) =>
-                  setResultFilters((current) => ({
-                    ...current,
-                    workplaceMode: event.target.value as WorkplaceMode,
-                  }))
-                }
-              >
-                {WORKPLACE_MODE_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {workplaceLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-foreground text-sm font-medium">Employment type</span>
-              <select
-                className="input-premium"
-                value={resultFilters.employmentType}
-                onChange={(event) =>
-                  setResultFilters((current) => ({
-                    ...current,
-                    employmentType: event.target.value as EmploymentType,
-                  }))
-                }
-              >
-                {EMPLOYMENT_TYPE_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {employmentLabels[value]}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="mt-4">
+            <ResultToolbar filters={resultFilters} onChange={setResultFilters} />
           </div>
 
           {filteredResults.length ? (
-            <div className="mt-8 grid gap-4 xl:grid-cols-2">
-              {filteredResults.map((result) => {
-                const duplicateCount = getDuplicateGroupCount(results, result.duplicateGroupKey);
-                const isArchived = archivedDuplicateGroups.includes(result.duplicateGroupKey);
-                return (
-                  <article
+            <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-2">
+              {filteredResults.map((result) => (
+                <ResultCard
                   key={result.id}
-                  className="interactive-card rounded-[1.5rem] p-6"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="metric-chip">{SOURCE_LABELS[result.source]}</span>
-                    <span className="metric-chip">{result.applicationUrlType}</span>
-                    <span className="metric-chip">{result.searchQueryMatch}</span>
-                    <span className="metric-chip">{formatDuplicateLabel(duplicateCount)}</span>
-                  </div>
-
-                  <div className="mt-5 space-y-2">
-                    <h3 className="text-foreground font-display text-2xl">{result.title}</h3>
-                    {/* Motivation vs Logic:
-                        Motivation: Search result cards should not shift when source data is missing so users can scan faster.
-                        Logic: Always render placeholder text for both company and location (with the separator) so each card stays visually consistent. */}
-                    <p className="text-muted-foreground text-sm">
-                      {result.company || "Company TBD"} • {result.location || "Location TBD"}
-                    </p>
-                    <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">
-                      {result.postedText || "Posted time unavailable"}
-                    </p>
-                  </div>
-
-                  <p className="text-muted-foreground mt-4 text-sm leading-7">
-                    {result.snippet || "No snippet was publicly exposed for this listing."}
-                  </p>
-
-                  <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                    <a
-                      href={result.applicationUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="button-primary"
-                    >
-                      Open application URL
-                    </a>
-                    <a
-                      href={result.listingUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="button-secondary"
-                    >
-                      Open listing page
-                    </a>
-                    {duplicateCount > 1 ? (
-                      <button
-                        className="button-secondary"
-                        type="button"
-                        onClick={() => toggleDuplicateArchive(result.duplicateGroupKey)}
-                      >
-                        {isArchived ? "Unarchive linked duplicates" : "Archive linked duplicates"}
-                      </button>
-                    ) : null}
-                  </div>
-                  </article>
-                );
-              })}
+                  result={result}
+                  duplicateCount={getDuplicateGroupCount(results, result.duplicateGroupKey)}
+                  archived={archivedDuplicateGroups.includes(result.duplicateGroupKey)}
+                  onToggleArchive={toggleDuplicateArchive}
+                />
+              ))}
             </div>
           ) : (
-            <div className="text-muted-foreground mt-8 rounded-[1.5rem] border border-dashed border-border/75 bg-[hsl(var(--surface-1)/0.5)] p-8 text-sm leading-7">
+            <div className="text-muted-foreground mt-4 rounded-2xl border border-dashed border-border/75 bg-[hsl(var(--surface-1)/0.5)] p-5 text-sm leading-6">
               {results.length === 0
                 ? summary
                   ? "The crawl finished without any jobs that survived the source-level and post-normalization filters."
@@ -1180,6 +819,9 @@ export default function SearchPage() {
           )}
         </GlassPanel>
       </Reveal>
+
+      <MobileSearchBar isSearching={isSearching} canSearch={canSearch} onCancel={cancelSearch} onReset={resetSearch} />
+      <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] sm:hidden" aria-hidden="true" />
     </ModuleShell>
   );
 }

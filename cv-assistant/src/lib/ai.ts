@@ -246,18 +246,21 @@ export function getAutoApplySupervisorModel() {
   }) };
 }
 
-export async function generateJsonSafe(preset: ModelPreset, prompt: string, maxRetries = 2) {
+export async function generateJsonSafe(preset: ModelPreset, prompt: string, maxRetries = 2, signal?: AbortSignal) {
   const model = getModel(preset);
   let lastErr: unknown = null;
   for (let i = 0; i <= maxRetries; i++) {
     try {
-      const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], signal });
       const text = result.response.text();
       const jsonStart = text.indexOf('{');
       const jsonEnd = text.lastIndexOf('}');
       const candidate = jsonStart >= 0 && jsonEnd >= 0 ? text.slice(jsonStart, jsonEnd + 1) : text;
       return JSON.parse(candidate);
-    } catch (error) { lastErr = error; }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      lastErr = error;
+    }
   }
   throw lastErr ?? new Error('Failed to parse JSON');
 }

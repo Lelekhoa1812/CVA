@@ -99,6 +99,9 @@ async function fetchHtmlWithBlockedRetry(
   while (true) {
     const response = await fetchHtml(url, signal);
     const blocked = detectBlockedPage(source, response.status, response.body);
+    if (!blocked.blocked && response.status >= 400) {
+      throw new Error(`${source.toUpperCase()} returned HTTP ${response.status}.`);
+    }
     if (!blocked.blocked || attempts >= maxRetries) {
       return { response, blocked };
     }
@@ -633,6 +636,9 @@ export async function* crawlLinkedIn({
           detail = parseLinkedInDetailPage(detailResponse.body, card.listingUrl);
         }
       } catch {
+        if (signal?.aborted) {
+          throw signal.reason instanceof Error ? signal.reason : new Error("Search aborted.");
+        }
         detail = null;
       }
 
@@ -738,6 +744,9 @@ async function crawlLandingPage(
         detail = parseGenericDetailPage(source, detailResponse.body, link.listingUrl);
       }
     } catch {
+      if (signal?.aborted) {
+        throw signal.reason instanceof Error ? signal.reason : new Error("Search aborted.");
+      }
       detail = null;
     }
 
@@ -857,8 +866,11 @@ export async function* crawlBlockProneSource({
   let fallbackUrls: string[] = [];
   try {
     fallbackUrls = await discoverFallbackUrls(source, request, signal);
-  } catch {
-    fallbackUrls = [];
+  } catch (error) {
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error ? signal.reason : new Error("Search aborted.");
+    }
+    throw error;
   }
 
   for (const fallbackUrl of fallbackUrls) {
@@ -890,7 +902,7 @@ export async function* crawlBlockProneSource({
     if (resultsFound >= request.maxResultsPerSource) break;
   }
 
-  const completed = resultsFound > 0;
+  const completed = resultsFound > 0 || !directBlockedReason;
   emitProgress({
     type: "source-progress",
     source,
@@ -898,7 +910,9 @@ export async function* crawlBlockProneSource({
     pagesScanned,
     resultsFound,
     message: completed
-      ? `${SOURCE_LABELS[source]} scan finished.`
+      ? resultsFound > 0
+        ? `${SOURCE_LABELS[source]} scan finished.`
+        : `${SOURCE_LABELS[source]} scan finished without matches.`
       : `${SOURCE_LABELS[source]} remained unavailable after fallback.`,
     blockedReason: directBlockedReason,
   });

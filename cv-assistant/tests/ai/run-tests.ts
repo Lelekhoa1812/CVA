@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getModel } from '../../src/lib/ai';
+import { generateJsonSafe, getModel } from '../../src/lib/ai';
 
 type Fetch = typeof globalThis.fetch;
 const originalFetch = globalThis.fetch;
@@ -66,6 +66,18 @@ async function main() {
   const cancelled = request(controller.signal);
   controller.abort();
   await assert.rejects(cancelled, /cancelled/);
+
+  setKeys('json-cancel');
+  const jsonController = new AbortController();
+  let jsonCalls = 0;
+  globalThis.fetch = (async (_url, init) => {
+    jsonCalls++;
+    return new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  }) as Fetch;
+  const jsonRequest = generateJsonSafe('easy', 'return JSON', 2, jsonController.signal);
+  jsonController.abort();
+  await assert.rejects(jsonRequest, /cancelled/);
+  assert.equal(jsonCalls, 1, 'a cancelled request must not start more retries');
 
   setKeys('truncated');
   globalThis.fetch = (async () => makeStream(['data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'])) as Fetch;

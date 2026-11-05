@@ -4,8 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ModuleShell from "@/components/ui/ModuleShell";
 import GlassPanel from "@/components/ui/GlassPanel";
 import SectionHeading from "@/components/ui/SectionHeading";
-import { Reveal, StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
+import { StaggerGroup, StaggerItem } from "@/components/motion/Reveal";
 import { buildApiUrl } from "@/lib/api";
+import ClarificationQuestions, { type ClarificationAnswer, type ClarificationQuestion } from "@/components/generate/ClarificationQuestions";
+import MobileGenerateBar from "@/components/generate/MobileGenerateBar";
+import ResultBlock from "@/components/generate/ResultBlock";
+import SectionNavigator, { type GenerateStep } from "@/components/generate/SectionNavigator";
+import TracePanel from "@/components/generate/TracePanel";
+import { ChoiceRow, DetailsToggle, DisclosureSection, SelectableRow } from "@/components/generate/WorkspaceChrome";
+import { sanitizeClarificationQuestions } from "@/lib/generate/clarifications";
 
 type Project = { name: string; summary: string; description: string };
 type Experience = { companyName: string; role: string; summary: string; description: string };
@@ -43,12 +50,31 @@ type SavedDraft = {
   employerQuestionResult: string;
   advancedTrace: AdvancedTrace | null;
   questionAdvancedTrace: AdvancedTrace | null;
+  letterReviewWarning?: string;
+  answerReviewWarning?: string;
   manualSelection: { projects: number[]; experiences: number[] };
   enableManualSelection: boolean;
   showManualEvidence: boolean;
 };
 
 const DRAFT_STORAGE_KEY = "cv-assistant.generate.cover-letter.v3";
+const FIELD_CLASS = "input-premium scroll-mt-40 scroll-mb-28 text-base sm:text-sm lg:scroll-mt-24 lg:scroll-mb-0";
+const ACTION_CLASS = "scroll-mt-40 scroll-mb-28 lg:scroll-mt-24 lg:scroll-mb-0";
+
+const GENERATE_STEPS: readonly GenerateStep[] = [
+  { id: "job-brief", shortLabel: "Brief", label: "Job brief" },
+  { id: "evidence-selection", shortLabel: "Evidence", label: "Evidence" },
+  { id: "generated-letter", shortLabel: "Letter", label: "Letter" },
+  { id: "employer-question", shortLabel: "Answer", label: "Employer answer" },
+];
+
+function scrollToSection(id: string) {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(id)?.scrollIntoView({
+    behavior: reduceMotion ? "auto" : "smooth",
+    block: "start",
+  });
+}
 
 function normalizeTrace(value: unknown): AdvancedTrace | null {
   if (!value || typeof value !== "object") return null;
@@ -76,7 +102,19 @@ function normalizeTrace(value: unknown): AdvancedTrace | null {
 }
 
 function normalizeNumberArray(value: unknown): number[] {
-  return Array.isArray(value) ? value.filter((item): item is number => Number.isInteger(item)) : [];
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is number => Number.isInteger(item) && item >= 0))]
+    : [];
+}
+
+function clampManualSelection(
+  selection: { projects: number[]; experiences: number[] },
+  profile: Profile,
+) {
+  return {
+    projects: selection.projects.filter((index) => index < (profile.projects?.length || 0)),
+    experiences: selection.experiences.filter((index) => index < (profile.experiences?.length || 0)),
+  };
 }
 
 function loadSavedDraft(): SavedDraft | null {
@@ -103,6 +141,8 @@ function loadSavedDraft(): SavedDraft | null {
         typeof parsed.employerQuestionResult === "string" ? parsed.employerQuestionResult : "",
       advancedTrace: normalizeTrace(parsed.advancedTrace),
       questionAdvancedTrace: normalizeTrace(parsed.questionAdvancedTrace),
+      letterReviewWarning: typeof parsed.letterReviewWarning === "string" ? parsed.letterReviewWarning : "",
+      answerReviewWarning: typeof parsed.answerReviewWarning === "string" ? parsed.answerReviewWarning : "",
       manualSelection: {
         projects: normalizeNumberArray(parsed.manualSelection?.projects),
         experiences: normalizeNumberArray(parsed.manualSelection?.experiences),
@@ -113,68 +153,6 @@ function loadSavedDraft(): SavedDraft | null {
   } catch {
     return null;
   }
-}
-
-function TracePanel({ trace, title }: { trace: AdvancedTrace | null; title: string }) {
-  if (!trace) return null;
-
-  const supplemental = trace.supplementalEvidenceTitles || [];
-  const gaps = trace.missingCriticalRequirements || [];
-  const uncovered = trace.uncoveredRequirements || [];
-  const reviewerNotes = trace.reviewerNotes || [];
-  const coverage = trace.coverageSummary || [];
-
-  return (
-    <div className="interactive-card space-y-4 border-sky-200/70 bg-sky-50/60 dark:border-sky-500/20 dark:bg-sky-500/10">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-foreground text-sm font-semibold">{title}</p>
-          {trace.roleFocus ? (
-            <p className="text-muted-foreground mt-1 text-xs leading-6">{trace.roleFocus}</p>
-          ) : null}
-        </div>
-        <span className="metric-chip">{trace.finalEvidenceCount || 0} evidence</span>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="surface-subtle rounded-2xl p-3">
-          <p className="text-muted-foreground text-[11px] uppercase tracking-[0.18em]">Added evidence</p>
-          {supplemental.length ? (
-            <ul className="mt-2 space-y-1 text-xs leading-6 text-muted-foreground">
-              {supplemental.slice(0, 4).map((item) => (
-                <li key={item}>• {item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground mt-2 text-xs leading-6">No extra evidence was needed.</p>
-          )}
-        </div>
-
-        <div className="surface-subtle rounded-2xl p-3">
-          <p className="text-muted-foreground text-[11px] uppercase tracking-[0.18em]">Gap review</p>
-          {[...gaps, ...uncovered, ...reviewerNotes].length ? (
-            <ul className="mt-2 space-y-1 text-xs leading-6 text-muted-foreground">
-              {[...gaps, ...uncovered, ...reviewerNotes].slice(0, 4).map((item) => (
-                <li key={item}>• {item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground mt-2 text-xs leading-6">No critical unsupported gap remained.</p>
-          )}
-        </div>
-      </div>
-
-      {coverage.length ? (
-        <div className="flex flex-wrap gap-2">
-          {coverage.slice(0, 6).map((item) => (
-            <span key={item} className="metric-chip bg-white/70 dark:bg-white/10">
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 export default function GeneratePage() {
@@ -188,15 +166,20 @@ export default function GeneratePage() {
   const [indices, setIndices] = useState<number[] | null>(null);
   const [rankings, setRankings] = useState<RankedEvidence[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectionLoading, setSelectionLoading] = useState(false);
   const [questionLoading, setQuestionLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [result, setResult] = useState("");
   const [employerQuestionResult, setEmployerQuestionResult] = useState("");
   const [advancedTrace, setAdvancedTrace] = useState<AdvancedTrace | null>(null);
   const [questionAdvancedTrace, setQuestionAdvancedTrace] = useState<AdvancedTrace | null>(null);
+  const [letterReviewWarning, setLetterReviewWarning] = useState("");
+  const [answerReviewWarning, setAnswerReviewWarning] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [copyStatus, setCopyStatus] = useState("");
   const [manualSelection, setManualSelection] = useState<{ projects: number[]; experiences: number[] }>({
     projects: [],
     experiences: [],
@@ -204,35 +187,78 @@ export default function GeneratePage() {
   const [enableManualSelection, setEnableManualSelection] = useState(false);
   const [showManualEvidence, setShowManualEvidence] = useState(true);
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [rankingsOpen, setRankingsOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [employerOpen, setEmployerOpen] = useState(false);
+  const [answerOptionsOpen, setAnswerOptionsOpen] = useState(false);
+  const disclosureReadyRef = useRef(false);
+  const rankingsSignatureRef = useRef<string | null>(null);
+  const pendingScrollRef = useRef<string | null>(null);
+  const [preparingGuidance, setPreparingGuidance] = useState<"cover-letter" | "employer-question" | null>(null);
+  const [guidance, setGuidance] = useState<{ kind: "cover-letter" | "employer-question"; signature: string; questions: ClarificationQuestion[] } | null>(null);
+  const [guidanceNotice, setGuidanceNotice] = useState<{ kind: "cover-letter" | "employer-question"; message: string } | null>(null);
+  const guidanceRequestRef = useRef<AbortController | null>(null);
+  const guidanceSignature = JSON.stringify({ company, jobDescription, employerQuestion, idealWordCount, answerStyle, advancedMode, indices, manualSelection, enableManualSelection, shouldSelect });
+  const guidanceSignatureRef = useRef(guidanceSignature);
+  guidanceSignatureRef.current = guidanceSignature;
+  const selectionRequestRef = useRef<AbortController | null>(null);
   const previousDraftRef = useRef<{ jobDescription: string; shouldSelect: boolean }>({
     jobDescription: "",
     shouldSelect: true,
   });
 
   async function selectRelevant() {
+    if (!jobDescription.trim() || !shouldSelect || selectionRequestRef.current) return;
+    const controller = new AbortController();
+    selectionRequestRef.current = controller;
     setError(null);
-    const res = await fetch(buildApiUrl("/api/generate/select"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobDescription }),
-    });
-    if (!res.ok) {
-      setError("Failed to select relevant items");
-      return;
+    setSelectionLoading(true);
+    try {
+      const res = await fetch(buildApiUrl("/api/generate/select"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobDescription }),
+        signal: controller.signal,
+      });
+      if (selectionRequestRef.current !== controller || controller.signal.aborted) return;
+      const data = await res.json().catch(() => ({}));
+      if (selectionRequestRef.current !== controller || controller.signal.aborted) return;
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Could not rank evidence. Please try again.");
+        return;
+      }
+      setIndices(Array.isArray(data.indices) ? data.indices : null);
+      setRankings(Array.isArray(data.rankings) ? data.rankings : []);
+    } catch {
+      if (selectionRequestRef.current !== controller || controller.signal.aborted) return;
+      setError("Could not rank evidence. Check your connection and try again.");
+    } finally {
+      if (selectionRequestRef.current === controller) {
+        selectionRequestRef.current = null;
+        setSelectionLoading(false);
+      }
     }
-    const data = await res.json();
-    setIndices(Array.isArray(data.indices) ? data.indices : null);
-    setRankings(Array.isArray(data.rankings) ? data.rankings : []);
+  }
+
+  function cancelSelectionRequest() {
+    if (!selectionRequestRef.current) return;
+    selectionRequestRef.current.abort();
+    selectionRequestRef.current = null;
+    setSelectionLoading(false);
   }
 
   function getFinalIndices() {
-    if (enableManualSelection && (manualSelection.projects.length > 0 || manualSelection.experiences.length > 0)) {
+    if (enableManualSelection && profile) {
+      const selection = clampManualSelection(manualSelection, profile);
       const projectCount = profile?.projects?.length || 0;
       return [
-        ...manualSelection.projects.map((idx) => idx),
-        ...manualSelection.experiences.map((idx) => idx + projectCount),
+        ...selection.projects.map((idx) => idx),
+        ...selection.experiences.map((idx) => idx + projectCount),
       ];
     }
+
+    if (enableManualSelection) return [];
 
     if (shouldSelect && indices && indices.length > 0) {
       return indices;
@@ -241,17 +267,117 @@ export default function GeneratePage() {
     return null;
   }
 
-  async function generate() {
+  async function prepareGuidance(kind: "cover-letter" | "employer-question") {
+    if (guidanceRequestRef.current || preparingGuidance || loading || questionLoading || selectionLoading) return;
+    const signature = guidanceSignature;
+    setGuidance(null);
+    setGuidanceNotice(null);
+    (kind === "cover-letter" ? setError : setQuestionError)(null);
+    setPreparingGuidance(kind);
+    const controller = new AbortController();
+    guidanceRequestRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 35000);
+    try {
+      const response = await fetch(buildApiUrl("/api/generate/clarifications"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          company,
+          jobDescription,
+          question: kind === "employer-question" ? employerQuestion : undefined,
+          answerStyle,
+          idealWordCount,
+          indices: getFinalIndices(),
+        }),
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (guidanceRequestRef.current !== controller) return;
+      if (signature !== guidanceSignatureRef.current) {
+        (kind === "cover-letter" ? setError : setQuestionError)("Your inputs changed while preparing questions. Please generate again.");
+        return;
+      }
+      if (!response.ok) {
+        (kind === "cover-letter" ? setError : setQuestionError)(typeof data.error === "string" ? data.error : "Could not prepare questions. Please try again.");
+        return;
+      }
+      const questions = sanitizeClarificationQuestions(data.questions);
+      if (questions.length >= 2) setGuidance({ kind, signature, questions });
+      else {
+        guidanceRequestRef.current = null;
+        setPreparingGuidance(null);
+        window.clearTimeout(timeout);
+        if (data.unavailable) setGuidanceNotice({ kind, message: "Optional questions are unavailable. Generating without them." });
+        if (kind === "cover-letter") await generate([]);
+        else await answerEmployerQuestion([]);
+      }
+    } catch {
+      if (guidanceRequestRef.current !== controller) return;
+      if (signature !== guidanceSignatureRef.current) {
+        (kind === "cover-letter" ? setError : setQuestionError)("Your inputs changed while preparing questions. Please generate again.");
+      } else {
+        guidanceRequestRef.current = null;
+        setPreparingGuidance(null);
+        window.clearTimeout(timeout);
+        setGuidanceNotice({ kind, message: "Optional questions are unavailable. Generating without them." });
+        if (kind === "cover-letter") await generate([]);
+        else await answerEmployerQuestion([]);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (guidanceRequestRef.current === controller) {
+        guidanceRequestRef.current = null;
+        setPreparingGuidance(null);
+      }
+    }
+  }
+
+  function skipPreparingGuidance() {
+    if (!preparingGuidance || !guidanceRequestRef.current) return;
+    guidanceRequestRef.current.abort();
+    guidanceRequestRef.current = null;
+    const kind = preparingGuidance;
+    setPreparingGuidance(null);
+    setGuidanceNotice({ kind, message: "Generating without optional questions." });
+    if (kind === "cover-letter") void generate([]);
+    else void answerEmployerQuestion([]);
+  }
+
+  function submitGuidance(answers: ClarificationAnswer[]) {
+    if (!guidance) return;
+    if (guidance.signature !== guidanceSignatureRef.current) {
+      (guidance.kind === "cover-letter" ? setError : setQuestionError)("Your inputs changed. Please generate again for updated questions.");
+      setGuidance(null);
+      return;
+    }
+    const kind = guidance.kind;
+    setGuidance(null);
+    if (kind === "cover-letter") void generate(answers);
+    else void answerEmployerQuestion(answers);
+  }
+
+  async function generate(clarificationAnswers: ClarificationAnswer[] = []) {
+    if (selectionLoading) return;
+    const usableManualSelection = profile ? clampManualSelection(manualSelection, profile) : { projects: [], experiences: [] };
+    if (enableManualSelection && (!profile || usableManualSelection.projects.length + usableManualSelection.experiences.length === 0)) {
+      setError(profile
+        ? "Your saved evidence selection is no longer available. Choose at least one current project or experience, or turn off manual curation."
+        : "Your profile evidence is unavailable. Wait for it to load, or turn off manual curation to use all available evidence.");
+      return;
+    }
     setLoading(true);
     setResult("");
+    setLetterReviewWarning("");
     setAdvancedTrace(null);
     setError(null);
+    const submittedSignature = guidanceSignatureRef.current;
     try {
       const finalIndices = getFinalIndices();
       const res = await fetch(buildApiUrl("/api/generate/cover-letter"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, jobDescription, indices: finalIndices, advancedMode }),
+        body: JSON.stringify({ company, jobDescription, indices: finalIndices, advancedMode, clarificationAnswers }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -261,6 +387,7 @@ export default function GeneratePage() {
       }
 
       setResult(typeof data.coverLetter === "string" ? data.coverLetter : "");
+      setLetterReviewWarning([typeof data.reviewWarning === "string" ? data.reviewWarning : "", submittedSignature !== guidanceSignatureRef.current ? "Your inputs changed while this draft was being generated; it uses the earlier inputs." : ""].filter(Boolean).join(" "));
       setAdvancedTrace(normalizeTrace(data.advancedTrace));
       if (Array.isArray(data.indices) && !enableManualSelection) {
         setIndices(data.indices.filter((value: unknown): value is number => Number.isInteger(value)));
@@ -272,13 +399,23 @@ export default function GeneratePage() {
     }
   }
 
-  async function answerEmployerQuestion() {
+  async function answerEmployerQuestion(clarificationAnswers: ClarificationAnswer[] = []) {
+    if (selectionLoading) return;
     if (!employerQuestion.trim()) return;
+    const usableManualSelection = profile ? clampManualSelection(manualSelection, profile) : { projects: [], experiences: [] };
+    if (enableManualSelection && (!profile || usableManualSelection.projects.length + usableManualSelection.experiences.length === 0)) {
+      setQuestionError(profile
+        ? "Your saved evidence selection is no longer available. Choose at least one current project or experience, or turn off manual curation."
+        : "Your profile evidence is unavailable. Wait for it to load, or turn off manual curation to use all available evidence.");
+      return;
+    }
 
     setQuestionLoading(true);
     setEmployerQuestionResult("");
+    setAnswerReviewWarning("");
     setQuestionAdvancedTrace(null);
     setQuestionError(null);
+    const submittedSignature = guidanceSignatureRef.current;
     try {
       const finalIndices = getFinalIndices();
       const res = await fetch(buildApiUrl("/api/generate/employer-question"), {
@@ -292,6 +429,7 @@ export default function GeneratePage() {
           answerStyle,
           indices: finalIndices,
           advancedMode,
+          clarificationAnswers,
         }),
       });
 
@@ -302,6 +440,7 @@ export default function GeneratePage() {
       }
 
       setEmployerQuestionResult(typeof data.answer === "string" ? data.answer : "");
+      setAnswerReviewWarning([typeof data.reviewWarning === "string" ? data.reviewWarning : "", submittedSignature !== guidanceSignatureRef.current ? "Your inputs changed while this draft was being generated; it uses the earlier inputs." : ""].filter(Boolean).join(" "));
       setQuestionAdvancedTrace(normalizeTrace(data.advancedTrace));
       if (Array.isArray(data.indices) && !enableManualSelection) {
         setIndices(data.indices.filter((value: unknown): value is number => Number.isInteger(value)));
@@ -349,6 +488,15 @@ export default function GeneratePage() {
     }
   }
 
+  async function copyText(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(`${label} copied to clipboard.`);
+    } catch {
+      setCopyStatus("Clipboard access was blocked. Select and copy the text manually.");
+    }
+  }
+
   function toggleProject(index: number) {
     setManualSelection((current) => ({
       ...current,
@@ -374,8 +522,15 @@ export default function GeneratePage() {
         const data = await res.json();
         setProfile(data.profile || null);
       }
-    })().catch(() => setProfile(null));
+    })().catch(() => setProfile(null)).finally(() => setProfileLoading(false));
   }, []);
+
+  useEffect(() => () => { selectionRequestRef.current?.abort(); guidanceRequestRef.current?.abort(); guidanceRequestRef.current = null; }, []);
+
+  useEffect(() => {
+    if (!draftHydrated || !profile) return;
+    setManualSelection((current) => clampManualSelection(current, profile));
+  }, [draftHydrated, profile]);
 
   useEffect(() => {
     const draft = loadSavedDraft();
@@ -397,6 +552,8 @@ export default function GeneratePage() {
     setEmployerQuestionResult(draft.employerQuestionResult);
     setAdvancedTrace(draft.advancedTrace);
     setQuestionAdvancedTrace(draft.questionAdvancedTrace);
+    setLetterReviewWarning(draft.letterReviewWarning || "");
+    setAnswerReviewWarning(draft.answerReviewWarning || "");
     setManualSelection(draft.manualSelection);
     setEnableManualSelection(draft.enableManualSelection);
     setShowManualEvidence(draft.showManualEvidence);
@@ -445,6 +602,8 @@ export default function GeneratePage() {
           employerQuestionResult,
           advancedTrace,
           questionAdvancedTrace,
+          letterReviewWarning,
+          answerReviewWarning,
           manualSelection,
           enableManualSelection,
           showManualEvidence,
@@ -467,29 +626,157 @@ export default function GeneratePage() {
     employerQuestionResult,
     advancedTrace,
     questionAdvancedTrace,
+    letterReviewWarning,
+    answerReviewWarning,
     manualSelection,
     enableManualSelection,
     showManualEvidence,
     draftHydrated,
   ]);
 
+  useEffect(() => {
+    if (!draftHydrated || disclosureReadyRef.current) return;
+    disclosureReadyRef.current = true;
+    if (enableManualSelection || !shouldSelect) setEvidenceOpen(true);
+    if (advancedMode) setAdvancedOpen(true);
+    if (employerQuestion.trim() || employerQuestionResult) setEmployerOpen(true);
+    if (idealWordCount || answerStyle) {
+      setEmployerOpen(true);
+      setAnswerOptionsOpen(true);
+    }
+  }, [advancedMode, answerStyle, draftHydrated, employerQuestion, employerQuestionResult, enableManualSelection, idealWordCount, shouldSelect]);
+
+  useEffect(() => {
+    if (questionError || preparingGuidance === "employer-question" || guidance?.kind === "employer-question") {
+      setEmployerOpen(true);
+    }
+  }, [guidance, preparingGuidance, questionError]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    const signature = rankings.map((item) => `${item.type}:${item.index}:${item.justification}`).join("|");
+    if (rankingsSignatureRef.current === null) {
+      rankingsSignatureRef.current = signature;
+      return;
+    }
+    if (signature === rankingsSignatureRef.current) return;
+    rankingsSignatureRef.current = signature;
+    if (!signature) return;
+    setEvidenceOpen(true);
+    setRankingsOpen(true);
+  }, [draftHydrated, rankings]);
+
+  useEffect(() => {
+    if (preparingGuidance === "cover-letter") scrollToSection("generated-letter");
+  }, [preparingGuidance]);
+
+  useEffect(() => {
+    if (guidance?.kind === "cover-letter") scrollToSection("cover-letter-guidance");
+  }, [guidance]);
+
+  useEffect(() => {
+    if (loading) scrollToSection("generated-letter");
+  }, [loading]);
+
+  useEffect(() => {
+    const id = pendingScrollRef.current;
+    if (!id) return;
+    pendingScrollRef.current = null;
+    scrollToSection(id);
+  }, [evidenceOpen, employerOpen]);
+
+  const currentManualSelection = useMemo(
+    () => (profile ? clampManualSelection(manualSelection, profile) : { projects: [], experiences: [] }),
+    [manualSelection, profile],
+  );
+  const manualEvidenceCount = currentManualSelection.projects.length + currentManualSelection.experiences.length;
+
   const evidenceCount = useMemo(() => {
     if (advancedTrace?.finalEvidenceCount) return advancedTrace.finalEvidenceCount;
     if (enableManualSelection) {
-      return manualSelection.projects.length + manualSelection.experiences.length;
+      return manualEvidenceCount;
     }
     return indices?.length || 0;
-  }, [advancedTrace?.finalEvidenceCount, enableManualSelection, indices, manualSelection.experiences.length, manualSelection.projects.length]);
+  }, [advancedTrace?.finalEvidenceCount, enableManualSelection, indices, manualEvidenceCount]);
+
+  const evidenceMode = advancedMode
+    ? "Advanced agent loop"
+    : enableManualSelection
+      ? "Manual curation"
+      : shouldSelect
+        ? "AI Coaching"
+        : "Open generation";
+  const manualBlocked = enableManualSelection && (profileLoading || !profile || manualEvidenceCount === 0);
+  const sharedBusy = loading || questionLoading || !!preparingGuidance || !!guidance || selectionLoading;
+  const generateBlocked = sharedBusy || !company.trim() || !jobDescription.trim() || manualBlocked;
+  const answerBlocked = sharedBusy || !employerQuestion.trim() || manualBlocked;
+  const coachingBlocked = sharedBusy || !jobDescription.trim();
+  const letterNotice = copyStatus.startsWith("Cover letter") || copyStatus.startsWith("Clipboard") ? copyStatus : "";
+  const answerNotice = copyStatus.startsWith("Employer answer") || copyStatus.startsWith("Clipboard") ? copyStatus : "";
+  const evidenceMeta = `${enableManualSelection ? "Manual" : shouldSelect ? "AI Coaching" : "Open"} · ${evidenceCount}`;
+
+  let barHint = "Add a company and job description";
+  let barLabel = "Generate";
+  let barDisabled = generateBlocked;
+  let barAction = () => {
+    void prepareGuidance("cover-letter");
+  };
+  if (preparingGuidance === "cover-letter") {
+    barHint = "Choosing the few decisions that will change this letter…";
+    barLabel = "Skip";
+    barDisabled = false;
+    barAction = skipPreparingGuidance;
+  } else if (guidance?.kind === "cover-letter") {
+    barHint = "Optional decisions are ready";
+    barLabel = "Review";
+    barDisabled = false;
+    barAction = () => scrollToSection("cover-letter-guidance");
+  } else if (loading) {
+    barHint = advancedMode ? "Running advanced cover letter agent..." : "Generating cover letter...";
+    barLabel = "Generating…";
+    barDisabled = true;
+  } else if (preparingGuidance === "employer-question" || questionLoading) {
+    barHint = questionLoading
+      ? advancedMode
+        ? "Running advanced answer agent..."
+        : "Answering employer question..."
+      : "Choosing the few decisions that will change this answer…";
+  } else if (selectionLoading) {
+    barHint = "Ranking evidence…";
+  } else if (manualBlocked) {
+    barHint = profileLoading ? "Loading your evidence…" : !profile ? "Profile evidence is unavailable" : "Select at least one item";
+  } else if (!company.trim() || !jobDescription.trim()) {
+    barHint = "Add a company and job description";
+  } else if (guidance?.kind === "employer-question") {
+    barHint = "Employer decisions are open";
+  } else if (error) {
+    barHint = "Check the message above";
+  } else {
+    barHint = "Ready to generate";
+  }
+
+  function selectStep(id: string) {
+    const openingEvidence = id === "evidence-selection" && !evidenceOpen;
+    const openingEmployer = id === "employer-question" && !employerOpen;
+    if (id === "evidence-selection") setEvidenceOpen(true);
+    if (id === "employer-question") setEmployerOpen(true);
+    if (openingEvidence || openingEmployer) {
+      pendingScrollRef.current = id;
+      return;
+    }
+    scrollToSection(id);
+  }
 
   return (
     <ModuleShell
+      compactMobile
       eyebrow="Cover Letter Module"
       title="Build a cover letter around evidence, not generic claims."
       description="Use job context, AI selection, manual curation, and advanced evidence planning so the final letter sounds targeted and credible."
       stats={[
-        { label: "Selection mode", value: enableManualSelection ? "Manual" : shouldSelect ? "AI Coaching" : "Open" },
-        { label: "Evidence chosen", value: `${evidenceCount}` },
-        { label: "Generation", value: advancedMode ? "Advanced" : result ? "Standard" : "Drafting" },
+        { label: "Mode", value: enableManualSelection ? "Manual" : shouldSelect ? "AI" : "Open" },
+        { label: "Evidence", value: `${evidenceCount}` },
+        { label: "Stage", value: advancedMode ? "Advanced" : result ? "Ready" : "Draft" },
       ]}
       aside={
         <div className="space-y-6">
@@ -509,7 +796,7 @@ export default function GeneratePage() {
             ].map((item) => (
               <div key={item} className="surface-subtle flex items-center gap-3 rounded-2xl px-4 py-3">
                 <span className="status-dot" />
-                <span className="text-foreground text-sm">{item}</span>
+                <span className="text-foreground min-w-0 break-words text-sm">{item}</span>
               </div>
             ))}
           </div>
@@ -517,419 +804,443 @@ export default function GeneratePage() {
       }
     >
       {error ? (
-        <Reveal>
+        <div id="generate-error" role="alert" className="scroll-mt-24">
           <GlassPanel className="border-destructive/40 p-4">
-            <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
+            <p className="text-destructive break-words text-sm leading-6">{error}</p>
           </GlassPanel>
-        </Reveal>
+        </div>
       ) : null}
+      <div className="min-w-0 pb-24 lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start lg:gap-8 lg:pb-0">
+        <SectionNavigator steps={GENERATE_STEPS} onSelect={selectStep} />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="space-y-6">
-          <Reveal>
-            <GlassPanel className="p-6 sm:p-8">
+        <div className="mt-4 min-w-0 space-y-4 lg:mt-0">
+          <section id="job-brief" aria-label="Job brief" className="min-w-0 scroll-mt-40 lg:scroll-mt-24">
+            <GlassPanel className="p-4 sm:p-6">
               <SectionHeading
-                eyebrow="Job Brief"
-                title="Give the model a stronger read on the opportunity"
-                description="The more specific the company and role context, the easier it is to produce a letter that feels intentional."
+                eyebrow="Job brief"
+                title="Company and role"
+                description="Start here. The company and job description set the letter."
               />
 
-              <div className="mt-8 space-y-4">
-                <label className="space-y-2">
+              <div className="mt-4 space-y-4">
+                <label className="block min-w-0 space-y-2">
                   <span className="text-foreground text-sm font-medium">Company name</span>
                   <input
-                    className="input-premium"
+                    className={FIELD_CLASS}
                     placeholder="Google, Canva, Atlassian..."
+                    maxLength={300}
                     value={company}
                     onChange={(event) => setCompany(event.target.value)}
                   />
                 </label>
 
-                <label className="space-y-2">
+                <label className="block min-w-0 space-y-2">
                   <span className="text-foreground text-sm font-medium">Job description</span>
                   <textarea
-                    className="input-premium min-h-64 resize-y"
+                    className={`${FIELD_CLASS} min-h-36 resize-y sm:min-h-48`}
                     placeholder="Paste the description here so the system can match requirements, responsibilities, and tone."
+                    maxLength={18000}
                     value={jobDescription}
-                    onChange={(event) => setJobDescription(event.target.value)}
+                    onChange={(event) => {
+                      cancelSelectionRequest();
+                      setJobDescription(event.target.value);
+                    }}
                   />
                 </label>
               </div>
             </GlassPanel>
-          </Reveal>
+          </section>
 
-          <Reveal delay={0.06}>
-            <GlassPanel className="p-6 sm:p-8">
-              <SectionHeading
-                eyebrow="Evidence Selection"
-                title="Control what the letter can reference"
-                description="Use AI Coaching for speed, or hand-pick the evidence you want included. Advanced Mode can then inspect and expand the evidence set."
-                action={
-                  shouldSelect ? (
-                    <button onClick={selectRelevant} className="button-secondary">
-                      Run AI Coaching
-                    </button>
-                  ) : null
-                }
-              />
-
-              <div className="mt-8 grid gap-4 lg:grid-cols-2">
-                <label className="interactive-card flex cursor-pointer gap-3">
-                  <input
-                    type="checkbox"
-                    checked={shouldSelect}
-                    onChange={(event) => setShouldSelect(event.target.checked)}
-                    className="mt-1 h-4 w-4"
-                  />
-                  <div className="space-y-1">
-                    <p className="text-foreground text-sm font-semibold">AI Coaching</p>
-                    <p className="text-muted-foreground text-xs leading-6">
-                      Rank the strongest projects and experiences against the job brief, with concise relevance rationale.
-                    </p>
+          <section id="evidence-selection" aria-label="Evidence" className="min-w-0 scroll-mt-40 lg:scroll-mt-24">
+            <GlassPanel className="p-4 sm:p-6">
+              <DisclosureSection
+                open={evidenceOpen}
+                onToggle={() => setEvidenceOpen((current) => !current)}
+                kicker="Evidence"
+                title="What the letter can cite"
+                meta={evidenceMeta}
+              >
+                <div className="space-y-4">
+                  <p className="text-muted-foreground text-sm leading-6">
+                    Use AI Coaching for speed, or hand-pick the evidence you want included. Advanced Mode can then inspect and expand the evidence set.
+                  </p>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <ChoiceRow
+                      checked={shouldSelect}
+                      onChange={(checked) => {
+                        cancelSelectionRequest();
+                        setShouldSelect(checked);
+                      }}
+                      title="AI Coaching"
+                      description="Rank the strongest projects and experiences against the job brief, with concise relevance rationale."
+                    />
+                    <ChoiceRow
+                      checked={enableManualSelection}
+                      onChange={(checked) => {
+                        cancelSelectionRequest();
+                        setEnableManualSelection(checked);
+                        if (checked) {
+                          setShowManualEvidence(true);
+                        } else {
+                          setManualSelection({ projects: [], experiences: [] });
+                          setShowManualEvidence(true);
+                        }
+                      }}
+                      title="Curate manually"
+                      description="Pick the exact projects and experiences that should be woven into the letter."
+                    />
                   </div>
-                </label>
 
-                <label className="interactive-card flex cursor-pointer gap-3">
-                  <input
-                    type="checkbox"
-                    checked={enableManualSelection}
-                    onChange={(event) => {
-                      setEnableManualSelection(event.target.checked);
-                      if (event.target.checked) {
-                        setShowManualEvidence(true);
-                      } else {
-                        setManualSelection({ projects: [], experiences: [] });
-                        setShowManualEvidence(true);
-                      }
-                    }}
-                    className="mt-1 h-4 w-4"
-                  />
-                  <div className="space-y-1">
-                    <p className="text-foreground text-sm font-semibold">Curate manually</p>
-                    <p className="text-muted-foreground text-xs leading-6">
-                      Pick the exact projects and experiences that should be woven into the letter.
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              {enableManualSelection && profile ? (
-                <div className="mt-6 space-y-4">
-                  <div className="flex items-center justify-end">
+                  {shouldSelect ? (
                     <button
                       type="button"
-                      onClick={() => setShowManualEvidence((current) => !current)}
-                      className="text-sm font-medium text-sky-600 underline-offset-4 transition hover:underline dark:text-sky-300"
+                      onClick={selectRelevant}
+                      disabled={coachingBlocked}
+                      className={`button-secondary min-h-11 w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${ACTION_CLASS}`}
                     >
-                      {showManualEvidence ? "hide" : "show"}
+                      {selectionLoading ? "Ranking evidence…" : "Run AI Coaching"}
                     </button>
-                  </div>
+                  ) : null}
 
-                  {showManualEvidence ? (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="interactive-card space-y-3">
-                        <p className="text-foreground text-sm font-semibold">Experiences</p>
-                        <div className="space-y-2">
-                          {profile.experiences?.length ? (
-                            profile.experiences.map((experience, idx) => (
-                              <label
-                                key={`${experience.companyName}-${experience.role}-${idx}`}
-                                className="surface-subtle flex gap-3 rounded-2xl p-3"
-                              >
-                                <input
-                                  type="checkbox"
+                  {selectionLoading ? (
+                    <p role="status" className="text-muted-foreground text-sm">Ranking your profile evidence against this role…</p>
+                  ) : null}
+
+                  {enableManualSelection && shouldSelect ? (
+                    <p className="text-muted-foreground text-sm leading-6">Manual curation is what the draft will use while it is on.</p>
+                  ) : null}
+
+                  {enableManualSelection ? (
+                    <div className="space-y-4">
+                      {profileLoading ? (
+                        <p role="status" className="text-muted-foreground text-sm">Loading your profile evidence…</p>
+                      ) : !profile ? (
+                        <p role="status" className="text-muted-foreground text-sm">Profile evidence could not be loaded. Refresh the page or turn off manual curation to continue.</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setShowManualEvidence((current) => !current)}
+                        className={`button-secondary min-h-11 w-full sm:w-auto ${ACTION_CLASS}`}
+                      >
+                        {showManualEvidence ? "Hide evidence" : "Show evidence"}
+                      </button>
+
+                      {showManualEvidence && profile ? (
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="min-w-0 space-y-2">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <h3 className="text-foreground text-sm font-semibold">Experiences</h3>
+                              <p className="text-muted-foreground text-xs">{currentManualSelection.experiences.length} selected</p>
+                            </div>
+                            {profile.experiences?.length ? (
+                              profile.experiences.map((experience, idx) => (
+                                <SelectableRow
+                                  key={`${experience.companyName}-${experience.role}-${idx}`}
                                   checked={manualSelection.experiences.includes(idx)}
                                   onChange={() => toggleExperience(idx)}
-                                  className="mt-1 h-4 w-4"
+                                  title={`${experience.companyName} · ${experience.role}`}
+                                  detail={experience.summary}
                                 />
-                                <div>
-                                  <div className="text-foreground text-sm font-medium">
-                                    {experience.companyName} · {experience.role}
-                                  </div>
-                                  {experience.summary ? (
-                                    <div className="text-muted-foreground mt-1 text-xs leading-6">{experience.summary}</div>
-                                  ) : null}
-                                </div>
-                              </label>
-                            ))
-                          ) : (
-                            <p className="text-muted-foreground text-xs">No experiences added yet.</p>
-                          )}
-                        </div>
-                      </div>
+                              ))
+                            ) : (
+                              <p className="text-muted-foreground text-xs">No experiences added yet.</p>
+                            )}
+                          </div>
 
-                      <div className="interactive-card space-y-3">
-                        <p className="text-foreground text-sm font-semibold">Projects</p>
-                        <div className="space-y-2">
-                          {profile.projects?.length ? (
-                            profile.projects.map((project, idx) => (
-                              <label key={`${project.name}-${idx}`} className="surface-subtle flex gap-3 rounded-2xl p-3">
-                                <input
-                                  type="checkbox"
+                          <div className="min-w-0 space-y-2">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <h3 className="text-foreground text-sm font-semibold">Projects</h3>
+                              <p className="text-muted-foreground text-xs">{currentManualSelection.projects.length} selected</p>
+                            </div>
+                            {profile.projects?.length ? (
+                              profile.projects.map((project, idx) => (
+                                <SelectableRow
+                                  key={`${project.name}-${idx}`}
                                   checked={manualSelection.projects.includes(idx)}
                                   onChange={() => toggleProject(idx)}
-                                  className="mt-1 h-4 w-4"
+                                  title={project.name || "Untitled Project"}
+                                  detail={project.summary}
                                 />
-                                <div>
-                                  <div className="text-foreground text-sm font-medium">
-                                    {project.name || "Untitled Project"}
-                                  </div>
-                                  {project.summary ? (
-                                    <div className="text-muted-foreground mt-1 text-xs leading-6">{project.summary}</div>
-                                  ) : null}
-                                </div>
-                              </label>
-                            ))
-                          ) : (
-                            <p className="text-muted-foreground text-xs">No projects added yet.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {shouldSelect && rankings.length > 0 ? (
-                <div className="mt-6 interactive-card space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-foreground text-sm font-semibold">AI Coaching results</p>
-                    <span className="metric-chip">{rankings.length} items</span>
-                  </div>
-                  <StaggerGroup className="space-y-2">
-                    {rankings.map((item, index) => (
-                      <StaggerItem key={`${item.type}-${item.index}`}>
-                        <div className="surface-subtle flex items-start gap-3 rounded-2xl p-3">
-                          <span className="status-dot mt-2" />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-foreground text-sm font-medium">{item.title}</div>
-                              <span className="text-muted-foreground text-[11px] uppercase tracking-[0.2em]">
-                                {index + 1}
-                              </span>
-                            </div>
-                            <div className="text-muted-foreground mt-1 text-[11px] uppercase tracking-[0.2em]">
-                              {item.type}
-                            </div>
-                            <div className="text-muted-foreground mt-2 text-xs leading-6">{item.justification}</div>
+                              ))
+                            ) : (
+                              <p className="text-muted-foreground text-xs">No projects added yet.</p>
+                            )}
                           </div>
                         </div>
-                      </StaggerItem>
-                    ))}
-                  </StaggerGroup>
-                </div>
-              ) : null}
-            </GlassPanel>
-          </Reveal>
-        </div>
+                      ) : null}
+                      {!profileLoading && profile && manualEvidenceCount === 0 ? (
+                        <p className="text-muted-foreground text-sm" role="status">Select at least one item to use manual curation.</p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-        <div className="space-y-6 xl:sticky xl:top-28 xl:self-start">
-          <Reveal delay={0.08}>
-            <GlassPanel className="p-6">
+                  {shouldSelect && rankings.length > 0 ? (
+                    <DetailsToggle
+                      label={`AI Coaching results · ${rankings.length} items`}
+                      open={rankingsOpen}
+                      onToggle={() => setRankingsOpen((current) => !current)}
+                    >
+                      <StaggerGroup className="space-y-2">
+                        {rankings.map((item, index) => (
+                          <StaggerItem key={`${item.type}-${item.index}`}>
+                            <div className="surface-subtle flex min-w-0 items-start gap-3 rounded-2xl p-3">
+                              <span className="status-dot mt-2 shrink-0" />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-foreground break-words text-sm font-medium">{item.title}</div>
+                                  <span className="text-muted-foreground text-[11px] uppercase tracking-[0.2em]">{index + 1}</span>
+                                </div>
+                                <div className="text-muted-foreground mt-1 text-[11px] uppercase tracking-[0.2em]">{item.type}</div>
+                                <div className="text-muted-foreground mt-2 break-words text-xs leading-6">{item.justification}</div>
+                              </div>
+                            </div>
+                          </StaggerItem>
+                        ))}
+                      </StaggerGroup>
+                    </DetailsToggle>
+                  ) : null}
+
+                  <DetailsToggle label="How evidence is used">
+                    <div className="space-y-3">
+                      <div className="surface-subtle flex items-start justify-between gap-3 rounded-2xl px-4 py-3">
+                        <span className="text-muted-foreground shrink-0 text-sm">Mode</span>
+                        <span className="text-foreground min-w-0 break-words text-right text-sm font-medium">{evidenceMode}</span>
+                      </div>
+                      <div className="surface-subtle flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
+                        <span className="text-muted-foreground text-sm">Evidence count</span>
+                        <span className="text-foreground text-sm font-medium">{evidenceCount}</span>
+                      </div>
+                      <div className="surface-subtle rounded-2xl px-4 py-4">
+                        <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">Recommendation</p>
+                        <p className="text-muted-foreground mt-2 break-words text-sm leading-7">
+                          Keep the letter anchored to a few strong proof points. Turn on Advanced Mode when you want the system to check missing JD skills, tools, qualifications, and qualities before drafting.
+                        </p>
+                      </div>
+                    </div>
+                  </DetailsToggle>
+                </div>
+              </DisclosureSection>
+            </GlassPanel>
+          </section>
+
+          <section id="generated-letter" aria-label="Generated letter" className="min-w-0 scroll-mt-40 lg:scroll-mt-24">
+            <GlassPanel className="p-4 sm:p-6">
               <SectionHeading
-                eyebrow="Output"
+                eyebrow="Letter"
                 title="Generated letter"
-                description="The final letter appears here with quick actions for refinement."
+                description="The draft shows up here, ready to copy or export."
               />
 
-              <div className="mt-6 space-y-4">
-                <label className="interactive-card flex cursor-pointer gap-3 border-sky-200/70 bg-sky-50/60 dark:border-sky-500/20 dark:bg-sky-500/10">
-                  <input
-                    type="checkbox"
-                    checked={advancedMode}
-                    onChange={(event) => setAdvancedMode(event.target.checked)}
-                    className="mt-1 h-4 w-4"
-                  />
-                  <div className="space-y-1">
-                    <p className="text-foreground text-sm font-semibold">Advanced Mode</p>
-                    <p className="text-muted-foreground text-xs leading-6">
-                      Run planner, evidence-retrieval, synthesis, and reviewer loops before writing the final answer.
-                    </p>
-                  </div>
-                </label>
-
-                <button
-                  onClick={generate}
-                  disabled={loading || !company.trim() || !jobDescription.trim()}
-                  className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+              <p aria-live="polite" className="sr-only">{copyStatus}</p>
+              <div className="mt-4 min-w-0 space-y-4">
+                <DetailsToggle
+                  label={`Advanced mode · ${advancedMode ? "On" : "Off"}`}
+                  open={advancedOpen}
+                  onToggle={() => setAdvancedOpen((current) => !current)}
                 >
-                  {loading
-                    ? advancedMode
-                      ? "Running advanced cover letter agent..."
-                      : "Generating cover letter..."
-                    : "Generate Cover Letter"}
-                </button>
-
-                <TracePanel trace={advancedTrace} title="Advanced planner trace" />
-
-                <div className="result-well rounded-[1.4rem] p-4">
-                  {result ? (
-                    <div className="space-y-4">
-                      <div className="text-foreground max-h-[34rem] overflow-auto whitespace-pre-wrap text-sm leading-8">
-                        {result}
-                      </div>
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <button
-                          onClick={() => navigator.clipboard.writeText(result)}
-                          className="button-secondary flex-1"
-                        >
-                          Copy
-                        </button>
-                        <button
-                          onClick={exportPdf}
-                          disabled={exportingPdf}
-                          className="button-secondary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {exportingPdf ? "Exporting PDF..." : "Export PDF"}
-                        </button>
-                        <button onClick={() => setResult("")} className="button-secondary flex-1">
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 py-10 text-center">
-                      <p className="text-foreground font-medium">Your cover letter draft will appear here.</p>
-                      <p className="text-muted-foreground text-sm leading-7">
-                        Add the role context, pick evidence, and generate when ready.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </GlassPanel>
-          </Reveal>
-
-          <Reveal delay={0.1}>
-            <GlassPanel className="p-6">
-              <SectionHeading
-                eyebrow="Answer Employer Question"
-                title="Turn a prompt into a tailored response"
-                description="Use the same evidence selection and Advanced Mode setting, then add the employer's question, a target length, and a preferred answer style."
-              />
-
-              <div className="mt-6 space-y-4">
-                <label className="space-y-2">
-                  <span className="text-foreground text-sm font-medium">Employer question</span>
-                  <textarea
-                    className="input-premium min-h-32 resize-y"
-                    placeholder="Paste the employer's question here."
-                    value={employerQuestion}
-                    onChange={(event) => setEmployerQuestion(event.target.value)}
+                  <ChoiceRow
+                    checked={advancedMode}
+                    onChange={setAdvancedMode}
+                    title="Advanced Mode"
+                    description="Run planner, evidence-retrieval, synthesis, and reviewer loops before writing the final answer."
                   />
-                </label>
+                </DetailsToggle>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-foreground text-sm font-medium">Ideal Word Count (optional)</span>
-                    <input
-                      className="input-premium"
-                      placeholder="e.g. 120"
-                      value={idealWordCount}
-                      onChange={(event) => setIdealWordCount(event.target.value)}
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <span className="text-foreground text-sm font-medium">Answer Style (optional)</span>
-                    <input
-                      className="input-premium"
-                      placeholder="e.g. concise, direct, confident"
-                      value={answerStyle}
-                      onChange={(event) => setAnswerStyle(event.target.value)}
-                    />
-                  </label>
-                </div>
-
-                {questionError ? (
-                  <div className="border-destructive/40 rounded-2xl bg-destructive/5 p-3">
-                    <p className="text-sm text-rose-700 dark:text-rose-200">{questionError}</p>
+                {guidance?.kind === "cover-letter" ? (
+                  <div id="cover-letter-guidance" className="scroll-mt-40 lg:scroll-mt-24">
+                    <ClarificationQuestions key={guidance.signature} questions={guidance.questions} onSubmit={submitGuidance} onCancel={() => setGuidance(null)} />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void prepareGuidance("cover-letter")}
+                    disabled={generateBlocked}
+                    className={`button-primary min-h-11 w-full disabled:cursor-not-allowed disabled:opacity-60 ${ACTION_CLASS}`}
+                  >
+                    {preparingGuidance === "cover-letter"
+                      ? "Preparing optional questions…"
+                      : loading
+                        ? advancedMode
+                          ? "Running advanced cover letter agent..."
+                          : "Generating cover letter..."
+                        : "Generate Cover Letter"}
+                  </button>
+                )}
+                {preparingGuidance === "cover-letter" ? (
+                  <div className="space-y-2">
+                    <p role="status" className="text-muted-foreground text-sm">Choosing the few decisions that will change this letter…</p>
+                    <button type="button" className={`button-secondary min-h-11 w-full ${ACTION_CLASS}`} onClick={skipPreparingGuidance}>
+                      Skip decisions and generate
+                    </button>
                   </div>
                 ) : null}
+                {guidanceNotice?.kind === "cover-letter" ? <p role="status" className="text-muted-foreground text-sm">{guidanceNotice.message}</p> : null}
 
-                <button
-                  onClick={answerEmployerQuestion}
-                  disabled={questionLoading || !employerQuestion.trim()}
-                  className="button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {questionLoading
-                    ? advancedMode
-                      ? "Running advanced answer agent..."
-                      : "Answering employer question..."
-                    : "Generate Employer Answer"}
-                </button>
+                <ResultBlock
+                  loading={loading}
+                  loadingLabel={advancedMode ? "Running advanced cover letter agent..." : "Generating cover letter..."}
+                  text={result}
+                  warning={letterReviewWarning}
+                  emptyTitle="Your cover letter draft will appear here."
+                  emptyDescription="Add the role context, pick evidence, and generate when ready."
+                  maxHeightClass="max-h-[34rem]"
+                  notice={letterNotice}
+                  actions={
+                    <>
+                      <button type="button" onClick={() => void copyText(result, "Cover letter")} className={`button-secondary min-h-11 w-full flex-1 sm:w-auto ${ACTION_CLASS}`}>
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportPdf}
+                        disabled={exportingPdf}
+                        className={`button-secondary min-h-11 w-full flex-1 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${ACTION_CLASS}`}
+                      >
+                        {exportingPdf ? "Exporting PDF..." : "Export PDF"}
+                      </button>
+                      <button type="button" onClick={() => setResult("")} className={`button-secondary min-h-11 w-full flex-1 sm:w-auto ${ACTION_CLASS}`}>
+                        Clear
+                      </button>
+                    </>
+                  }
+                />
 
-                <TracePanel trace={questionAdvancedTrace} title="Advanced answer trace" />
+                {advancedTrace ? (
+                  <DetailsToggle label="Advanced planner trace">
+                    <TracePanel trace={advancedTrace} title="Advanced planner trace" />
+                  </DetailsToggle>
+                ) : null}
+              </div>
+            </GlassPanel>
+          </section>
 
-                <div className="result-well rounded-[1.4rem] p-4">
-                  {employerQuestionResult ? (
-                    <div className="space-y-4">
-                      <div className="text-foreground max-h-[22rem] overflow-auto whitespace-pre-wrap text-sm leading-8">
-                        {employerQuestionResult}
-                      </div>
-                      <div className="flex flex-col gap-3 sm:flex-row">
+          <section id="employer-question" aria-label="Employer answer" className="min-w-0 scroll-mt-40 lg:scroll-mt-24">
+            <GlassPanel className="p-4 sm:p-6">
+              <DisclosureSection
+                open={employerOpen}
+                onToggle={() => setEmployerOpen((current) => !current)}
+                kicker="Optional"
+                title="Employer answer"
+                meta={employerQuestionResult ? "Ready" : employerQuestion.trim() ? "Started" : "Optional"}
+              >
+                <div className="space-y-4">
+                  <p className="text-muted-foreground text-sm leading-6">
+                    Use the same evidence selection and Advanced Mode setting, then add the employer&apos;s question, a target length, and a preferred answer style.
+                  </p>
+                  <label className="block min-w-0 space-y-2">
+                    <span className="text-foreground text-sm font-medium">Employer question</span>
+                    <textarea
+                      className={`${FIELD_CLASS} min-h-28 resize-y`}
+                      placeholder="Paste the employer's question here."
+                      maxLength={4000}
+                      value={employerQuestion}
+                      onChange={(event) => setEmployerQuestion(event.target.value)}
+                    />
+                  </label>
+
+                  <DetailsToggle
+                    label="Length and style"
+                    open={answerOptionsOpen}
+                    onToggle={() => setAnswerOptionsOpen((current) => !current)}
+                  >
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block min-w-0 space-y-2">
+                        <span className="text-foreground text-sm font-medium">Ideal Word Count (optional)</span>
+                        <input
+                          className={FIELD_CLASS}
+                          placeholder="e.g. 120"
+                          value={idealWordCount}
+                          onChange={(event) => setIdealWordCount(event.target.value)}
+                        />
+                      </label>
+                      <label className="block min-w-0 space-y-2">
+                        <span className="text-foreground text-sm font-medium">Answer Style (optional)</span>
+                        <input
+                          className={FIELD_CLASS}
+                          placeholder="e.g. concise, direct, confident"
+                          value={answerStyle}
+                          onChange={(event) => setAnswerStyle(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </DetailsToggle>
+
+                  {questionError ? (
+                    <div role="alert" className="rounded-2xl border border-destructive/40 bg-destructive/10 p-3">
+                      <p className="text-destructive break-words text-sm leading-6">{questionError}</p>
+                    </div>
+                  ) : null}
+
+                  {guidance?.kind === "employer-question" ? (
+                    <ClarificationQuestions key={guidance.signature} questions={guidance.questions} onSubmit={submitGuidance} onCancel={() => setGuidance(null)} />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void prepareGuidance("employer-question")}
+                      disabled={answerBlocked}
+                      className={`button-primary min-h-11 w-full disabled:cursor-not-allowed disabled:opacity-60 ${ACTION_CLASS}`}
+                    >
+                      {preparingGuidance === "employer-question"
+                        ? "Preparing optional questions…"
+                        : questionLoading
+                          ? advancedMode
+                            ? "Running advanced answer agent..."
+                            : "Answering employer question..."
+                          : "Generate Employer Answer"}
+                    </button>
+                  )}
+                  {preparingGuidance === "employer-question" ? (
+                    <div className="space-y-2">
+                      <p role="status" className="text-muted-foreground text-sm">Choosing the few decisions that will change this answer…</p>
+                      <button type="button" className={`button-secondary min-h-11 w-full ${ACTION_CLASS}`} onClick={skipPreparingGuidance}>
+                        Skip decisions and generate
+                      </button>
+                    </div>
+                  ) : null}
+                  {guidanceNotice?.kind === "employer-question" ? <p role="status" className="text-muted-foreground text-sm">{guidanceNotice.message}</p> : null}
+
+                  <ResultBlock
+                    loading={questionLoading}
+                    loadingLabel={advancedMode ? "Running advanced answer agent..." : "Answering employer question..."}
+                    text={employerQuestionResult}
+                    warning={answerReviewWarning}
+                    emptyTitle="Your employer-question answer will appear here."
+                    emptyDescription="Add the question, choose an optional style, and generate when ready."
+                    maxHeightClass="max-h-[22rem]"
+                    notice={answerNotice}
+                    actions={
+                      <>
                         <button
-                          onClick={() => navigator.clipboard.writeText(employerQuestionResult)}
-                          className="button-secondary flex-1"
+                          type="button"
+                          onClick={() => void copyText(employerQuestionResult, "Employer answer")}
+                          className={`button-secondary min-h-11 w-full flex-1 sm:w-auto ${ACTION_CLASS}`}
                         >
                           Copy
                         </button>
                         <button
+                          type="button"
                           onClick={() => setEmployerQuestionResult("")}
-                          className="button-secondary flex-1"
+                          className={`button-secondary min-h-11 w-full flex-1 sm:w-auto ${ACTION_CLASS}`}
                         >
                           Clear
                         </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 py-10 text-center">
-                      <p className="text-foreground font-medium">Your employer-question answer will appear here.</p>
-                      <p className="text-muted-foreground text-sm leading-7">
-                        Add the question, choose an optional style, and generate when ready.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </GlassPanel>
-          </Reveal>
+                      </>
+                    }
+                  />
 
-          <Reveal delay={0.12}>
-            <GlassPanel className="p-6">
-              <SectionHeading
-                eyebrow="Evidence Rail"
-                title="What supports the story"
-                description="A quick visual summary of the material currently available to the letter generator."
-              />
-              <div className="mt-6 space-y-3">
-                <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
-                  <span className="text-muted-foreground text-sm">Mode</span>
-                  <span className="text-foreground text-sm font-medium">
-                    {advancedMode
-                      ? "Advanced agent loop"
-                      : enableManualSelection
-                        ? "Manual curation"
-                        : shouldSelect
-                          ? "AI Coaching"
-                          : "Open generation"}
-                  </span>
+                  {questionAdvancedTrace ? (
+                    <DetailsToggle label="Advanced answer trace">
+                      <TracePanel trace={questionAdvancedTrace} title="Advanced answer trace" />
+                    </DetailsToggle>
+                  ) : null}
                 </div>
-                <div className="surface-subtle flex items-center justify-between rounded-2xl px-4 py-3">
-                  <span className="text-muted-foreground text-sm">Evidence count</span>
-                  <span className="text-foreground text-sm font-medium">{evidenceCount}</span>
-                </div>
-                <div className="surface-subtle rounded-2xl px-4 py-4">
-                  <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">Recommendation</p>
-                  <p className="text-muted-foreground mt-2 text-sm leading-7">
-                    Keep the letter anchored to a few strong proof points. Turn on Advanced Mode when you want the system to check missing JD skills, tools, qualifications, and qualities before drafting.
-                  </p>
-                </div>
-              </div>
+              </DisclosureSection>
             </GlassPanel>
-          </Reveal>
+          </section>
         </div>
       </div>
+
+      <MobileGenerateBar hint={barHint} label={barLabel} disabled={barDisabled} onClick={barAction} />
     </ModuleShell>
   );
 }

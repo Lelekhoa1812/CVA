@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { buildApiUrl } from "@/lib/api";
 
 const links = [
-  { href: "/profile", label: "Your Profile", short: "Profile" },
-  { href: "/resume", label: "Resume Lab", short: "Resume" },
-  { href: "/generate", label: "Cover Letter", short: "Cv" },
-  { href: "/search", label: "Job Search", short: "Search" },
-  { href: "/auto-apply", label: "Auto Apply", short: "Apply" },
-  { href: "/control-room", label: "Control Room", short: "Ops" },
+  { href: "/profile", label: "Your Profile" },
+  { href: "/resume", label: "Resume Lab" },
+  { href: "/generate", label: "Cover Letter" },
+  { href: "/search", label: "Job Search" },
+  { href: "/auto-apply", label: "Auto Apply" },
+  { href: "/control-room", label: "Control Room" },
 ];
 
 export default function Navbar() {
@@ -21,6 +21,23 @@ export default function Navbar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileMenuOpen]);
 
   async function logout() {
     await fetch(buildApiUrl("/api/auth/logout"), { method: "POST" });
@@ -29,8 +46,8 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-1)/0.9),hsl(var(--surface-2)/0.76))] px-4 py-3 shadow-elevated backdrop-blur-2xl">
-        <Link href="/" className="group flex items-center gap-3">
+      <nav aria-label="Main navigation" className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-1)/0.9),hsl(var(--surface-2)/0.76))] px-4 py-3 shadow-elevated backdrop-blur-2xl">
+        <Link href="/" aria-label="CV Assistant home" className="group flex items-center gap-3">
           <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-[hsl(var(--surface-2)/0.78)]">
             <div className="absolute inset-1 rounded-xl bg-[linear-gradient(135deg,hsl(var(--accent)/0.92),hsl(var(--primary)/0.62),hsl(var(--warm)/0.74))] blur-sm" />
             <div className="bg-foreground text-background relative flex h-8 w-8 items-center justify-center rounded-xl">
@@ -46,13 +63,13 @@ export default function Navbar() {
           </div>
           <div className="hidden sm:block">
             <div className="text-foreground font-display text-xl">CV Assistant</div>
-            <div className="text-muted-foreground text-xs uppercase tracking-[0.24em]">
+            <div className="text-muted-foreground hidden text-xs uppercase tracking-[0.24em] 2xl:block">
               Career Storytelling Suite
             </div>
           </div>
         </Link>
 
-        <div className="hidden items-center gap-2 lg:flex">
+        <div className="hidden items-center gap-2 xl:flex">
           {links.map((link) => {
             const active = pathname?.startsWith(link.href);
             return (
@@ -61,7 +78,7 @@ export default function Navbar() {
                 href={link.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium",
+                  "relative inline-flex items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium",
                   active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -78,7 +95,7 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.7)] px-3 py-2 md:flex md:items-center md:gap-2">
+          <div className="hidden rounded-full border border-border/80 bg-[hsl(var(--surface-2)/0.7)] px-3 py-2 2xl:flex 2xl:items-center 2xl:gap-2">
             <span className="status-dot" />
             <span className="text-muted-foreground text-xs uppercase tracking-[0.22em]">
               {theme === "dark" ? "Orbit Mode" : "Sunny Mode"}
@@ -121,26 +138,35 @@ export default function Navbar() {
           </button>
 
           <button
+            ref={menuButtonRef}
             onClick={() => setMobileMenuOpen((value) => !value)}
-            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.88),hsl(var(--surface-3)/0.66))] lg:hidden"
-            aria-label="Toggle navigation"
+            className="text-muted-foreground hover:text-foreground inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-[linear-gradient(180deg,hsl(var(--surface-2)/0.88),hsl(var(--surface-3)/0.66))] xl:hidden"
+            aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.8}
+                d={mobileMenuOpen ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"}
+              />
             </svg>
           </button>
         </div>
       </nav>
 
       {mobileMenuOpen ? (
-        <div className="mx-auto mt-3 max-w-7xl lg:hidden">
-          <div className="glass-panel overflow-hidden rounded-[1.5rem] p-3">
+        <div className="mx-auto mt-3 max-w-7xl xl:hidden">
+          <div id="mobile-navigation" className="glass-panel max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-[1.5rem] p-3">
             {links.map((link) => {
               const active = pathname?.startsWith(link.href);
               return (
                 <Link
                   key={link.href}
                   href={link.href}
+                  aria-current={active ? "page" : undefined}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
                     "flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium",
@@ -149,7 +175,7 @@ export default function Navbar() {
                       : "text-muted-foreground hover:bg-[hsl(var(--surface-2)/0.88)] hover:text-foreground",
                   )}
                 >
-                  <span>{link.short}</span>
+                  <span>{link.label}</span>
                   {active ? <span className="status-dot" /> : null}
                 </Link>
               );

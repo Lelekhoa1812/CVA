@@ -1,4 +1,7 @@
-import { MIN_JOB_DESCRIPTION_WORDS } from '@/lib/resume/constants';
+import { MIN_JOB_DESCRIPTION_WORDS } from "@/lib/resume/constants";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 type AICoachingInputProps = {
   enabled: boolean;
@@ -20,50 +23,43 @@ export function AICoachingInput({
   const wordCount = jobDescription.trim() ? jobDescription.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="bg-card border rounded-xl p-6">
-      <div className="flex items-start gap-3">
-        <input
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Switch
           id="ai-coaching"
-          type="checkbox"
-          className="mt-1 h-4 w-4"
           checked={enabled}
           disabled={disabled}
-          onChange={(event) => onEnabledChange(event.target.checked)}
+          onCheckedChange={onEnabledChange}
+          aria-label="Tailor to a job"
         />
-        <div className="flex-1">
-          <label htmlFor="ai-coaching" className="text-xl font-semibold text-foreground">
-            AI Coaching
-          </label>
-          <p className="mt-1 text-sm text-muted-foreground">
-            AI scores your full project and experience history against the role, keeps the strongest
-            matches, and tailors the bullets without inventing new experience.
-          </p>
-        </div>
+        <Label htmlFor="ai-coaching">Use AI coaching</Label>
       </div>
 
-      {enabled && (
-        <div className="mt-4 space-y-2">
-          <label htmlFor="job-description" className="text-sm font-medium text-foreground">
-            Job Description <span className="text-destructive">*</span>
-          </label>
-          <textarea
+      {enabled ? (
+        <div className="space-y-2">
+          <Label htmlFor="job-description">
+            Job description <span className="text-destructive">*</span>
+          </Label>
+          <Textarea
             id="job-description"
-            className="min-h-40 w-full rounded border bg-background px-3 py-2 text-foreground"
+            className="min-h-40 resize-y"
+            aria-invalid={!!error}
+            aria-describedby={error ? "job-description-help job-description-error" : "job-description-help"}
             placeholder="Paste the full job description so AI can rerank and tailor your resume to the role."
             value={jobDescription}
             disabled={disabled}
             onChange={(event) => onJobDescriptionChange(event.target.value)}
           />
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>
+          <div id="job-description-help" className="flex flex-col items-start justify-between gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center">
+            <span className="max-w-prose">
               Required for AI Coaching. Aim for at least {MIN_JOB_DESCRIPTION_WORDS} words so the AI
               has enough signal.
             </span>
-            <span>{wordCount} words</span>
+            <span aria-live="polite" aria-atomic="true" className="shrink-0">{wordCount} words</span>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error ? <p id="job-description-error" className="text-sm text-destructive" role="alert">{error}</p> : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
