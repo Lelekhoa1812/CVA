@@ -276,7 +276,7 @@ export default function GeneratePage() {
     setPreparingGuidance(kind);
     const controller = new AbortController();
     guidanceRequestRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 35000);
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
     try {
       const response = await fetch(buildApiUrl("/api/generate/clarifications"), {
         method: "POST",

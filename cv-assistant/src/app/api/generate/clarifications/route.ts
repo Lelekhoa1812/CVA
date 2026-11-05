@@ -22,17 +22,22 @@ export async function POST(req: NextRequest) {
   if ((kind !== 'cover-letter' && kind !== 'employer-question') || (kind === 'cover-letter' && (!company || !jobDescription)) || (kind === 'employer-question' && !question)) {
     return NextResponse.json({ error: 'Missing inputs' }, { status: 400 });
   }
-  const signal = AbortSignal.any([req.signal, AbortSignal.timeout(60_000)]);
+  // The decision step has to finish before drafting. The large model chain does not return
+  // inside this window, which is what surfaced "optional questions are unavailable".
+  const signal = AbortSignal.any([req.signal, AbortSignal.timeout(50_000)]);
   try {
     await connectToDatabase();
     const user = await UserModel.findById(auth.userId).lean();
     const items = selectCoverLetterItems(getCoverLetterItems(user?.profile as DbProfile | undefined), Array.isArray(body?.indices) ? body.indices.filter((index: unknown) => Number.isInteger(index) && Number(index) >= 0).slice(0, 30) : undefined);
     const prompt = buildClarificationsPrompt({ kind, company, jobDescription, question, items, answerStyle, idealWordCount });
-    const result = await generateJsonSafe('hard', prompt, 0, signal);
-    return NextResponse.json({ questions: normalizeClarificationQuestions(result) });
-  } catch {
+    let questions = normalizeClarificationQuestions(await generateJsonSafe('easy', prompt, 1, signal));
+    if (questions.length < 2) {
+      questions = normalizeClarificationQuestions(await generateJsonSafe('easy', `${prompt}\n\nThe previous response was rejected because it did not contain 2 to 5 usable questions. Return 2 to 5 now. A behavioral employer question needs both the supplied example to use and the supported aspect to emphasize.`, 0, signal));
+    }
+    return NextResponse.json({ questions });
+  } catch (error) {
     if (req.signal.aborted) throw req.signal.reason;
-    console.error('Clarification question generation unavailable');
+    console.error('Clarification question generation unavailable', error instanceof Error ? error.message : 'unknown');
     return NextResponse.json({ questions: [], unavailable: true });
   }
 }
