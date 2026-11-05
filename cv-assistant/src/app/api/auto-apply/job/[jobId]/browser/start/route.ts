@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAutoApplySupervisorModel } from "@/lib/ai";
-import { isKnownJobPlatformUrl, toResponsesImagePart } from "@/lib/auto-apply/browser";
+import { isKnownJobPlatformUrl } from "@/lib/auto-apply/browser";
 import { startVisibleBrowserSession } from "@/lib/auto-apply/browser-session";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
@@ -8,19 +8,9 @@ import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-ap
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const GUIDANCE_TIMEOUT_MS = 12000;
+const GUIDANCE_TIMEOUT_MS = 60000;
 const PLATFORM_LOGIN_GUIDANCE =
   "This is a job-platform login. Sign in manually before the assistant continues. If you use Google sign-in, open the job platform in your normal browser because Google may block agent-controlled browsers with a browser-not-secure warning. After signing in, return here and restart the live preview so the assistant can continue from the authenticated session.";
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => clearTimeout(timeout));
-  });
-}
 
 export async function POST(req: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const auth = requireAutoApplyAuth(req);
@@ -75,33 +65,20 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
   if (!isJobPlatform || employerLoginActive) {
     try {
       const model = getAutoApplySupervisorModel();
-      const response = await withTimeout(
-        model.generateContent({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only as plain UI text. Do not use Markdown, bold markers, italic markers, headings, numbered lists, hyphen bullets, or raw snake_case identifiers. Prioritize autonomous browser actions. If this is an employer-site login or account creation flow, proceed with clicks, scrolling, field completion, and document upload where possible; ask the user only for secrets, CAPTCHA, MFA, or facts not available in the profile. If this is a job platform login such as LinkedIn, SEEK, Indeed, CareerOne, Adzuna, Talent.com, or a LinkedIn sign-in modal, instruct the user to sign in manually before the assistant continues. Mention that Google sign-in can fail inside the agent browser with a browser-not-secure warning and should be completed in the user's normal browser instead.`,
-                },
-              ],
-            },
-          ],
-          tools: [{ type: "computer" }],
-          extraInputItems: [
-            {
-              role: "user",
-              content: [
-                { type: "input_text", text: "Current browser screenshot." },
-                toResponsesImagePart({ base64: screenshotBase64, detail: "original" }),
-              ],
-            },
-          ],
-          reasoning: { summary: "concise" },
-        }),
-        GUIDANCE_TIMEOUT_MS,
-        "Guidance model timed out; continue from the live browser preview.",
-      );
+      const response = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only as plain UI text. Do not use Markdown, bold markers, italic markers, headings, numbered lists, hyphen bullets, or raw snake_case identifiers. Prioritize autonomous browser actions. If this is an employer-site login or account creation flow, proceed with clicks, scrolling, field completion, and document upload where possible; ask the user only for secrets, CAPTCHA, MFA, or facts not available in the profile. If this is a job platform login such as LinkedIn, SEEK, Indeed, CareerOne, Adzuna, Talent.com, or a LinkedIn sign-in modal, instruct the user to sign in manually before the assistant continues. Mention that Google sign-in can fail inside the agent browser with a browser-not-secure warning and should be completed in the user's normal browser instead.`,
+              },
+              { inlineData: { data: screenshotBase64, mimeType: "image/png" } },
+            ],
+          },
+        ],
+        signal: AbortSignal.timeout(GUIDANCE_TIMEOUT_MS),
+      });
       guidance = response.response.text() || guidance;
     } catch (error) {
       guidance = error instanceof Error

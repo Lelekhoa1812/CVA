@@ -45,7 +45,7 @@ const strategLlmSchema = z.object({
 });
 
 function modelIdLabel() {
-  return (typeof process !== "undefined" && process.env.AZURE_AI_FOUNDRY_MODEL) || "gpt-5.4-mini";
+  return "NVIDIA NIM router";
 }
 
 function contextJson(context: UserContextSnapshot): string {
@@ -370,7 +370,7 @@ export function scoreLeadFitHeuristic(
 
 /**
  * v2 strategist: LLM-first with heuristic fallback and deterministic guardrails.
- * Set `CONTROL_ROOM_STRATEGIST_MODE=heuristic` to force the legacy overlap path (e.g. unit tests without Azure keys).
+ * Set `CONTROL_ROOM_STRATEGIST_MODE=heuristic` to force the legacy overlap path (e.g. unit tests without AI keys).
  */
 export async function scoreLeadFit(
   lead: LeadLike,

@@ -26,4 +26,4 @@ Gap heatmap aggregates by `gap.code` when present; otherwise falls back to a slu
 1. **No automatic DB migration** — existing `JobEvaluation` documents keep their stored shape; missing fields are treated as legacy when read.
 2. **Refresh v2 data** — run **Run Specialist Workflow** (or `POST /api/control-room/leads/:id/orchestrate`) on each lead you care about. New runs persist `analysisSource`, `analysisVersion: 2`, `jobUnderstanding`, and coded `gapMap` entries.
 3. **Empty heatmap** — if every stored evaluation is pre-v2, the dashboard heatmap may be empty until at least one orchestration completes; the Control Room shows a short note in that case.
-4. **Tests** — set `CONTROL_ROOM_STRATEGIST_MODE=heuristic` to force the overlap-based strategist without calling Azure (see `tests/career/run-tests.ts`).
+4. **Tests** — set `CONTROL_ROOM_STRATEGIST_MODE=heuristic` to force the overlap-based strategist without calling the AI provider (see `tests/career/run-tests.ts`).

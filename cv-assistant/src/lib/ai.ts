@@ -1,294 +1,263 @@
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
-
 type ModelPreset = 'easy' | 'hard' | 'document';
 type ContentRole = 'user' | 'assistant' | 'model' | string;
 type InputPart = {
   text?: string;
-  inlineData?: {
-    data: string;
-    mimeType: string;
-    detail?: 'low' | 'high' | 'auto' | 'original';
-  };
+  inlineData?: { data: string; mimeType: string; detail?: 'low' | 'high' | 'auto' | 'original' };
 };
 type GenerateContentPayload = {
-  contents: Array<{
-    role: ContentRole;
-    parts: InputPart[];
-  }>;
+  contents: Array<{ role: ContentRole; parts: InputPart[] }>;
   modelOverride?: string;
   previousResponseId?: string;
   tools?: Array<Record<string, unknown>>;
   extraInputItems?: Array<Record<string, unknown>>;
   reasoning?: Record<string, unknown>;
+  signal?: AbortSignal;
 };
-type GenerateContentResult = {
-  response: {
-    text(): string;
-  };
-};
+type GenerateContentResult = { response: { text(): string; model: string } };
 
-const DEFAULT_API_VERSION = '2024-12-01-preview';
-const DEFAULT_TIMEOUT_S = 360;
-const DEFAULT_MAX_TOKENS = 16384;
-const DEFAULT_HARD_MODEL = 'gpt-5.4-mini';
-const DEFAULT_EASY_MODEL = 'gpt-5-nano';
-const DEFAULT_AUTO_APPLY_SUPERVISOR_MODEL = 'gpt-5.4';
+type KeyState = { key: string; inFlight: number; disabledUntil: number; lastUsed: number };
+type ModelKeyState = { cooldownUntil: number; failures: number };
 
-let cachedDotEnvValues: Record<string, string> | null = null;
-
-function parseDotEnvFile(filePath: string): Record<string, string> {
-  const parsed: Record<string, string> = {};
-  const lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-
-    const separatorIndex = line.indexOf('=');
-    if (separatorIndex < 0) continue;
-
-    const key = line.slice(0, separatorIndex).trim();
-    let value = line.slice(separatorIndex + 1).trim();
-
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    parsed[key] = value.trim();
-  }
-
-  return parsed;
-}
-
-function getDotEnvValues(): Record<string, string> {
-  if (cachedDotEnvValues) return cachedDotEnvValues;
-
-  const candidatePaths = [
-    path.join(process.cwd(), '.env'),
-    path.join(process.cwd(), '..', '.env'),
-  ];
-
-  for (const candidatePath of candidatePaths) {
-    if (existsSync(candidatePath)) {
-      cachedDotEnvValues = parseDotEnvFile(candidatePath);
-      return cachedDotEnvValues;
-    }
-  }
-
-  cachedDotEnvValues = {};
-  return cachedDotEnvValues;
-}
-
+// State is shared by requests within one server process. Serverless instances each have their
+// own state, so a provider's rate limit remains the source of truth across instances.
+const keyStates = new Map<string, KeyState>();
+const modelKeyStates = new Map<string, ModelKeyState>();
+let sequence = 0;
 function getConfigValue(name: string): string | undefined {
-  const runtimeValue = process.env[name]?.trim();
-  if (runtimeValue) return runtimeValue;
-  return getDotEnvValues()[name];
+  return process.env[name]?.trim();
 }
 
-function getRequiredConfigValue(name: string): string {
-  const value = getConfigValue(name);
-  if (!value) throw new Error(`Missing ${name} in environment`);
-  return value;
+function positiveInt(name: string, fallback: number): number {
+  const value = Number.parseInt(getConfigValue(name) || '', 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function normalizeBaseUrl(endpoint: string): string {
-  const normalizedEndpoint = endpoint.trim().replace(/\/+$/, '');
-
-  if (normalizedEndpoint.endsWith('/openai/v1')) {
-    return `${normalizedEndpoint}/`;
-  }
-
-  if (normalizedEndpoint.endsWith('/models')) {
-    return `${normalizedEndpoint.slice(0, -'/models'.length)}/openai/v1/`;
-  }
-
-  return `${normalizedEndpoint}/openai/v1/`;
+function availableKeys(): KeyState[] {
+  const keys = Array.from({ length: 9 }, (_, index) => getConfigValue(`NVIDIA_NIM_API_KEY_${index + 1}`))
+    .filter((key): key is string => Boolean(key));
+  // Duplicate values are one credential and must share their concurrency and cooldown state.
+  return [...new Set(keys)].map((key) => {
+    let state = keyStates.get(key);
+    if (!state) {
+      state = { key, inFlight: 0, disabledUntil: 0, lastUsed: -Math.random() };
+      keyStates.set(key, state);
+    }
+    return state;
+  });
 }
 
-function getTimeoutMs(): number {
-  const rawTimeout = Number.parseInt(
-    getConfigValue('AZURE_AI_FOUNDRY_TIMEOUT_S') || `${DEFAULT_TIMEOUT_S}`,
-    10,
-  );
-
-  return (Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : DEFAULT_TIMEOUT_S) * 1000;
+// Safe to log: reports only the number of distinct, nonempty credentials.
+export function getNvidiaNimKeyCount(): number {
+  return availableKeys().length;
 }
 
-function getMaxOutputTokens(): number {
-  const rawMaxTokens = Number.parseInt(
-    getConfigValue('AZURE_AI_FOUNDRY_MAX_TOKENS') || `${DEFAULT_MAX_TOKENS}`,
-    10,
-  );
+const DEFAULT_MODELS: Record<ModelPreset, string[]> = {
+  easy: ['poolside/laguna-xs-2.1', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'nvidia/nemotron-3-ultra-550b-a55b'],
+  hard: ['nvidia/nemotron-3-ultra-550b-a55b', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'deepseek-ai/deepseek-v4.1-flash'],
+  document: ['nvidia/nemotron-3-ultra-550b-a55b', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', 'deepseek-ai/deepseek-v4.1-flash'],
+};
 
-  return Number.isFinite(rawMaxTokens) && rawMaxTokens > 0
-    ? rawMaxTokens
-    : DEFAULT_MAX_TOKENS;
+function modelList(preset: ModelPreset): string[] {
+  const configured = getConfigValue(`NVIDIA_NIM_${preset.toUpperCase()}_MODELS`);
+  return configured ? [...new Set(configured.split(',').map((model) => model.trim()).filter(Boolean))] : DEFAULT_MODELS[preset];
 }
 
 export function resolveModelName(preset: ModelPreset): string {
-  // Motivation vs Logic:
-  // Motivation: We want one global Azure model switch that preserves the app's old "lightweight vs stronger"
-  // behavior without scattering provider-specific choices across routes.
-  // Logic: `easy` is pinned to `gpt-5-nano`, `hard` and document-heavy extraction stay on
-  // `gpt-5.4-mini`, and Auto Apply supervisor calls opt into `gpt-5.4` through a separate helper.
-  if (preset === 'easy') return DEFAULT_EASY_MODEL;
-  if (preset === 'document') return DEFAULT_HARD_MODEL;
-  return DEFAULT_HARD_MODEL;
+  return modelList(preset)[0];
 }
 
 export function resolveAutoApplySupervisorModelName(): string {
-  return getConfigValue('AUTO_APPLY_SUPERVISOR_MODEL') || DEFAULT_AUTO_APPLY_SUPERVISOR_MODEL;
+  return getConfigValue('NVIDIA_NIM_SUPERVISOR_MODEL') || resolveModelName('hard');
 }
 
 function mapRole(role: ContentRole): 'user' | 'assistant' | 'system' {
   if (role === 'assistant' || role === 'model') return 'assistant';
-  if (role === 'system') return 'system';
-  return 'user';
+  return role === 'system' ? 'system' : 'user';
 }
 
-function mapPart(part: InputPart) {
-  if (part.inlineData) {
-    const { mimeType, data } = part.inlineData;
+function mapMessages(payload: GenerateContentPayload) {
+  if (payload.previousResponseId || payload.tools?.length || payload.extraInputItems?.length) {
+    throw new Error('NVIDIA NIM chat completions requires conversation messages; Responses API state and tools are unsupported');
+  }
+  return payload.contents.map(({ role, parts }) => ({
+    role: mapRole(role),
+    content: parts.some((part) => part.inlineData)
+      ? parts.map((part) => {
+        if (!part.inlineData) return { type: 'text', text: part.text || '' };
+        const { data, mimeType } = part.inlineData;
+        if (!mimeType.startsWith('image/')) throw new Error(`NVIDIA NIM does not accept ${mimeType} as chat input`);
+        return { type: 'image_url', image_url: { url: `data:${mimeType};base64,${data}` } };
+      })
+      : parts.map((part) => part.text || '').join('\n'),
+  }));
+}
 
-    if (mimeType === 'application/pdf') {
-      return {
-        type: 'input_file' as const,
-        filename: 'upload.pdf',
-        file_data: `data:${mimeType};base64,${data}`,
-      };
+class NimError extends Error {
+  constructor(message: string, readonly status: number, readonly retryAfterMs = 0) { super(message); }
+}
+
+function retryAfterMs(header: string | null): number {
+  if (!header) return 0;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(header);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
+}
+
+async function readStream(response: Response, controller: AbortController, resetIdle: () => void): Promise<string> {
+  if (!response.body) throw new NimError('NVIDIA NIM returned no streaming response', 0);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let finished = false;
+  let finishReason = '';
+  const consume = (event: string) => {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+    if (!data) return;
+    if (data.trim() === '[DONE]') { finished = true; return; }
+    let chunk: { error?: unknown; choices?: Array<{ delta?: { content?: string | null }; finish_reason?: string | null }> };
+    try { chunk = JSON.parse(data); } catch { throw new NimError('NVIDIA NIM returned malformed streaming data', 0); }
+    if (chunk.error) throw new NimError('NVIDIA NIM reported a streaming error', 0);
+    const choice = chunk.choices?.[0];
+    if (typeof choice?.delta?.content === 'string') text += choice.delta.content;
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || '';
+      for (const event of events) consume(event);
     }
-
-    return {
-      type: 'input_image' as const,
-      image_url: `data:${mimeType};base64,${data}`,
-      detail: part.inlineData.detail || 'auto',
-    };
+    buffer += decoder.decode();
+    if (buffer.trim()) consume(buffer);
+    if (!finished && !finishReason) throw new NimError('NVIDIA NIM stream ended before completion', 0);
+    if (finishReason && finishReason !== 'stop') throw new NimError(`NVIDIA NIM response did not finish normally (${finishReason})`, 0);
+    if (!text.trim()) throw new NimError('NVIDIA NIM returned an empty response', 0);
+    return text.trim();
+  } finally {
+    controller.abort();
+    reader.releaseLock();
   }
-
-  return {
-    type: 'input_text' as const,
-    text: part.text || '',
-  };
 }
 
-function extractOutputText(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return '';
-
-  const directText = (payload as { output_text?: unknown }).output_text;
-  if (typeof directText === 'string' && directText.trim()) {
-    return directText;
+async function requestModel(model: string, state: KeyState, messages: ReturnType<typeof mapMessages>, deadline: number, signal?: AbortSignal): Promise<string> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
+  const total = setTimeout(() => controller.abort(), Math.max(1, deadline - Date.now()));
+  let idle: ReturnType<typeof setTimeout>;
+  const resetIdle = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => controller.abort(), positiveInt('NVIDIA_NIM_IDLE_TIMEOUT_S', 90) * 1000);
+  };
+  const defaultFirstTokenSeconds = model === 'stepfun-ai/step-5-preview' ? 55 : model === 'deepseek-ai/deepseek-v4.1-flash' ? 75 : 20;
+  idle = setTimeout(() => controller.abort(), positiveInt('NVIDIA_NIM_FIRST_TOKEN_TIMEOUT_S', defaultFirstTokenSeconds) * 1000);
+  try {
+    const base = (getConfigValue('NVIDIA_NIM_BASE_URL') || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '');
+    const response = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.key}`, Accept: 'text/event-stream' },
+      body: JSON.stringify({ model, messages, stream: true, max_tokens: Math.min(positiveInt('NVIDIA_NIM_MAX_TOKENS', 65536), model === 'poolside/laguna-xs-2.1' ? 16384 : model === 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning' ? 65536 : model === 'stepfun-ai/step-5-preview' || model === 'deepseek-ai/deepseek-v4.1-flash' ? 1048576 : 32768) }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new NimError(`NVIDIA NIM request failed (HTTP ${response.status})`, response.status, retryAfterMs(response.headers.get('retry-after')));
+    }
+    return await readStream(response, controller, resetIdle);
+  } catch (error) {
+    if (controller.signal.aborted && !(error instanceof NimError)) throw new NimError('NVIDIA NIM request timed out or disconnected', 0);
+    if (error instanceof NimError) throw error;
+    throw new NimError('NVIDIA NIM network request failed', 0);
+  } finally {
+    clearTimeout(total);
+    clearTimeout(idle!);
+    signal?.removeEventListener('abort', abort);
   }
-
-  const output = (payload as { output?: Array<{ content?: Array<{ type?: string; text?: string }> }> }).output;
-  if (!Array.isArray(output)) return '';
-
-  return output
-    .flatMap((item) => item.content || [])
-    .filter((item) => item.type === 'output_text' && typeof item.text === 'string')
-    .map((item) => item.text || '')
-    .join('')
-    .trim();
 }
 
-async function createResponse(
-  preset: ModelPreset,
-  payload: GenerateContentPayload,
-): Promise<GenerateContentResult> {
-  const endpoint = getRequiredConfigValue('AZURE_AI_FOUNDRY_ENDPOINT');
-  const apiKey = getRequiredConfigValue('AZURE_AI_FOUNDRY_API_KEY');
-  const apiVersion = getConfigValue('AZURE_AI_FOUNDRY_API_VERSION') || DEFAULT_API_VERSION;
-  const baseUrl = normalizeBaseUrl(endpoint);
-  const url = new URL('responses', baseUrl);
-
-  // Azure Foundry's OpenAI v1 endpoints accept the normalized `/openai/v1/` path directly and reject
-  // preview `api-version` query parameters on this route, so we keep the configured value for diagnostics.
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api-key': apiKey,
-    },
-    body: JSON.stringify({
-      model: payload.modelOverride || resolveModelName(preset),
-      input: [
-        ...payload.contents.map((content) => ({
-          role: mapRole(content.role),
-          content: content.parts.map(mapPart),
-        })),
-        ...(payload.extraInputItems || []),
-      ],
-      ...(payload.previousResponseId ? { previous_response_id: payload.previousResponseId } : {}),
-      ...(payload.tools ? { tools: payload.tools } : {}),
-      ...(payload.reasoning ? { reasoning: payload.reasoning } : {}),
-      max_output_tokens: getMaxOutputTokens(),
-    }),
-    signal: AbortSignal.timeout(getTimeoutMs()),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(
-      `Azure AI Foundry request failed (${response.status}, configured api version ${apiVersion}): ${detail}`,
-    );
+async function createResponse(preset: ModelPreset, payload: GenerateContentPayload): Promise<GenerateContentResult> {
+  const keys = availableKeys();
+  if (!keys.length) throw new Error('No NVIDIA NIM API keys configured (NVIDIA_NIM_API_KEY_1 through NVIDIA_NIM_API_KEY_9)');
+  const messages = mapMessages(payload);
+  const hasImages = payload.contents.some((content) => content.parts.some((part) => part.inlineData?.mimeType.startsWith('image/')));
+  const visionModels = (getConfigValue('NVIDIA_NIM_VISION_MODELS') || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning,stepfun-ai/step-5-preview').split(',').map((model) => model.trim()).filter(Boolean);
+  const models = payload.modelOverride ? [payload.modelOverride] : hasImages ? visionModels : modelList(preset);
+  let lastError: unknown;
+  const deadline = Date.now() + positiveInt('NVIDIA_NIM_TIMEOUT_S', 240) * 1000;
+  const tried = new Map(models.map((model) => [model, new Set<KeyState>()]));
+  const rejectedModels = new Set<string>();
+  // Try each model before returning to a second key for the same model. This prevents
+  // one slow or rate-limited model from consuming the whole request deadline.
+  for (let round = 0; round < keys.length; round++) {
+    for (const model of models) {
+      if (rejectedModels.has(model)) continue;
+      if (payload.signal?.aborted) throw new Error('NVIDIA NIM request cancelled');
+      if (Date.now() >= deadline) throw new Error('NVIDIA NIM request timed out');
+      const now = Date.now();
+      const triedForModel = tried.get(model)!;
+      const eligible = keys.filter((state) => !triedForModel.has(state) && state.disabledUntil <= now && (modelKeyStates.get(`${model}\0${state.key}`)?.cooldownUntil || 0) <= now);
+      eligible.sort((a, b) => a.inFlight - b.inFlight || a.lastUsed - b.lastUsed);
+      const state = eligible[0];
+      if (!state) continue;
+      triedForModel.add(state);
+      state.inFlight += 1;
+      state.lastUsed = ++sequence;
+      const modelKey = `${model}\0${state.key}`;
+      try {
+        const text = await requestModel(model, state, messages, deadline, payload.signal);
+        modelKeyStates.delete(modelKey);
+        return { response: { text: () => text, model } };
+      } catch (error) {
+        if (payload.signal?.aborted) throw new Error('NVIDIA NIM request cancelled');
+        lastError = error;
+        const failure = error instanceof NimError ? error : new NimError('NVIDIA NIM request failed', 0);
+        if (failure.status === 401 || failure.status === 402) {
+          state.disabledUntil = Date.now() + Math.max(failure.retryAfterMs, 5 * 60_000);
+        } else if (failure.status === 403 || failure.status === 404 || failure.status === 429 || failure.status === 0 || failure.status >= 500) {
+          const previous = modelKeyStates.get(modelKey)?.failures || 0;
+          const delay = failure.retryAfterMs || Math.min(60_000, (failure.status === 429 ? 10_000 : 3_000) * 2 ** Math.min(previous, 4));
+          modelKeyStates.set(modelKey, { failures: previous + 1, cooldownUntil: Date.now() + delay });
+        } else {
+          rejectedModels.add(model);
+        }
+      } finally {
+        state.inFlight -= 1;
+      }
+    }
   }
-
-  const data = await response.json();
-  const text = extractOutputText(data);
-
-  if (!text) {
-    throw new Error('Azure AI Foundry returned an empty response');
-  }
-
-  return {
-    response: {
-      text: () => text,
-    },
-  };
+  throw lastError || new Error('All configured NVIDIA NIM keys are temporarily unavailable for the selected models');
 }
 
 export function getModel(preset: ModelPreset) {
-  return {
-    generateContent: (payload: GenerateContentPayload) => createResponse(preset, payload),
-  };
+  return { generateContent: (payload: GenerateContentPayload) => createResponse(preset, payload) };
 }
 
 export function getAutoApplySupervisorModel() {
-  return {
-    generateContent: (payload: GenerateContentPayload) =>
-      createResponse('hard', {
-        ...payload,
-        modelOverride: payload.modelOverride || resolveAutoApplySupervisorModelName(),
-      }),
-  };
+  return { generateContent: (payload: GenerateContentPayload) => createResponse('hard', {
+    ...payload,
+    modelOverride: payload.modelOverride || (payload.contents.some((content) => content.parts.some((part) => part.inlineData?.mimeType.startsWith('image/'))) ? undefined : getConfigValue('NVIDIA_NIM_SUPERVISOR_MODEL')) || undefined,
+  }) };
 }
 
-export async function generateJsonSafe(
-  preset: ModelPreset,
-  prompt: string,
-  maxRetries = 2,
-) {
+export async function generateJsonSafe(preset: ModelPreset, prompt: string, maxRetries = 2) {
   const model = getModel(preset);
   let lastErr: unknown = null;
-
   for (let i = 0; i <= maxRetries; i++) {
     try {
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      });
+      const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       const text = result.response.text();
       const jsonStart = text.indexOf('{');
       const jsonEnd = text.lastIndexOf('}');
       const candidate = jsonStart >= 0 && jsonEnd >= 0 ? text.slice(jsonStart, jsonEnd + 1) : text;
       return JSON.parse(candidate);
-    } catch (error) {
-      lastErr = error;
-    }
+    } catch (error) { lastErr = error; }
   }
-
   throw lastErr ?? new Error('Failed to parse JSON');
 }

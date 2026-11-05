@@ -1,4 +1,6 @@
 import mammoth from 'mammoth';
+import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { createCanvas } from '@napi-rs/canvas';
 import { getModel } from '@/lib/ai';
 
 export type ImportedProject = {
@@ -146,7 +148,7 @@ function detectImportMimeType(file: File) {
 /* Motivation vs Logic:
    Motivation: file upload and pasted-text import should land on one consistent profile schema so the UI can merge results
    without maintaining separate parsing contracts for PDF, DOCX, and free-form text.
-   Logic: centralize extraction here, use the document model directly for PDFs, convert DOCX into raw text with Mammoth,
+   Logic: centralize extraction here, extract PDF and DOCX text locally,
    and send all text-like content through the same JSON-only parser prompt. */
 export async function parseProfileImportFromText(text: string) {
   const trimmed = text.trim();
@@ -155,6 +157,45 @@ export async function parseProfileImportFromText(text: string) {
   }
 
   return runProfileImport([{ text: trimmed }]);
+}
+
+export async function extractProfilePdfParts(fileBuffer: Buffer): Promise<Array<{ text?: string; inlineData?: { data: string; mimeType: string } }>> {
+  const parts: Array<{ text?: string; inlineData?: { data: string; mimeType: string } }> = [];
+  try {
+    const task = getDocument({ data: new Uint8Array(fileBuffer), useSystemFonts: true });
+    try {
+      const document = await task.promise;
+      if (document.numPages > 12) throw new Error('PDF_PAGE_LIMIT');
+      for (let index = 1; index <= document.numPages; index++) {
+        const page = await document.getPage(index);
+        const content = await page.getTextContent();
+        const text = content.items.map((item) => 'str' in item ? item.str : '').join(' ').trim();
+        if (text) parts.push({ text: `Page ${index}:\n${text}` });
+        // A page can combine a long text layer with scanned content; retain both for the model.
+        const operators = await page.getOperatorList();
+        const imageOperators = new Set([
+          OPS.paintImageXObject, OPS.paintImageXObjectRepeat,
+          OPS.paintInlineImageXObject, OPS.paintInlineImageXObjectGroup,
+          OPS.paintImageMaskXObject, OPS.paintImageMaskXObjectGroup, OPS.paintImageMaskXObjectRepeat,
+        ]);
+        if (text.length < 100 || operators.fnArray.some((operator) => imageOperators.has(operator))) {
+          const original = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: Math.min(2, 1800 / Math.max(original.width, original.height)) });
+          const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+          await page.render({ canvasContext: canvas.getContext('2d') as unknown as CanvasRenderingContext2D, viewport }).promise;
+          parts.push({ text: `Page ${index} image:` }, { inlineData: { data: canvas.toBuffer('image/jpeg', 85).toString('base64'), mimeType: 'image/jpeg' } });
+        }
+      }
+    } finally {
+      await task.destroy();
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PDF_PAGE_LIMIT') {
+      throw new Error('Please upload a PDF with no more than 12 pages.');
+    }
+    throw new Error('Could not read the PDF. Please upload a valid, unprotected PDF or a DOCX file.');
+  }
+  return parts;
 }
 
 export async function parseProfileImportFromFile(file: File) {
@@ -167,14 +208,7 @@ export async function parseProfileImportFromFile(file: File) {
   const fileBuffer = Buffer.from(fileArrayBuffer);
 
   if (mimeType === 'application/pdf') {
-    return runProfileImport([
-      {
-        inlineData: {
-          data: fileBuffer.toString('base64'),
-          mimeType,
-        },
-      },
-    ]);
+    return runProfileImport(await extractProfilePdfParts(fileBuffer));
   }
 
   const extracted = await mammoth.extractRawText({ buffer: fileBuffer });

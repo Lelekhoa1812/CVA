@@ -30,7 +30,7 @@ function fallbackExpansion(request: Pick<SearchRequest, "jobTitle" | "location" 
 
 /* Motivation vs Logic:
    Motivation: The new Search Instruction and Advanced Search flow both need structured, low-latency AI output without introducing a separate orchestration service.
-   Logic: Reuse the repository's JSON-only Azure Foundry pattern, validate with Zod, and fall back to deterministic payloads so search still runs when the model is unavailable. */
+   Logic: Reuse the repository's JSON-only AI pattern, validate with Zod, and fall back to deterministic payloads so search still runs when the model is unavailable. */
 export async function expandSearchInstruction(args: {
   request: Pick<SearchRequest, "jobTitle" | "location" | "filters" | "selectedSources" | "searchInstruction">;
   context?: SearchInstructionContext | null;

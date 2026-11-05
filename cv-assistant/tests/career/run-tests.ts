@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
+import { extractProfilePdfParts } from "../../src/lib/profile-import";
 import { resolveAutoApplySupervisorModelName, resolveModelName } from "../../src/lib/ai";
 import { answerEmployerQuestionFromGroundTruth } from "../../src/lib/auto-apply/answering";
 import { toComputerScreenshotOutput, toResponsesImagePart } from "../../src/lib/auto-apply/browser";
@@ -115,17 +118,58 @@ const baseDraft: ResumeDraft = {
 
 const tests: TestCase[] = [
   {
-    name: "auto apply model routing preserves global presets",
+    name: "profile PDF extraction reads text and renders scanned pages",
+    run: async () => {
+      const pdf = await PDFDocument.create();
+      const font = await pdf.embedFont(StandardFonts.Helvetica);
+      pdf.addPage().drawText("Jane Candidate Software Engineer", { font });
+      const parts = await extractProfilePdfParts(Buffer.from(await pdf.save()));
+      assert.match(parts.map(part => part.text || "").join(" "), /Jane Candidate Software Engineer/);
+
+      const emptyPdf = await PDFDocument.create();
+      const sourceCanvas = createCanvas(100, 100);
+      sourceCanvas.getContext("2d").fillRect(0, 0, 100, 100);
+      const embeddedImage = await emptyPdf.embedPng(sourceCanvas.toBuffer("image/png"));
+      emptyPdf.addPage([100, 100]).drawImage(embeddedImage, { x: 0, y: 0, width: 100, height: 100 });
+      const scannedParts = await extractProfilePdfParts(Buffer.from(await emptyPdf.save()));
+      const image = scannedParts.find(part => part.inlineData?.mimeType === "image/jpeg")?.inlineData;
+      assert.ok(image?.data);
+      const decoded = await loadImage(Buffer.from(image.data, "base64"));
+      const canvas = createCanvas(decoded.width, decoded.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(decoded, 0, 0);
+      assert.ok(context.getImageData(10, 10, 1, 1).data[0] < 30);
+      const mixedPdf = await PDFDocument.create();
+      const mixedImage = await mixedPdf.embedPng(sourceCanvas.toBuffer("image/png"));
+      const mixedPage = mixedPdf.addPage();
+      mixedPage.drawText("Machine readable content ".repeat(10));
+      mixedPage.drawImage(mixedImage, { x: 0, y: 0, width: 100, height: 100 });
+      const mixedParts = await extractProfilePdfParts(Buffer.from(await mixedPdf.save()));
+      assert.ok(mixedParts.some(part => part.text?.includes("Machine readable content")));
+      assert.ok(mixedParts.some(part => part.inlineData?.mimeType === "image/jpeg"));
+      await assert.rejects(extractProfilePdfParts(Buffer.from("not a PDF")), /Could not read the PDF/);
+    },
+  },
+  {
+    name: "model routing honors configured presets and supervisor",
     run: () => {
-      const previousSupervisor = process.env.AUTO_APPLY_SUPERVISOR_MODEL;
-      delete process.env.AUTO_APPLY_SUPERVISOR_MODEL;
-
-      assert.equal(resolveModelName("hard"), process.env.AZURE_AI_FOUNDRY_MODEL || "gpt-5.4-mini");
-      assert.equal(resolveModelName("easy"), "gpt-5-nano");
-      assert.equal(resolveModelName("document"), "gpt-5.4-mini");
-      assert.equal(resolveAutoApplySupervisorModelName(), "gpt-5.4");
-
-      if (previousSupervisor) process.env.AUTO_APPLY_SUPERVISOR_MODEL = previousSupervisor;
+      const names = ["NVIDIA_NIM_HARD_MODELS", "NVIDIA_NIM_EASY_MODELS", "NVIDIA_NIM_DOCUMENT_MODELS", "NVIDIA_NIM_SUPERVISOR_MODEL"] as const;
+      const previous = names.map(name => process.env[name]);
+      try {
+        process.env.NVIDIA_NIM_HARD_MODELS = "test/hard,test/fallback";
+        process.env.NVIDIA_NIM_EASY_MODELS = "test/easy";
+        process.env.NVIDIA_NIM_DOCUMENT_MODELS = "test/document";
+        process.env.NVIDIA_NIM_SUPERVISOR_MODEL = "test/supervisor";
+        assert.equal(resolveModelName("hard"), "test/hard");
+        assert.equal(resolveModelName("easy"), "test/easy");
+        assert.equal(resolveModelName("document"), "test/document");
+        assert.equal(resolveAutoApplySupervisorModelName(), "test/supervisor");
+      } finally {
+        names.forEach((name, index) => {
+          if (previous[index] === undefined) delete process.env[name];
+          else process.env[name] = previous[index];
+        });
+      }
     },
   },
   {

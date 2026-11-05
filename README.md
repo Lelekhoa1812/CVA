@@ -1,6 +1,6 @@
 # CV Assistant - AI-Powered Resume & Cover Letter Platform
 
-A comprehensive, modern web application that leverages AI to generate personalized cover letters and build professional resumes. Built with Next.js 15, TypeScript, Tailwind CSS, and powered by Google Gemini AI for intelligent content generation and enhancement.
+A web application for creating personalized cover letters and resumes, built with Next.js, TypeScript, Tailwind CSS, and NVIDIA NIM.
 
 [CV Assistant Demo](https://cva-mauve.vercel.app/)
 
@@ -23,7 +23,7 @@ CV Assistant is a full-featured professional development platform that combines 
 
 ### 👤 Profile Management
 ![Upload Resume](./imgsrc/profile/upload-resume.png)
-*Leverage OCR and VLM technologies to parse your resume and extract information automatically*
+*Import profile details from text, DOCX, or PDF, including scanned pages.*
 
 ![Profile Management](./imgsrc/profile/profile.png)
 *Comprehensive user profile management with experience, skills, and project management*
@@ -108,26 +108,24 @@ Have a look at our resume samples:
 - **Tailwind CSS**: Utility-first styling with custom design system
 - **MongoDB**: Scalable database for user profiles and data storage
 - **JWT Authentication**: Secure user authentication and session management
-- **Google Gemini AI**: Advanced LLM integration with multiple specialized agents:
-  - **Gemini 2.5 Flash**: For content enhancement and markdown beautification
-  - **Gemini 2.5 Flash Lite**: For style parsing and content summarization
+- **NVIDIA NIM**: Streamed AI requests, with model fallback and rotation across configured API keys
 - **PDF Generation**: Professional PDF creation using pdf-lib
-- **OCR Integration**: Resume parsing and information extraction
+- **Profile import**: Resume parsing and information extraction
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 22
 - npm or yarn
 - MongoDB database
-- Google Gemini API key
+- At least one NVIDIA NIM API key
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
    git clone https://github.com/Lelekhoa1812/CVA.git
-   cd cv-assistant
+   cd CVA/cv-assistant
    ```
 
 2. **Install dependencies**
@@ -136,20 +134,16 @@ Have a look at our resume samples:
    ```
 
 3. **Set up environment variables**
-   Create a `.env.local` file in the root directory:
+   Create a `.env.local` file in `cv-assistant`:
    ```env
    # Database
-   MONGODB_URI=your_mongodb_connection_string
+   MONGO_URI=your_mongodb_connection_string
    
    # Authentication
    JWT_SECRET=your_jwt_secret_key
    
-   # Google Gemini AI
-   GEMINI_API_KEY=your_gemini_api_key
-   
-   # Optional: For production
-   NEXTAUTH_URL=http://localhost:3000
-   NEXTAUTH_SECRET=your_nextauth_secret
+   # NVIDIA NIM: add up to nine keys; empty slots are ignored
+   NVIDIA_NIM_API_KEY_1=your_nvidia_nim_api_key
    ```
 
 4. **Run the development server**
@@ -194,7 +188,7 @@ cv-assistant/
 │   └── lib/                  # Utility libraries
 │       ├── auth.ts           # Authentication utilities
 │       ├── db.ts             # Database connection
-│       ├── gemini.ts         # AI integration
+│       ├── ai.ts             # NVIDIA NIM integration
 │       └── models/           # Database models
 ├── public/                   # Static assets
 ├── imgsrc/                   # Application screenshots
@@ -312,18 +306,21 @@ npx vercel --prod    # Deploy to production
 ### Environment Variables
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `MONGODB_URI` | MongoDB connection string | Yes |
+| `MONGO_URI` | MongoDB connection string | Yes |
 | `JWT_SECRET` | JWT signing secret | Yes |
-| `GEMINI_API_KEY` | Google Gemini API key | Yes |
-| `NEXTAUTH_URL` | Application URL | No |
-| `NEXTAUTH_SECRET` | NextAuth secret | No |
+| `NVIDIA_NIM_API_KEY_1` … `NVIDIA_NIM_API_KEY_9` | NVIDIA NIM API keys; configure at least one | Yes |
+| `NEXT_PUBLIC_BASE_PATH` | Base path when the app is mounted below the domain root | No |
+
+The model cascades can be adjusted with comma-separated `NVIDIA_NIM_EASY_MODELS`, `NVIDIA_NIM_HARD_MODELS`, `NVIDIA_NIM_DOCUMENT_MODELS`, and `NVIDIA_NIM_VISION_MODELS`. `NVIDIA_NIM_MAX_TOKENS` caps the output budget, subject to each model's limit.
 
 ## 🚀 Deployment
 
 ### Vercel (Recommended)
 1. **Connect Repository**: Link your GitHub repository to Vercel
 2. **Set Environment Variables**: Add all required environment variables
-3. **Deploy**: Vercel will automatically build and deploy your app
+3. **Deploy**: Vercel will automatically build and deploy your app. Configure the NVIDIA keys for each target environment before deploying.
+
+Key rotation and cooldowns are maintained per running server instance. Vercel may run several instances independently, so provider-side limits still apply across instances. Streaming keeps a response open while output arrives; it does not guarantee a fast first token or remove the platform's function duration limit.
 
 ### Manual Deployment
 1. **Build the application**:
@@ -406,7 +403,7 @@ CMD ["npm", "start"]
 
 ### Content Enhancement
 - `POST /api/enhance` - General content enhancement
-- `POST /api/ocr` - Resume parsing and OCR (accepts PDF, PNG, and JPG/JPEG)
+- `POST /api/ocr` - Profile import from pasted text, DOCX, or PDF (up to 12 pages)
 
 ## 🐛 Troubleshooting
 
@@ -414,7 +411,7 @@ CMD ["npm", "start"]
 
 **Build Errors**
 - Ensure all environment variables are set
-- Check Node.js version (18+ required)
+- Check Node.js version (22 recommended)
 - Clear `.next` cache: `rm -rf .next`
 
 **Database Connection**
@@ -423,7 +420,7 @@ CMD ["npm", "start"]
 - Ensure database permissions
 
 **AI Generation Issues**
-- Verify Gemini API key
+- Verify at least one NVIDIA NIM API key is configured for the current environment
 - Check API quota limits
 - Review request format
 
@@ -466,4 +463,4 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 *Transform your professional presence with AI-powered resume building and cover letter generation that stands out to employers.*
 
-**Built with ❤️ using Next.js, TypeScript, and Google Gemini AI**
+**Built with ❤️ using Next.js, TypeScript, and NVIDIA NIM**

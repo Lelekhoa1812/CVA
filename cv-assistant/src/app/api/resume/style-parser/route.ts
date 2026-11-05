@@ -58,7 +58,7 @@ Return only the JSON object, no other text.`;
       additionalNotes: parsed.additionalNotes || ''
     });
   } catch (error) {
-    console.error('Style parser Azure AI error:', error);
+    console.error('Style parser AI error:', error);
     
     // Fallback to default style preferences
     return NextResponse.json({ 

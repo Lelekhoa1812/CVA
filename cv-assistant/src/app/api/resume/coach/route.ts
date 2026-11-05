@@ -49,7 +49,7 @@ Start with question 1 only.`;
     const text = res.response.text().trim();
     return NextResponse.json({ message: text, agentType });
   } catch (error) {
-    console.error('Azure AI error:', error);
+    console.error('AI error:', error);
     // Minimal fallback for content agent only
     const messageCount = messages.filter(m => m.role === 'user').length;
     const fallbackMessage = messageCount === 0

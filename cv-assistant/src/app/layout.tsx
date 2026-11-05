@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import Navbar from "@/components/Navbar";
 
-const bodyFont = Manrope({
+const bodyFont = localFont({
+  src: "../../public/fonts/Manrope-Variable.ttf",
   variable: "--font-body",
-  subsets: ["latin"],
+  weight: "200 800",
 });
 
-const displayFont = Fraunces({
+const displayFont = localFont({
+  src: "../../public/fonts/Fraunces-Variable.ttf",
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "100 900",
 });
 
 export const metadata: Metadata = {

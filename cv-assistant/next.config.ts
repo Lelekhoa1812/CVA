@@ -16,7 +16,13 @@ const configuredBasePath = normalizeConfiguredBasePath(process.env.NEXT_PUBLIC_B
 
 const nextConfig: NextConfig = {
   ...(configuredBasePath ? { basePath: configuredBasePath } : {}),
-  serverExternalPackages: ["mongoose"],
+  serverExternalPackages: ["mongoose", "pdfjs-dist", "@napi-rs/canvas"],
+  outputFileTracingIncludes: {
+    "/api/ocr": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/@napi-rs/canvas-linux-*/**/*",
+    ],
+  },
   webpack: (config) => {
     config.externals = [...(config.externals || []), "bcrypt"];
     return config;
