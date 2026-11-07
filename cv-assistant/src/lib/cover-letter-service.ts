@@ -122,6 +122,7 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
 export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string): string[] {
   const defects: string[] = [];
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
+  if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
   if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
@@ -248,7 +249,7 @@ export async function runCoverLetterAgent(args: {
   if (WORDS(text) < TARGET_MIN_WORDS) {
     try {
       const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice and the greeting and sign-off. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
-      if (WORDS(expanded.text) > WORDS(text) && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
+      if (WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
@@ -256,6 +257,7 @@ export async function runCoverLetterAgent(args: {
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
+  const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
 
   // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
@@ -263,5 +265,5 @@ export async function runCoverLetterAgent(args: {
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
-  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...(modelFinding ? [modelFinding] : [])] };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(modelFinding ? [modelFinding] : [])] };
 }
