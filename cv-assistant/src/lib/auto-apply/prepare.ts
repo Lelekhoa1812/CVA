@@ -11,6 +11,7 @@ import {
   answerDeterministically,
   finalizeGeneratedAnswer,
   isSensitiveCategory,
+  suggestOption,
   type ApplicantPreferences,
   type DraftAnswer,
   type FormQuestion,
@@ -80,8 +81,8 @@ Rules:
 - Use only the candidate evidence and preferences. Never invent employers, dates, metrics, licences, clearances, visa status, or personal circumstances.
 - Open questions ("why", "describe", "tell us"): 60 to 140 words, first person, plain text, concrete evidence that matches the job's wording. No greetings, no markdown, no em dashes.
 - Short factual questions: answer briefly (a number of years, a yes/no, a name).
-- Choice questions: return exactly one of the listed option labels (or several for multi-select).
-- If the evidence or preferences cannot support a truthful answer, return an empty string for that id. Leave optional questions about health, access needs, or personal circumstances empty.
+- Choice questions: you MUST return exactly one of the listed option labels (or several for multi-select), even when unsure. Pick the option the evidence supports best, or the most sensible professional default, and lower the confidence instead of leaving it empty.
+- Be autonomous: give your best supported answer to every question so the candidate has almost nothing to fill in. Return an empty string only when no sensible answer exists at all. Leave optional questions about health, access needs, or personal circumstances empty.
 - confidence is 0 to 1: how well the evidence supports the answer.
 
 Return ONLY JSON: {"answers":[{"id":"q1","question":"<copy the question text>","value":"<answer>","confidence":<0-1>}]}
@@ -180,10 +181,13 @@ export async function prepareApplication(args: {
     }
     const value = typeof entry?.value === "string" ? entry.value : Array.isArray(entry?.value) ? entry.value.join(" | ") : "";
     const confidence = typeof entry?.confidence === "number" ? Math.max(0, Math.min(1, entry.confidence)) : 0.7;
-    answers.set(
-      question.id,
-      finalizeGeneratedAnswer(question, value, confidence, value ? undefined : question.required ? "The profile does not support an answer; please provide one." : undefined),
-    );
+    let drafted = finalizeGeneratedAnswer(question, value, confidence, value ? undefined : question.required ? "The profile does not support an answer; please provide one." : undefined);
+    if (!drafted.value && question.options.length && !isSensitiveCategory(question.category)) {
+      // The model returned nothing usable for a choice question: preselect the closest option so the candidate only reviews it.
+      const suggestion = suggestOption(question, `${candidate} ${args.job.title} ${description}`);
+      if (suggestion) drafted = { ...finalizeGeneratedAnswer(question, suggestion.label, 0.3), note: "Suggested by AI. Change it if it is not right." };
+    }
+    answers.set(question.id, drafted);
   }
 
   for (const question of coverLetterQuestions) {

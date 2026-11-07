@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { generateJsonSafe, getModel } from '@/lib/ai';
 import {
   buildCoverLetterPrompt,
@@ -222,9 +223,12 @@ function normalizeReviewPlan(parsed: unknown): ReviewPlan {
   };
 }
 
+/** Lets a caller run the whole agent on the faster model without threading a parameter through every step. */
+const presetStore = new AsyncLocalStorage<ModelName>();
+
 async function jsonAgent<T>(prompt: string, normalize: (parsed: unknown) => T, fallback: T, signal?: AbortSignal): Promise<T> {
   try {
-    return normalize(await generateJsonSafe('hard', prompt, 1, signal));
+    return normalize(await generateJsonSafe(presetStore.getStore() ?? 'hard', prompt, 1, signal));
   } catch (error) {
     if (signal?.aborted) throw error;
     return fallback;
@@ -232,7 +236,8 @@ async function jsonAgent<T>(prompt: string, normalize: (parsed: unknown) => T, f
 }
 
 async function textAgent(prompt: string, signal?: AbortSignal): Promise<string> {
-  const attempts: ModelName[] = ['hard', 'hard', 'easy'];
+  const primary = presetStore.getStore() ?? 'hard';
+  const attempts: ModelName[] = [primary, primary, 'easy'];
   let lastError: unknown = null;
 
   for (const [index, modelName] of attempts.entries()) {
@@ -709,7 +714,11 @@ function buildTrace(args: {
   };
 }
 
-export async function generateAdvancedCoverLetter(args: {
+export function generateAdvancedCoverLetter(args: Parameters<typeof generateAdvancedCoverLetterWithDefaults>[0] & { preset?: ModelName }): Promise<AdvancedCoverLetterResult> {
+  return presetStore.run(args.preset ?? 'hard', () => generateAdvancedCoverLetterWithDefaults(args));
+}
+
+async function generateAdvancedCoverLetterWithDefaults(args: {
   candidateName?: string;
   company: string;
   jobDescription: string;

@@ -10,6 +10,7 @@ import {
   answerDeterministically,
   applyUserAnswer,
   buildQuestion,
+  suggestOption,
   classifyQuestion,
   countMissing,
   matchOption,
@@ -221,6 +222,28 @@ const tests: TestCase[] = [
       assert.equal(isNonQuestionField(real), false);
       const required = buildQuestion({ id: "z", fieldName: "q2", label: "Pronouns", type: "text", required: true, options: [] });
       assert.equal(isNonQuestionField(required), false);
+    },
+  },
+  {
+    name: "choice questions get a preselected suggestion based on the evidence",
+    run: () => {
+      const question = q("What approach do you take when starting a piece of work?", "select", ["I plan carefully and write a design first", "I jump in and prototype quickly", "I prefer not to say"]);
+      const picked = suggestOption(question, "Built a prototype quickly and iterated with the team on prototype feedback");
+      assert.equal(picked?.label, "I jump in and prototype quickly");
+      assert.notEqual(suggestOption(question, "")?.label, "I prefer not to say");
+      assert.equal(suggestOption(q("Free text"), "x"), null);
+    },
+  },
+  {
+    name: "a visa holder picks the visa or other option on a work-rights status list",
+    run: () => {
+      const prefs = { ...EMPTY_PREFERENCES, workRights: "Working visa (valid work rights)" };
+      const options = ["Australian citizen", "Australian permanent resident", "New Zealand citizen", "Work visa holder", "Other"];
+      const answer = answerDeterministically({ question: q("Working Rights", "select", options), profile, preferences: prefs, memory: [], company: "Xero" });
+      assert.equal(answer?.value, "Work visa holder");
+      assert.equal(answer?.needsInput, false);
+      const plain = answerDeterministically({ question: q("Working Rights", "select", ["Australian citizen", "New Zealand citizen", "Other"]), profile, preferences: prefs, memory: [], company: "Xero" });
+      assert.equal(plain?.value, "Other");
     },
   },
   {

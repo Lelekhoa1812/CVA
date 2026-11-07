@@ -389,6 +389,14 @@ export function answerDeterministically(args: {
       return null;
     case "work_rights":
       if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.95);
+      {
+        // Status lists ("AU citizen / NZ citizen / other visa"): a visa holder takes the visa or "other" option, never a citizenship one.
+        const statusList = question.options.length > 0 && !question.options.every((option) => OPTION_YES.test(normalizeQuestionLabel(option.label)) || OPTION_NO.test(normalizeQuestionLabel(option.label)));
+        if (statusList && /\b(visa|temporary|work permit|subclass|485|482|working holiday)\b/i.test(preferences.workRights)) {
+          const visaOption = question.options.find((option) => /\b(visa|temporary|permit|holder|other)\b/i.test(option.label) && !/\b(citizen|permanent resident)\b/i.test(option.label));
+          if (visaOption) return makeAnswer(question, visaOption.label, "preference", 0.85);
+        }
+      }
       if (question.options.length || question.type === "boolean") {
         const hasRights = /citizen|permanent|unrestricted|full|yes/i.test(preferences.workRights);
         const answer = preferences.workRights ? (hasRights ? "Yes" : preferences.workRights) : "";
@@ -441,6 +449,25 @@ export function answerDeterministically(args: {
       if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.9);
       return null;
   }
+}
+
+/**
+ * Picks the most plausible option for a choice question when no better signal exists: the option whose words overlap the
+ * candidate and job text most, skipping opt-out choices. Used so candidates review a suggestion instead of starting blank.
+ */
+export function suggestOption(question: FormQuestion, evidenceText: string): QuestionOption | null {
+  if (!question.options.length) return null;
+  const words = (value: string) => normalizeQuestionLabel(value).split(" ").filter((token) => token.length > 3);
+  const evidence = new Set(words(evidenceText));
+  const optOut = /\b(prefer not|decline|none of|not applicable|n a)\b/i;
+  let best: { option: QuestionOption; score: number } | null = null;
+  for (const option of question.options) {
+    if (optOut.test(option.label)) continue;
+    const tokens = words(option.label);
+    const score = tokens.filter((token) => evidence.has(token)).length / Math.max(tokens.length, 1);
+    if (!best || score > best.score) best = { option, score };
+  }
+  return best ? best.option : question.options[0];
 }
 
 export function finalizeGeneratedAnswer(question: FormQuestion, value: string, confidence = 0.75, note?: string): DraftAnswer {

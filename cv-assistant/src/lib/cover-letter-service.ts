@@ -138,6 +138,7 @@ export async function runCoverLetterAgent(args: {
         contactLines: contact.promptLines,
         allItems,
         initialItems: selected,
+        preset: "easy",
       });
       text = advanced.text;
       model = "advanced-agent";

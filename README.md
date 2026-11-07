@@ -248,6 +248,8 @@ Pipeline runs after the response (`after()`, `maxDuration = 300`) and the UI pol
 
 Cover letters come from one shared agent (`src/lib/cover-letter-service.ts`, the same prompt, claim check and model guard as `/generate`). The job description is crawled from the employer ATS API or listing page when the search snippet is thin (`src/lib/auto-apply/jd.ts`). "Rewrite from job posting" in Review re-runs it; `POST /api/auto-apply/job/[jobId]/cover-letter` also accepts `{ "advanced": true }` for the multi-step studio agent.
 
+Choice questions are answered autonomously: the AI always picks a best-fit option (flagged as a suggestion), and only sensitive facts such as work rights, salary and sponsorship come from your saved answers. Optional local tools: `npm run agent:fill -- --pack pack.json [--resume cv.pdf]` fills a form with real browser input and blocks submissions; `npm run test:autofill-safari` runs real Safari once "Allow remote automation" is enabled.
+
 Tests: `npm run test:auto-apply` (unit) and `npm run test:autofill-live` (real Greenhouse, Ashby and Lever forms in Chromium, Firefox and WebKit; needs network and `npx playwright install firefox webkit`).
 The legacy Playwright live preview is dev-only: set `AUTO_APPLY_DEV_BROWSER=true` (never active in production).
 

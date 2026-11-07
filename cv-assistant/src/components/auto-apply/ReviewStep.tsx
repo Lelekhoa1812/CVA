@@ -165,6 +165,17 @@ function Detail({ c }: { c: AutoApplyController }) {
                 {c.busy[`cover:${job._id}`] ? <Spinner /> : null}Rewrite from job posting
               </button>
             ) : null}
+            {editable ? (
+              <button
+                type="button"
+                className="button-secondary min-h-9 px-3 text-xs"
+                disabled={Boolean(c.busy[`cover:${job._id}`]) || dirty}
+                title="Runs the multi-step Cover Letter studio agent: it plans requirement coverage, writes, then audits. Takes about two minutes."
+                onClick={() => void c.act(`cover:${job._id}`, () => autoApplyApi.rewriteCoverLetter(job._id, true), "Cover letter rewritten with the advanced agent. Check the notes above for anything to verify.")}
+              >
+                Advanced rewrite (~2 min)
+              </button>
+            ) : null}
           </div>
         </div>
         <textarea value={cover} onChange={(event) => setCover(event.target.value)} readOnly={!editable} rows={12} className="input-premium min-h-60 resize-y font-sans leading-7" aria-label="Cover letter text" />
