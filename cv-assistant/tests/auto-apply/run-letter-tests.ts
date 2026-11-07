@@ -16,6 +16,16 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "repairs: 'Senior AI/ML Engineer <Name> brings ...' becomes 'I bring ...'",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior AI/ML Engineer role at Artificial Analysis. Senior AI/ML Engineer Dang Khoa Le brings experience leading forecasting infrastructure. I also built ETL pipelines.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Artificial Analysis", "Senior AI/ML Engineer");
+      assert.ok(fixed.includes("Artificial Analysis. I bring experience leading forecasting infrastructure."), fixed);
+      assert.ok(!findLetterDefects(fixed, "Dang Khoa Le", "Artificial Analysis", "Senior AI/ML Engineer").some((d) => /third person/.test(d)), fixed);
+      assert.ok(fixed.endsWith("Sincerely,\nDang Khoa Le"), fixed);
+    },
+  },
+  {
     name: "repairs: an orphan 'This platform ...' first sentence is dropped when the opening is added; model-check issues phrased 'The candidate states ...' are filtered too",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nThis platform includes diagram generation for faster onboarding. At Mizco, I led the Axis platform and built ETL pipelines.\n\nSincerely,\nDang Khoa Le";

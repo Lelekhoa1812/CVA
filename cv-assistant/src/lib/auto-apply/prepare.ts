@@ -152,9 +152,7 @@ export async function prepareApplication(args: {
   const candidate = buildCandidateSummary(args.profile, args.resumeText);
 
   // Many applications ask for a cover letter; they all go through the same agent as the /generate studio.
-  // Prepare writes up to three applications at once inside a 300 s run, so each letter is written once; the Review step's rewrite button runs the redundant pair.
   const coverLetterTask = runCoverLetterAgent({
-    redundancy: 1,
     profile: args.profile,
     company,
     title: args.job.title,

@@ -358,7 +358,7 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
     const escName = firstName && firstName.length > 2 && firstName !== name_(candidateName) ? `(?:${esc1(name_(candidateName))}|${esc1(firstName)})` : esc1(name_(candidateName));
     const present: Record<string, string> = { is: "am", has: "have", brings: "bring", builds: "build", leads: "lead", designs: "design", delivers: "deliver", develops: "develop", owns: "own", drives: "drive", architects: "architect", ships: "ship", creates: "create", implements: "implement", engineers: "engineer" };
     const irregular = new Set(["built", "led", "ran", "wrote", "made", "drove", "shipped", "spearheaded", "owned", "was", "had"]);
-    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+|,\\s+)${escName}\\s+([a-z]+)\\b`, "g"), (match, lead, verb) => {
+    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+|,\\s+)(?:(?:[A-Z][\\w/.-]*\\s+){1,5}(?=${escName}\\s))?${escName}\\s+([a-z]+)\\b`, "g"), (match, lead, verb) => {
       if (/^(?:applying|writing|submitting)$/.test(verb)) return match;
       if (verb === "was") return `${lead}I was`;
       if (verb === "had") return `${lead}I had`;
