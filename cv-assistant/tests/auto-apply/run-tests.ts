@@ -49,6 +49,7 @@ const tests: TestCase[] = [
       const stripped = stripUnsupportedSentences(text + " " + "Filler words are here, again. ".repeat(30), ["project as employer: EstateFolio"], "Acme");
       assert.ok(stripped && !/EstateFolio/.test(stripped) && /other things/.test(stripped));
       const fixed = repairLetterStructure("My CV shows I built things, and shipped them.", "Dang Khoa Le");
+      assert.ok(repairLetterStructure("Dear Hiring Manager,\n\nI built things, and shipped them.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer").includes("I am applying for the Data Engineer role at Acme."));
       assert.ok(fixed.startsWith("Dear Hiring Manager,") && fixed.includes("I built things") && !/My CV shows/.test(fixed) && fixed.endsWith("Sincerely,\nDang Khoa Le"));
     },
   },

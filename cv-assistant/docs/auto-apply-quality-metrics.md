@@ -21,10 +21,11 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final-state run of all 10 prepared jobs, with the stronger grounding editor (nemotron-3-ultra, user decision):
+Final-state run of all 10 prepared jobs (stronger grounding editor), every letter read in full:
 
-- Structure: 10 of 10 are 193-283 words with greeting, paragraphs and sign-off; one letter (Artificial Analysis) never names the exact role title; no broken fragments; no term, year, degree, figure, employer or project-as-employer claim flagged.
-- Claim check: the model-based check flagged 1 of 10 (3-5 of 10 with the fast editor), so the stronger editor invents or echoes less.
-- Latency of the letter step: 33-126 s, median about 57 s (the fast editor was 11-56 s). The 60 s target is not met by design; a batch of 10 can need a second "Start" press to finish.
+- Structure: 10 of 10 are 196-286 words, open by naming the exact role and company, have paragraphs and a sign-off, and contain no fragments. A duplicated sign-off seen once (contact line before "Sincerely") is fixed in code after that run.
+- Grounding: every letter is built from real CV entries (employers, projects, figures); no invented degrees, years, tools or employers found. Small residual issues seen: one typo ("determinist"), generic coaching/mentoring phrasing in one Xero letter, one letter ending on a contact line instead of a closing sentence.
+- Claim check: the model-based check flagged 1 of 10 letters.
+- Latency of the letter step: 24-120 s, median about 45 s. The 60 s target is not met by design (stronger editor chosen by the user); slow letters can make a batch of 10 need a second "Start".
 - Promptfoo (`npm run eval:letters`): passes, including a hostile job description.
 - Letters remain drafts for the applicant to review.

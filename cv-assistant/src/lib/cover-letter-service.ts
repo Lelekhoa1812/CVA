@@ -166,13 +166,17 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
 }
 
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
-export function repairLetterStructure(text: string, candidateName?: string): string {
+export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
   if (!/^(dear|hello|hi|to the|greetings)\b/i.test(fixed)) fixed = `Dear Hiring Manager,\n\n${fixed}`;
+  // The opening must say which role at which company this is for, in the posting's own words.
+  if (company && title && (!fixed.toLowerCase().includes(title.toLowerCase()) || !fixed.toLowerCase().includes(company.toLowerCase().replace(/\b(pty|ltd|limited|inc)\b\.?/g, "").trim()))) {
+    fixed = fixed.replace(/^(Dear[^\n]*\n+)/i, `$1I am applying for the ${title} role at ${company}. `);
+  }
   const name = (candidateName || "").trim();
   const lines = fixed.split(/\n+/);
-  const last = lines[lines.length - 1] || "";
-  if (name && !last.toLowerCase().includes(name.toLowerCase().split(/\s+/).slice(-1)[0]) && !/^(sincerely|regards|kind regards|best regards|yours)\b/i.test(last)) fixed = `${fixed}\n\nSincerely,\n${name}`;
+  const tail = lines.slice(-3).join(" ").toLowerCase();
+  if (name && !tail.includes(name.toLowerCase().split(/\s+/).slice(-1)[0]) && !/\b(sincerely|regards|yours)\b/i.test(tail)) fixed = `${fixed}\n\nSincerely,\n${name}`;
   return fixed;
 }
 
@@ -314,7 +318,7 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
       if (args.signal?.aborted) throw error;
     }
   }
-  text = repairLetterStructure(text, args.profile?.name);
+  text = repairLetterStructure(text, args.profile?.name, args.company, args.title);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
