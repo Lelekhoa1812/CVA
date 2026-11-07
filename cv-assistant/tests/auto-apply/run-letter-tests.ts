@@ -16,6 +16,16 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "repairs: the employer's own title as an opening and a trailing 'aligning with your need' clause",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nAs Decagon's Agent Deployment Engineer, I deliver end-to-end agent builds at Axion Solutions, directly aligning with your need for enterprise-grade AI solutions deployed at scale. I also led a team.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer");
+      assert.ok(fixed.startsWith("Dear Hiring Manager,\n\nI am applying for the Agent Deployment Engineer role at Decagon. I deliver end-to-end agent builds at Axion Solutions."), fixed);
+      assert.ok(!/your need/.test(fixed), fixed);
+      assert.deepEqual(findLetterDefects(fixed, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer").filter((d) => /employer's own|requirements/.test(d)), []);
+    },
+  },
+  {
     name: "garbled openings that give the applicant the employer's job or call them a proposal are flagged; normal ones are not",
     run: () => {
       const wrap = (opening: string) => `Dear Hiring Manager,\n\n${opening}\n\nSincerely,\nDang Khoa Le`;

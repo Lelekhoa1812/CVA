@@ -19,6 +19,8 @@ const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-o
 /** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
 const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
 const GROUNDING_CALL_TIMEOUT_MS = 40_000;
+/** The verifier only prunes; a call slower than this is dropped so a slow model cannot push the letter past its time budget. */
+const VERIFIER_TIMEOUT_MS = 35_000;
 
 /** A letter with no commas across 80+ words is a known degenerate output of some NIM models. */
 export function isWellFormedLetter(text: string) {
@@ -283,6 +285,13 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
 
 function repairLetterStructureOnce(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  // "As Decagon's Agent Deployment Engineer, I deliver ..." gives the applicant the employer's own job: open with the application instead.
+  if (title && company) {
+    const first = company.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    fixed = fixed.replace(new RegExp(`^(Dear[^\\n]*\\n+)As ${first}[\\w&.-]*'s (?:[A-Z][\\w/-]*\\s?){1,6},\\s+I\\s+`), (_m, lead) => `${lead}I am applying for the ${title} role at ${company}. I `);
+  }
+  // "..., directly aligning with your need for enterprise-grade AI" is the posting talking: cut the clause and keep the experience.
+  fixed = fixed.replace(/,\s*(?:directly )?(?:matching|meeting|fulfilling|addressing|aligning with) your (?:needs?|requirements?)\b[^.\n]*(?=\.)/gi, "");
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
   fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
@@ -598,7 +607,7 @@ CV FACTS:
 ${facts}
 
 LETTER:
-${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
+${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VERIFIER_TIMEOUT_MS)]) : AbortSignal.timeout(VERIFIER_TIMEOUT_MS))) as { issues?: Array<{ sentence?: unknown }> };
       const sentences = (Array.isArray(verdict?.issues) ? verdict.issues : []).map((issue) => (typeof issue?.sentence === "string" ? issue.sentence.trim() : "")).filter((value) => value.length > 20);
       if (sentences.length) {
         const norm = (value: string) => value.replace(/\s+/g, " ").trim();
