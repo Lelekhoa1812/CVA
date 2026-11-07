@@ -297,6 +297,8 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   fixed = fixed.replace(/,\s*(?:directly )?(?:matching|meeting|fulfilling|addressing|aligning with) your (?:needs?|requirements?)\b[^.\n]*(?=\.)/gi, "");
   // A whole sentence that only says the experience "directly aligns with Airwallex's need for ..." is the posting talking: drop it.
   fixed = fixed.replace(/(^|\n\n|(?<=[.!?])\s+)(?:My|The|This) (?:experience|background|work|skills?)[^.\n]{0,160}? (?:directly )?(?:aligns?|matches|meets|addresses|fulfils?|fulfills?) (?:with )?(?:[A-Z][\w&.-]*'s|your|the) (?:needs?|requirements?)\b[^.\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  // "AI Software Engineer at Axion Solutions who architected ..." has no verb of its own: it is the applicant introducing themselves.
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)((?:(?:AI|ML|Senior|Staff|Lead|Principal|Junior) )*(?:(?:Software|Machine Learning|Data|AI|Full[- ]Stack|Backend|Frontend) )*(?:Engineer|Developer|Scientist|Architect|Researcher|Analyst)) (at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*){0,3}) (who|with)\b/g, (_m, lead, role, where, link) => `${lead}I am ${/^[AEIOU]/.test(role) ? "an" : "a"} ${role} ${where} ${link}`);
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
   fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
   // The greeting always sits on its own line followed by a blank line.

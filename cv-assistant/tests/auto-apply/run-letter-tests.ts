@@ -16,6 +16,16 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "repairs: a verbless 'AI Software Engineer at <Company> who ...' sentence becomes 'I am an ...'",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. AI Software Engineer at Axion Solutions who architected a modular workflow engine. I also built ETL pipelines.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Xero", "Senior Engineer - AI Agentic");
+      assert.ok(fixed.includes("Xero. I am an AI Software Engineer at Axion Solutions who architected a modular workflow engine."), fixed);
+      const fine = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I am a Software Engineer at Axion Solutions who built things.\n\nSincerely,\nDang Khoa Le";
+      assert.ok(repairLetterStructure(fine, "Dang Khoa Le", "Xero", "Senior Engineer").includes("I am a Software Engineer at Axion Solutions who built things."));
+    },
+  },
+  {
     name: "scale and infrastructure terms that only the posting mentions are flagged once; terms in the CV are not",
     run: () => {
       const text = "I built data pipelines processing terabyte-scale data and maintained Linux systems with Docker.";
