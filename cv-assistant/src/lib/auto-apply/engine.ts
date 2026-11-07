@@ -11,7 +11,7 @@ import { streamSearchJobs } from "@/lib/search/server/stream";
 import type { JobSearchResult } from "@/lib/search/types";
 import { buildCandidateSummary, candidateContact, hasUsableProfile, mergePreferences } from "./candidate";
 import { detectAts, safeHttpUrl, isJobBoardUrl } from "./ats";
-import { discoverFromDirectory, mapWithConcurrency, matchesLocation, resolveJob, type ResolvedJob } from "./discovery";
+import { buildRoleMatcher, discoverFromDirectory, mapWithConcurrency, matchesLocation, matchesRole, resolveJob, type ResolvedJob } from "./discovery";
 import { scoreJobsWithLlm } from "./fit";
 import { hashApplicationPayload, prepareApplication } from "./prepare";
 import { logAutoApplyEvent } from "./persistence";
@@ -85,7 +85,7 @@ export async function claimRun(sessionId: string, userId: string) {
 
 function dedupeKeyFor(job: { title: string; company: string; location: string }) {
   const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const squash = (value: string) => norm(value).replace(/\s+/g, "").replace(/(pty|ltd|limited|inc|group)$/g, "");
+  const squash = (value: string) => norm(value).replace(/\b(pty|ltd|limited|inc|incorporated|llc|corp|corporation|group|australia|aus|au|anz)\b/g, " ").replace(/\s+/g, "");
   const city = norm(job.location).split(" ").slice(0, 1).join(" ");
   return `${norm(job.title)}::${squash(job.company)}::${city}`;
 }
@@ -113,6 +113,7 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
     const filters = autoApplyFiltersSchema.parse(session.filters || {});
     const targetLocation = filters.location.trim() || "Australia";
     const candidateSummary = buildCandidateSummary(profile);
+    const roleMatcher = buildRoleMatcher(session.prompt);
 
     // 1) Discover from employer ATS boards and job boards in parallel.
     await setRun(sessionId, "searching", "Searching employer career sites and job boards", stats, "searching");
@@ -232,7 +233,12 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       const resolved = resolvedByKey.get(job.dedupeKey);
       const fit = fits.get(job.dedupeKey);
       const ats = resolved ? resolved.ats : detectAts(job.applicationUrl || job.listingUrl);
-      const score = fit ? fit.score : Math.min(job.fitScore, 58);
+      let score = fit ? fit.score : Math.min(job.fitScore, 58);
+      // Guards the model cannot talk its way past: the posting's own location must fit, and a board result needs a matching title.
+      const finalLocation = (resolved?.location || job.location || "").trim();
+      if (!finalLocation) score = Math.min(score, SELECT_MIN_SCORE - 1);
+      else if (!matchesLocation(finalLocation, targetLocation, "")) score = Math.min(score, 40);
+      if (extra?.discoveredVia === "job_board" && !matchesRole(job.title, roleMatcher)) score = Math.min(score, 74);
       const reasons = fit?.reasons.length ? fit.reasons : job.fitReasons;
       const applyUrl = resolved?.applyUrl || safeHttpUrl(job.applicationUrl) || safeHttpUrl(job.listingUrl);
       const company = resolved?.company && !isPlaceholder(resolved.company) ? resolved.company : job.company;
