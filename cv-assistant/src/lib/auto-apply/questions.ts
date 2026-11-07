@@ -167,7 +167,7 @@ const CATEGORY_RULES: Array<[QuestionCategory, RegExp]> = [
     "consent",
     /\bconsent\b|\bprivacy (policy|notice|statement)\b|\bi (agree|acknowledge|confirm|certify|declare)\b|\backnowledg|\bterms\b|\bdeclaration\b|\bbackground check\b/,
   ],
-  ["source", /\bhow did you (hear|find|learn)\b|\bwhere did you (hear|find|see)\b|\breferr(al|ed) source\b|^source$/],
+  ["source", /\bhow did you (first )?(hear|find|learn)\b|\bhow (have|did) you (first )?(heard|found)\b|\bwhere did you (hear|find|see)\b|\breferr(al|ed) source\b|^source$/],
   ["current_company", /\bcurrent (company|employer|organi[sz]ation)\b|^company$|^org$/],
   ["location", /\blocation\b|\bwhere (are you|do you) (currently )?(located|live|based)\b|\bcity\b|\bcountry of residence\b|\baddress\b/],
   ["motivation", /\bwhy\b.{0,40}\b(join|work|interested|apply|us|role|company|position)\b|\bwhat (excites|interests|attracts|draws) you\b|\bmotivat/],

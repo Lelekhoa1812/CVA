@@ -182,6 +182,11 @@ export async function prepareApplication(args: {
     const value = typeof entry?.value === "string" ? entry.value : Array.isArray(entry?.value) ? entry.value.join(" | ") : "";
     const confidence = typeof entry?.confidence === "number" ? Math.max(0, Math.min(1, entry.confidence)) : 0.7;
     let drafted = finalizeGeneratedAnswer(question, value, confidence, value ? undefined : question.required ? "The profile does not support an answer; please provide one." : undefined);
+    // Where and how often someone will work is the applicant's call: the model may not commit them to it.
+    if (/\b(in[- ]?office|on[- ]?site|days (a|per) week|where will you work|work(ing)? arrangement|work from (the )?office)\b/i.test(question.label)) {
+      answers.set(question.id, { ...drafted, value: "", needsInput: question.required, source: "default", confidence: 0, note: "Your work-location preference does not cover this; please choose." });
+      continue;
+    }
     if (!drafted.value && question.options.length && !isSensitiveCategory(question.category)) {
       // The model returned nothing usable for a choice question: preselect the closest option so the candidate only reviews it.
       const suggestion = suggestOption(question, `${candidate} ${args.job.title} ${description}`);

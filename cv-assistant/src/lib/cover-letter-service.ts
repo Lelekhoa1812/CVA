@@ -97,7 +97,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 const CLAIM_LEXICON = [
   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
-  "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
+  "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
 
 function normalise(value: string) {
@@ -109,7 +109,18 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
   const facts = normalise(JSON.stringify(profile || {}));
   const letter = normalise(text);
   const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return CLAIM_LEXICON.filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts));
+  const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
+  return [...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts));
+}
+
+/** Structural defects that make a letter unsendable regardless of its claims. */
+export function findLetterDefects(text: string, candidateName?: string): string[] {
+  const defects: string[] = [];
+  if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
+  const name = (candidateName || "").trim();
+  if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
+  if (/(^|\n)\s*(com|org|net|au)\/\S+\s*$/i.test(text.trim())) defects.push("truncated link");
+  return defects;
 }
 
 /** Drops sentences that assert unsupported terms; returns null when that would leave too little of a letter. */
@@ -197,7 +208,8 @@ export async function runCoverLetterAgent(args: {
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile);
-  if (unsupported.length) {
+  const defects = findLetterDefects(text, args.profile?.name);
+  if (unsupported.length || defects.length) {
     try {
       const retryPrompt = buildCoverLetterPrompt({
         candidateName: args.profile?.name || "",
@@ -205,16 +217,19 @@ export async function runCoverLetterAgent(args: {
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\nThe candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, and state only the degree and skills in the evidence.`.trim(),
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `The candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, never state a degree field, years of experience or tools that the evidence does not give.` : ""}${defects.length ? ` The previous draft ${defects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
-      if (findUnsupportedClaims(retried.text, args.profile).length < unsupported.length) text = retried.text;
+      const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile).length;
+      const retriedDefects = findLetterDefects(retried.text, args.profile?.name).length;
+      if (retriedUnsupported + retriedDefects < unsupported.length + defects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
     unsupported = findUnsupportedClaims(text, args.profile);
     if (unsupported.length) text = stripUnsupportedSentences(text, unsupported) ?? text;
   }
+  text = text.replace(/\n+\s*(?:com|org|net|au)\/\S+\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile);
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
 

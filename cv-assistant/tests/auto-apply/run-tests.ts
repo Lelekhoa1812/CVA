@@ -18,7 +18,7 @@ import {
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
-import { findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { findLetterDefects, findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
@@ -31,6 +31,17 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
   buildQuestion({ id: label, fieldName: label, label, type, required, options: options.map((value) => ({ label: value, value })) });
 
 const tests: TestCase[] = [
+  {
+    name: "letter defects: candidate phrasing, short, truncated link; years and degree fields flagged",
+    run: () => {
+      const bad = "As Senior Engineer candidate Dang Khoa Le, I bring value.\n\ncom/in/dang-khoa-le";
+      const defects = findLetterDefects(bad, "Dang Khoa Le");
+      assert.ok(defects.includes("too short") && defects.some((d) => d.includes("candidate")) && defects.includes("truncated link"));
+      const cv = { major: "Bachelor of Software Engineering" } as never;
+      assert.deepEqual(findUnsupportedClaims("I have 7 years building systems with a Computer Science degree.", cv).sort(), ["7 years", "computer science"]);
+      assert.deepEqual(findUnsupportedClaims("I have five years of work.", { note: "five years of work" } as never), []);
+    },
+  },
   {
     name: "declarations and in-office questions are never auto-confirmed",
     run: () => {
@@ -57,9 +68,9 @@ const tests: TestCase[] = [
       const cv = { projects: [{ title: "Chatbot", description: "Python and React" }], major: "Bachelor of Software Engineering" } as never;
       const letter = "I build Python services. I hold a Master's in Computer Science. I used OAuth and React daily. " + "Filler words continue here. ".repeat(40);
       const found = findUnsupportedClaims(letter, cv);
-      assert.deepEqual(found.sort(), ["master's", "oauth"].sort());
+      assert.deepEqual(found.sort(), ["computer science", "master's", "oauth"].sort());
       const stripped = stripUnsupportedSentences(letter, found);
-      assert.ok(stripped && !/master|oauth/i.test(stripped) && /Python services/.test(stripped));
+      assert.ok(stripped && !/master|oauth|computer science/i.test(stripped) && /Python services/.test(stripped));
     },
   },
   {

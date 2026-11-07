@@ -190,6 +190,17 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
     const ordered = ranked
       .map((job) => ({ job, extra: extraByKey.get(job.dedupeKey) as Candidate | undefined }))
       .sort((left, right) => right.job.fitScore + (right.extra?.discoveredVia === "career_site" ? 12 : 0) - (left.job.fitScore + (left.extra?.discoveredVia === "career_site" ? 12 : 0)));
+    // One posting can arrive under several requisition ids or boards: keep the best-ranked row per apply URL.
+    const seenApply = new Set<string>();
+    for (const entry of ordered) {
+      const url = safeHttpUrl(entry.job.applicationUrl) || "";
+      if (!url) continue;
+      if (seenApply.has(url)) entry.job.status = "skipped";
+      else seenApply.add(url);
+    }
+    for (const entry of ordered) {
+      entry.job.title = entry.job.title.replace(/[*_`#]+/g, "").replace(/\s+/g, " ").trim();
+    }
     const eligible = ordered.filter((entry) => entry.job.status !== "skipped");
     const deep = eligible.slice(0, SCORE_TOP_N);
 
