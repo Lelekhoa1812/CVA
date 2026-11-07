@@ -33,6 +33,14 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "sentence stripping does not split inside Next.js or version numbers",
+    run: () => {
+      const text = "I built a Next.js app with Gemini 2.5 and shipped it. I used Kubernetes daily at scale. " + "More supported words follow here, and continue. ".repeat(30);
+      const stripped = stripUnsupportedSentences(text, ["kubernetes"], "Acme");
+      assert.ok(stripped && stripped.includes("Next.js app with Gemini 2.5 and shipped it.") && !/Kubernetes/.test(stripped));
+    },
+  },
+  {
     name: "projects are not employers; greeting, sign-off and CV-shows filler are repaired",
     run: () => {
       const cv = { projects: [{ name: "EstateFolio" }] } as never;

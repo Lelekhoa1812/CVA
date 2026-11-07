@@ -21,12 +21,11 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final-state run of all 10 prepared jobs, every letter read in full against the CV:
+Final-state run of all 10 prepared jobs after the last code change:
 
-- Structure: 9 of 10 are 197-266 words with greeting, company, role, paragraphs and sign-off; one (Xero ML & AI Systems) is 143 words.
-- Grounding: letters now draw on real CV entries (employers, projects, figures). Earlier reads found job requirements stated as experience (on-call, security, Go, serverless, forward-deployed); the grounding editor pass and term checks removed those. Remaining slips seen: one garbled figure ("boosted diagnostic accuracy by 500k+ curated cases"), one typo ("HPa"), generic closings, and occasional echoes of job-posting wording such as stakeholder or success-criteria phrasing.
-- Latency of the letter step: 14-75 s (target p95 <= 60 s is not met on slow models).
-- Promptfoo (`npm run eval:letters`): 3/3 cases pass, including a hostile job description.
-- The model-based claim check flags about half of letters; flags only warn (decision: warn only).
-
-Letters remain drafts for the applicant to review.
+- Structure: 10 of 10 are 176-280 words with greeting, company, role, paragraphs and sign-off; no broken sentence fragments; no term, year, degree, figure, employer or project-as-employer claim flagged.
+- Grounding: letters draw on real CV entries; the editor pass removed requirements stated as experience (on-call, security, Go, serverless, forward-deployed).
+- Latency of the letter step: 11-56 s (target p95 <= 60 s met in this run; slower models have reached about 75 s in earlier runs).
+- Promptfoo (`npm run eval:letters`): passes, including a hostile job description.
+- The model-based claim check flags a minority of letters (3 of 10 here); flags only warn (decision: warn only).
+- Earlier full reads by hand found echoes of job-posting wording (stakeholders, mentoring) and small garbles; letters remain drafts for the applicant to review.

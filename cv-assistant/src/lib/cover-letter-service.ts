@@ -128,6 +128,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   const defects: string[] = [];
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
+  if (text.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\bcandidate\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
@@ -151,7 +152,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
 export function stripUnsupportedSentences(text: string, terms: string[], company?: string): string | null {
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
-    const sentences = paragraph.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [paragraph];
+    const sentences = paragraph.split(/(?<=[.!?])\s+(?=[A-Z"\u201C])/).map((sentence) => `${sentence} `);
     return sentences.filter((sentence) => !terms.some((term) => (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
@@ -269,7 +270,7 @@ export async function runCoverLetterAgent(args: {
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
   }
   for (let groundRound = 0; groundRound < 2; groundRound += 1) {
-    if (groundRound > 0 && !(findUnsupportedClaims(text, args.profile, args.company).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length)) break;
+    if (groundRound > 0 && (!within(45_000) || !(findUnsupportedClaims(text, args.profile, args.company).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length))) break;
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
     if (!within(70_000)) throw new Error("letter time budget spent");
@@ -296,6 +297,8 @@ Return only the corrected letter text.`, args.signal);
     if (args.signal?.aborted) throw error;
   }
   }
+  unsupported = findUnsupportedClaims(text, args.profile, args.company);
+  if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (WORDS(text) < TARGET_MIN_WORDS && within(90_000)) {
     try {
@@ -305,7 +308,6 @@ Return only the corrected letter text.`, args.signal);
       if (args.signal?.aborted) throw error;
     }
   }
-  if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   text = repairLetterStructure(text, args.profile?.name);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
