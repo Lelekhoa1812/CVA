@@ -37,12 +37,75 @@ const WORDS = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const TARGET_MIN_WORDS = 170;
 /** Below this a letter is not a letter. Between this and TARGET_MIN_WORDS a short letter is honest when the CV gives little to draw on, and is flagged. */
 const MIN_HONEST_WORDS = 110;
+/** A thin CV (a student, a first job): below this many words across all experiences and projects the letter stays short and close to the record. */
+const THIN_EVIDENCE_WORDS = 120;
+const THIN_MIN_WORDS = 60;
+
+/** True when the experiences and projects together hold too little to write a full letter from. */
+export function isThinProfile(profile?: Partial<Profile> | null) {
+  const text = [...((profile?.experiences || []) as Array<{ description?: string; summary?: string }>), ...((profile?.projects || []) as Array<{ description?: string; summary?: string }>)]
+    .map((item) => `${item.summary || ""} ${item.description || ""}`)
+    .join(" ");
+  return text.split(/\s+/).filter(Boolean).length < THIN_EVIDENCE_WORDS;
+}
+
+const IRREGULAR_PAST = new Set(["led", "ran", "built", "made", "wrote", "drove", "sold", "taught", "held", "kept", "took", "gave", "began", "won", "set", "put", "cut", "met", "paid", "spent", "grew", "chose", "found", "taught"]);
+const NOT_A_VERB = new Set(["the", "a", "an", "responsible", "experience", "strong", "excellent", "various", "member", "part", "good", "great", "my", "our", "all", "some", "many", "daily", "weekly", "key", "main", "lead", "senior", "junior", "general"]);
+
+/** "Made coffee and served customers on weekends." becomes "I made coffee and served customers on weekends."; anything that is not a verb-first line is left out. */
+function firstPersonSentences(description?: string): string[] {
+  const lines = (description || "").split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map((line) => line.replace(/^[\s\-\u2022*]+/, "").trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.replace(/[.;]+$/, "");
+    const first = line.split(/\s+/)[0] || "";
+    const word = first.toLowerCase();
+    if (!/^[A-Z][a-z]+$/.test(first) || NOT_A_VERB.has(word) || /ing$/.test(word) || /^(?:i|we|my)$/.test(word)) continue;
+    if (/ed$/.test(word) || IRREGULAR_PAST.has(word) || /^(?:manage|run|teach|own|build|coordinate|serve|handle|prepare|support|assist|maintain|process|schedule|write|create|organise|organize|supervise|train|deliver|operate)$/.test(word)) out.push(`I ${word}${line.slice(first.length)}.`);
+  }
+  return out;
+}
+
+/** The letter for a thin CV, built only from the CV's own text: nothing a model could embellish, and no model call. */
+export function buildRecordLetter(args: { profile?: Partial<Profile> | null; company: string; title: string }) {
+  const { profile, company, title } = args;
+  const name = (profile?.name || "").trim();
+  const paragraphs: string[] = [];
+  const education = [(profile?.major || "").trim(), (profile?.school || "").trim()].filter(Boolean);
+  const period = (profile as { studyPeriod?: string } | null | undefined)?.studyPeriod?.trim();
+  const degree = education[0] && /^(?:bachelor|diploma|certificate|master|associate|doctor|graduate)/i.test(education[0]) ? `a ${education[0]}` : education[0];
+  paragraphs.push(`I am applying for the ${title} role at ${company}.${education.length ? ` My education is ${[degree, education[1]].filter(Boolean).join(" at ")}${period ? ` (${period})` : ""}.` : ""}`);
+  const bits: string[] = [];
+  for (const experience of ((profile?.experiences || []) as Array<{ companyName?: string; role?: string; description?: string }>).slice(0, 2)) {
+    const lines = firstPersonSentences(experience.description).slice(0, 3);
+    if (!lines.length) continue;
+    const where = [experience.role ? `as ${/^[aeiou]/i.test(experience.role) ? "an" : "a"} ${experience.role}` : "", experience.companyName ? `at ${experience.companyName}` : ""].filter(Boolean).join(" ");
+    bits.push(`${where ? `${where.charAt(0).toUpperCase()}${where.slice(1)}, ` : ""}${lines.join(" ")}`);
+  }
+  for (const project of ((profile?.projects || []) as Array<{ name?: string; description?: string }>).slice(0, 1)) {
+    const lines = firstPersonSentences(project.description).slice(0, 2);
+    if (lines.length) bits.push(`In my ${project.name ? `${project.name} ` : ""}project, ${lines.join(" ")}`);
+  }
+  if (bits.length) paragraphs.push(bits.join("\n"));
+  const skills = ((profile as { skills?: string } | null | undefined)?.skills || "").replace(/\s+/g, " ").trim().replace(/[.;]+$/, "").slice(0, 220);
+  if (skills) paragraphs.push(`Skills on my CV: ${skills}.`);
+  paragraphs.push("I would welcome the opportunity to discuss the role.");
+  return `Dear Hiring Manager,\n\n${paragraphs.join("\n\n")}${name ? `\n\nSincerely,\n${name}` : ""}`;
+}
+
+/** Thrown when the profile holds nothing a letter could be based on. The message is written for the applicant. */
+export class NoEvidenceError extends Error {
+  constructor() {
+    super("Your profile has no experience, projects, education or skills yet, so there is nothing to base a cover letter on. Add some details to your profile first.");
+  }
+}
+
 /** One slow or stalled model must not hold up a whole batch of applications. */
 const MODEL_CALL_TIMEOUT_MS = 40_000;
 const MAX_EXTRA_ATTEMPTS = 1;
 
 /** Tries each model in turn; returns the first well-formed letter of a proper length, else the best letter seen. */
-export async function generateLetterText(prompt: string, signal?: AbortSignal, options?: { models?: string[]; timeoutMs?: number }) {
+export async function generateLetterText(prompt: string, signal?: AbortSignal, options?: { models?: string[]; timeoutMs?: number; minWords?: number }) {
   const models = options?.models || COVER_LETTER_MODELS;
   const callTimeout = options?.timeoutMs ?? MODEL_CALL_TIMEOUT_MS;
   let best = { text: "", model: "", rank: -1 };
@@ -58,7 +121,7 @@ export async function generateLetterText(prompt: string, signal?: AbortSignal, o
       if (!text) continue;
       const wellFormed = isWellFormedLetter(text);
       const words = WORDS(text);
-      if (wellFormed && words >= TARGET_MIN_WORDS) return { text, model: result.response.model };
+      if (wellFormed && words >= (options?.minWords ?? TARGET_MIN_WORDS)) return { text, model: result.response.model };
       // Well-formed beats malformed; within each, the longer letter wins.
       const rank = (wellFormed ? 10_000 : 0) + words;
       if (rank > best.rank) best = { text, model: result.response.model, rank };
@@ -140,7 +203,7 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
   const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
   // Specific figures and magnitudes are the applicant's own facts: flag any that the profile never states.
-  const figures = Array.from(letter.matchAll(/\b\d[\d,.]*\s*(?:%|k\b|x\b|million|billion)|\b\d+[- ](?:minute|hour|day|week|month)s?\b|\b(?:sub-second|millions?|billions?|thousands)\b(?:\s+of)?/g)).map((match) => match[0].trim()).filter((term) => !facts.includes(term));
+  const figures = Array.from(letter.matchAll(/\b\d[\d,.]*\s*(?:%|percent|per cent|k\b|x\b|million|billion)|\b\d+[- ](?:minute|hour|day|week|month)s?\b|\b(?:sub-second|millions?|billions?|thousands)\b(?:\s+of)?/g)).map((match) => match[0].trim()).filter((term) => !facts.includes(term) && !facts.includes(term.replace(/\s*(?:percent|per cent)$/, "%")));
   // A personal or academic project is never an employer: "At EstateFolio, I led a team" misstates the CV.
   const projectEmployers = ((profile?.projects || []) as Array<{ name?: string }>)
     .map((project) => (project.name || "").trim())
@@ -204,13 +267,15 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
   const dutyClaims: string[] = [];
   if (jobDescription) {
     const jd = normalise(jobDescription);
+    // The role named in the opening sentence ("Restaurant Supervisor", "Marketing Manager") is not a claim about the applicant.
+    const dutyText = [title, company].filter((part): part is string => Boolean(part && part.trim())).reduce((acc, part) => acc.split(part).join(" "), text.replace(/^Dear[^\n]*\n/i, ""));
     const duties: Array<[string, string[]]> = [
       ["mentor", ["mentor", "precept", "coach", "supervis", "train"]], ["coach", ["coach", "mentor", "precept", "supervis", "train"]],
       ["supervis", ["supervis", "lead", "led ", "manag"]], ["manag", ["manag", "lead", "led ", "supervis", "own"]],
       ["recruit", ["recruit", "hiring", "hired"]], ["negotiat", ["negotiat"]], ["onboard", ["onboard", "induct"]],
     ];
     for (const [verb, supported] of duties) {
-      const inLetter = new RegExp(`\\b${verb}\\w*`, "i").exec(text);
+      const inLetter = new RegExp(`\\b${verb}\\w*`, "i").exec(dutyText);
       if (inLetter && jd.includes(verb) && !supported.some((word) => facts.includes(word))) dutyClaims.push(`duty only the posting mentions: ${inLetter[0].toLowerCase()}`);
     }
   }
@@ -239,9 +304,22 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
       if (only.length >= 3) postingWording.push(`posting wording: ${only.slice(0, 4).join(", ")}`);
     }
   }
+  // A thin CV leaves nothing to elaborate from: a sentence with two or more substantive words the CV never uses ("operated commercial coffee equipment") is invented detail.
+  const inventedDetail: string[] = [];
+  if (isThinProfile(profile)) {
+    const named = normalise(`${title || ""} ${company || ""}`).replace(/[^a-z0-9 ]/g, " ");
+    const stem5 = (word: string) => word.slice(0, 5);
+    const factStems = new Set(facts.replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter(Boolean).map(stem5));
+    const body = text.split(/\n{2,}/).slice(1, -1).join("\n\n");
+    for (const sentence of body.split(/(?<=[.!?])\s+/)) {
+      if (/\b(?:opportunity|discuss|welcome|look forward|available to|applying for)\b/i.test(sentence)) continue;
+      const novel = Array.from(new Set(normalise(sentence).replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter((word) => word.length >= 6 && !named.includes(word) && !GENERIC_WORDS.has(word) && !factStems.has(stem5(word)))));
+      if (novel.length >= 2) inventedDetail.push(`invented detail: ${novel.slice(0, 4).join(", ")}`);
+    }
+  }
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...relationship, ...echoes, ...postingTerms, ...credentialClaims, ...dutyClaims, ...postingNames, ...postingWording, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...relationship, ...echoes, ...postingTerms, ...credentialClaims, ...dutyClaims, ...postingNames, ...postingWording, ...inventedDetail, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Turns a guard token ("echo: ...", "posting term: x") into wording an applicant can act on. */
@@ -251,6 +329,7 @@ export function describeClaim(term: string): string {
   if (term.startsWith("degree field: ")) return `a degree in ${term.slice(14)}, which your education record does not show`;
   if (term.startsWith("project as employer: ")) return `${term.slice(21)} is described as an employer, but it is a project in your CV`;
   if (term.startsWith("claims a history with the employer: ")) return `a past connection with the employer ("${term.slice(35)}")`;
+  if (term.startsWith("invented detail: ")) return `detail your CV does not give (${term.slice(17)})`;
   if (term.startsWith("posting name: ")) return `the name "${term.slice(14)}", which only the job posting mentions`;
   if (term.startsWith("posting wording: ")) return `wording only the job posting has (${term.slice(17)})`;
   if (term.startsWith("credential: ")) return `the credential "${term.slice(12)}", which your CV does not show`;
@@ -260,12 +339,12 @@ export function describeClaim(term: string): string {
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
-export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string): string[] {
+export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string, minWords: number = TARGET_MIN_WORDS): string[] {
   const defects: string[] = [];
   // Contact details under the name are by design: they are neither a sign-off nor a sentence fragment.
   const contactLine = /^(?:\+?[\d ()-]{8,}\s*\|.*|.*\|.*@.*|[\w.+-]+@[\w-]+\.[\w.]+(?:\s*\|.*)?|https?:\/\/\S+.*)$/i;
   const visible = text.split(/\n/).filter((line) => !contactLine.test(line.trim())).join("\n");
-  if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
+  if (WORDS(text) < minWords) defects.push("too short");
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
   if (visible.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
   if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement|\b(?:matching|meeting|fulfilling|addressing|directly addressing|directly aligning with) your (?:needs?|requirements?)\b|\b(?:directly )?aligns? with [A-Z][\w&.-]*'s (?:needs?|requirements?)\b/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
@@ -325,7 +404,7 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.split(/(?<=[.!?])\s+(?=[A-Z"\u201C])/).map((sentence) => `${sentence} `);
-    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : term.startsWith("posting name: ") ? new RegExp(`\\b${term.slice(14)}\\b`, "i").test(sentence) : term.startsWith("posting wording: ") ? (() => { const words = term.slice(17).split(", "); return words.filter((word) => normalise(sentence).includes(word.slice(0, 5))).length >= Math.min(3, words.length); })() : term.startsWith("duty only the posting mentions: ") ? new RegExp(`\\b${term.slice(32).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(sentence) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
+    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : term.startsWith("invented detail: ") ? (() => { const words = term.slice(17).split(", "); return words.filter((word) => normalise(sentence).includes(word.slice(0, 5))).length >= Math.min(2, words.length); })() : term.startsWith("posting name: ") ? new RegExp(`\\b${term.slice(14)}\\b`, "i").test(sentence) : term.startsWith("posting wording: ") ? (() => { const words = term.slice(17).split(", "); return words.filter((word) => normalise(sentence).includes(word.slice(0, 5))).length >= Math.min(3, words.length); })() : term.startsWith("duty only the posting mentions: ") ? new RegExp(`\\b${term.slice(32).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(sentence) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
@@ -563,6 +642,8 @@ export type CoverLetterAgentResult = {
   unsupportedClaims?: string[];
   /** Set when the advanced agent was requested but the standard letter was written instead. */
   fallbackNote?: string;
+  /** The CV held too little for a full letter: the letter is short and close to the record. */
+  thin?: boolean;
 };
 
 /** Writes and evidence-checks a cover letter for one job. `advanced` runs the multi-step agent used by the /generate studio. */
@@ -584,7 +665,24 @@ async function runCoverLetterPipeline(args: {
   const contact = getCoverLetterContactDetails(args.profile);
   const jobText = `${args.title} at ${args.company}\n${args.jobDescription.slice(0, 6000) || args.title}`;
   const qualifications = buildQualificationsBlock(args.profile as Parameters<typeof buildQualificationsBlock>[0]);
+  if (!allItems.length && !qualifications) throw new NoEvidenceError();
   const selected = await selectEvidenceForJob(allItems, jobText, args.signal);
+  const thin = isThinProfile(args.profile);
+  const minWords = thin ? THIN_MIN_WORDS : TARGET_MIN_WORDS;
+  const honestWords = thin ? 40 : MIN_HONEST_WORDS;
+  // A thin CV gives a model nothing to say but embellishment, so the letter is built from the CV's own text.
+  if (thin) {
+    const recordLetter = buildRecordLetter({ profile: args.profile, company: args.company, title: args.title });
+    return {
+      text: recordLetter,
+      model: "record-only",
+      mode: "standard" as const,
+      indices: selected.map((item) => item.index),
+      fallbackNote: args.advanced ? "Your profile is short, so the letter uses only what it states." : undefined,
+      thin: true,
+      unsupportedClaims: ["the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter"],
+    };
+  }
 
   let text = "";
   let model = "";
@@ -624,17 +722,18 @@ async function runCoverLetterPipeline(args: {
       prioritizedItems: selected,
       clarificationContext: args.clarificationContext,
       qualifications,
+      thin,
     });
     // Two drafts on the same primary chain run side by side (the draft step takes seconds, so no wall time is added);
     // the draft with the fewest unsupported claims and structural defects is kept, the nearer to 230 words on a tie.
-    const settled = await Promise.allSettled([generateLetterText(prompt, args.signal), generateLetterText(prompt, args.signal)]);
+    const settled = await Promise.allSettled([generateLetterText(prompt, args.signal, { minWords }), generateLetterText(prompt, args.signal, { minWords })]);
     if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
     const drafts = settled.flatMap((result) => (result.status === "fulfilled" && result.value.text ? [result.value] : []));
     if (!drafts.length) {
       const failure = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
       throw failure?.reason instanceof Error ? failure.reason : new Error("No model returned a cover letter.");
     }
-    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(repairLetterStructure(draft.text, args.profile?.name, args.company, args.title), args.profile?.name, args.company, args.title).length;
+    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(repairLetterStructure(draft.text, args.profile?.name, args.company, args.title), args.profile?.name, args.company, args.title, minWords).length;
     const generated = drafts.reduce((best, draft) => (score(draft) < score(best) || (score(draft) === score(best) && Math.abs(WORDS(draft.text) - 230) < Math.abs(WORDS(best.text) - 230)) ? draft : best));
     text = generated.text;
     model = generated.model;
@@ -648,17 +747,18 @@ async function runCoverLetterPipeline(args: {
         contactLines: contact.promptLines,
         prioritizedItems: selected,
         qualifications,
+        thin,
         clarificationContext: `${args.clarificationContext || ""}\n${unsupportedTerms.length ? `Remove or avoid these unsupported items: ${unsupportedTerms.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : describeClaim(term)).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${defectList.length ? ` The previous draft ${defectList.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
   });
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
-    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
+  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length); round += 1) {
+    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title, minWords);
     try {
       const retryPrompt = buildRetryPrompt(unsupported, roundDefects);
-      const retried = await generateLetterText(retryPrompt, args.signal);
+      const retried = await generateLetterText(retryPrompt, args.signal, { minWords });
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company, jobText, args.title).length;
-      const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title).length;
+      const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title, minWords).length;
       if (retriedUnsupported + retriedDefects < unsupported.length + roundDefects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
@@ -666,7 +766,7 @@ async function runCoverLetterPipeline(args: {
     unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   }
   for (let groundRound = 0; groundRound < 2; groundRound += 1) {
-    if (groundRound > 0 && (!within(35_000) || !(findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length))) break;
+    if (groundRound > 0 && (!within(35_000) || !(findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length))) break;
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
     if (!within(50_000)) throw new Error("letter time budget spent");
@@ -686,9 +786,9 @@ LETTER:
 ${text}
 
 Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS, timeoutMs: GROUNDING_CALL_TIMEOUT_MS });
-    const before = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length + findLetterDefects(text, args.profile?.name, args.company, args.title).length;
-    const after = findUnsupportedClaims(grounded.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title).length;
-    if (isWellFormedLetter(grounded.text) && WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
+    const before = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length + findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length;
+    const after = findUnsupportedClaims(grounded.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title, minWords).length;
+    if (isWellFormedLetter(grounded.text) && WORDS(grounded.text) >= minWords && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
   } catch (error) {
     if (args.signal?.aborted) throw error;
   }
@@ -727,14 +827,14 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
           .filter(Boolean)
           .join("\n\n");
         // Invented detail is worse than a short letter: prune down to the honest minimum, and the short letter is flagged to the applicant.
-        if (WORDS(pruned) >= MIN_HONEST_WORDS && isWellFormedLetter(pruned)) text = pruned;
+        if (WORDS(pruned) >= honestWords && isWellFormedLetter(pruned)) text = pruned;
       }
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
   }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
-  if (WORDS(text) < MIN_HONEST_WORDS && within(100_000)) {
+  if (!thin && WORDS(text) < MIN_HONEST_WORDS && within(100_000)) {
     try {
       const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice, the greeting and sign-off, and use three or four paragraphs separated by blank lines. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
       if (isWellFormedLetter(expanded.text) && WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company, jobText, args.title).length === 0) text = expanded.text;
@@ -748,14 +848,14 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   if (!args.advanced && within(FINAL_REDRAW_START_MS)) {
     const leftover = (value: string) => ({
       unsupported: findUnsupportedClaims(value, args.profile, args.company, jobText, args.title),
-      defects: findLetterDefects(value, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short")),
+      defects: findLetterDefects(value, args.profile?.name, args.company, args.title, minWords).filter((defect) => !defect.startsWith("too short")),
     });
     const current = leftover(text);
     if (current.unsupported.length + current.defects.length > 0) {
       try {
         // Two redraws side by side (the wall time of one); the one with the fewest findings is kept, and only if it beats the current letter.
         const retryPrompt = buildRetryPrompt(current.unsupported, current.defects);
-        const redraws = await Promise.allSettled([generateLetterText(retryPrompt, args.signal), generateLetterText(retryPrompt, args.signal)]);
+        const redraws = await Promise.allSettled([generateLetterText(retryPrompt, args.signal, { minWords }), generateLetterText(retryPrompt, args.signal, { minWords })]);
         if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
         let best: { text: string; model: string; findings: number } | undefined;
         for (const result of redraws) {
@@ -765,7 +865,7 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
           if (candidateUnsupported.length) candidate = finalise(stripUnsupportedSentences(candidate, candidateUnsupported, args.company) ?? candidate);
           const next = leftover(candidate);
           const findings = next.unsupported.length + next.defects.length;
-          if (isWellFormedLetter(candidate) && WORDS(candidate) >= MIN_HONEST_WORDS && (!best || findings < best.findings || (findings === best.findings && Math.abs(WORDS(candidate) - 230) < Math.abs(WORDS(best.text) - 230)))) best = { text: candidate, model: result.value.model, findings };
+          if (isWellFormedLetter(candidate) && WORDS(candidate) >= honestWords && (!best || findings < best.findings || (findings === best.findings && Math.abs(WORDS(candidate) - 230) < Math.abs(WORDS(best.text) - 230)))) best = { text: candidate, model: result.value.model, findings };
         }
         if (best && best.findings < current.unsupported.length + current.defects.length) {
           text = best.text;
@@ -777,7 +877,7 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
     }
   }
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
+  const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).filter((defect) => !defect.startsWith("too short"));
   // A short letter is honest when the profile gives little to draw on; say so instead of padding it with invented duties.
   const thinNote = WORDS(text) < TARGET_MIN_WORDS ? "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" : "";
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.map(describeClaim).join("; ")}.` : undefined;
@@ -787,7 +887,7 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
-  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, thin, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
 }
 
 type CoverLetterPipelineArgs = Parameters<typeof runCoverLetterPipeline>[0];
@@ -803,7 +903,7 @@ export async function runCoverLetterAgent(args: CoverLetterPipelineArgs & { redu
   const controllers = Array.from({ length: copies }, () => new AbortController());
   const cancelAll = () => controllers.forEach((controller) => controller.abort());
   args.signal?.addEventListener("abort", cancelAll, { once: true });
-  const isClean = (result: CoverLetterAgentResult) => (result.unsupportedClaims || []).length === 0 && !result.reviewWarning && WORDS(result.text) >= TARGET_MIN_WORDS;
+  const isClean = (result: CoverLetterAgentResult) => (result.unsupportedClaims || []).filter((claim) => !claim.startsWith("the letter is short because")).length === 0 && !result.reviewWarning && WORDS(result.text) >= (result.thin ? THIN_MIN_WORDS : TARGET_MIN_WORDS);
   const better = (results: CoverLetterAgentResult[]) => [...results].sort((a, b) => (a.unsupportedClaims || []).length - (b.unsupportedClaims || []).length || Math.abs(WORDS(a.text) - 230) - Math.abs(WORDS(b.text) - 230))[0];
 
   return new Promise<CoverLetterAgentResult>((resolve, reject) => {

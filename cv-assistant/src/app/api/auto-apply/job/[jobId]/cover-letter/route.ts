@@ -6,7 +6,7 @@ import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { hashApplicationPayload } from "@/lib/auto-apply/prepare";
 import { countMissing, type DraftAnswer } from "@/lib/auto-apply/questions";
 import { isAuthPayload, loadOwnedDraftByJob, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
-import { runCoverLetterAgent } from "@/lib/cover-letter-service";
+import { NoEvidenceError, runCoverLetterAgent } from "@/lib/cover-letter-service";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
 import { UserModel, type Profile } from "@/lib/models/User";
 
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     return NextResponse.json({ coverLetter: result.text, mode: result.mode, reviewWarning: result.reviewWarning, fallbackNote: result.fallbackNote, jdSource: crawled.source });
   } catch (error) {
     if (req.signal.aborted) throw error;
+    if (error instanceof NoEvidenceError) return NextResponse.json({ error: error.message }, { status: 422 });
     return NextResponse.json({ error: "Cover letter generation is temporarily unavailable. Try again in a moment." }, { status: 502 });
   }
 }

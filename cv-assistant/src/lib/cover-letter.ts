@@ -156,8 +156,10 @@ export function buildCoverLetterPrompt(args: {
   clarificationContext?: string;
   /** Output of buildQualificationsBlock: the only licences, registrations and qualifications the candidate holds. */
   qualifications?: string;
+  /** The record is short (a student, a first job): write a short letter that stays inside it. */
+  thin?: boolean;
 }) {
-  const { candidateName, company, jobDescription, contactLines, prioritizedItems, clarificationContext, qualifications } = args;
+  const { candidateName, company, jobDescription, contactLines, prioritizedItems, clarificationContext, qualifications, thin } = args;
 
   return `Generate a cover letter that a recruiter can judge in seconds and a screening system can parse. Use the job description and the prioritized candidate experiences.
 
@@ -182,7 +184,7 @@ ${cleanText(clarificationContext) || 'None supplied. Choose the strongest suppor
 How this letter is scored, by a recruiter and by a screening system:
 - The first sentence must name the target role and the single strongest proof. Recruiters judge that sentence first, and screening models overweight the opening.
 - Use one example, or two only when a second supported requirement would otherwise be missed. For each example, say what the candidate did and the documented outcome, in the same sentence as the job's own wording for the requirement it proves. Use a job phrase only when the evidence or a confirmed decision supports it, and use each phrase at most twice. Do not add a keyword list. Screening models match terms in context; a detached list is discounted and reads as stuffing to a recruiter.
-- Write 250 to 350 words in 3 or 4 short paragraphs, including a greeting and a sign-off. If that length would require padding or an unsupported claim, write less.
+${thin ? "- This candidate's record is short. Write 80 to 140 words in 2 short paragraphs, including a greeting and a sign-off. Use only what the experiences and the qualifications on record say, in nearly their own words. Do not add duties, equipment, systems, tools, figures, outcomes, responsibilities, training or soft skills that they do not state, and do not describe any job, project or result that is not listed. If no experience is listed, say that the candidate is applying with the education and skills on record. If the record does not cover a requirement of the role, say nothing about it." : "- Write 250 to 350 words in 3 or 4 short paragraphs, including a greeting and a sign-off. If that length would require padding or an unsupported claim, write less."}
 - Plain text only. No markdown, bullets, tables, columns, icons, or headings. Use a neutral greeting when no recipient is named. Include only supplied contact details. Do not invent an address, a date, or a recipient.
 - Do not open with "I am writing to", "I am excited", or "I am passionate". Do not use passionate, dynamic, leverage, synergy, team player, go-getter, or results-driven. Do not use an em dash or en dash.
 - Do not praise the company, claim knowledge of it, or state a motivation unless a confirmed decision supplies that content.

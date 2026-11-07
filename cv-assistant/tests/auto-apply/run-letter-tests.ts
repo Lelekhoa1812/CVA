@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
-import { describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { NoEvidenceError, buildRecordLetter, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -104,7 +104,7 @@ const tests: Array<{ name: string; run: () => void }> = [
     name: "tool names and wording that only the posting has are flagged and stripped (Xero production letter)",
     run: () => {
       const jd = "Senior Engineer - AI Builder. Integrate systems via APIs and design clean data structures using Jira, Confluence and enterprise data warehouses. Treat internal stakeholders as valued customers and drive rapid prototyping.";
-      const profile = { name: "Dang Khoa Le", experiences: [{ companyName: "Harry the Hirer", description: "Built a multi-agent RAG platform on Azure with context pruning and HNSW indexing. Wrote Python services and exposed REST APIs." }, { companyName: "Axion", description: "Architect a LangChain workflow engine for capital-markets automation." }] };
+      const profile = { name: "Dang Khoa Le", experiences: [{ companyName: "Harry the Hirer", description: "Built a multi-agent RAG platform on Azure with context pruning and HNSW indexing. Wrote Python services and exposed REST APIs. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery. Designed and operated services for planning, retrieval and verification across several teams and many releases over a long period of delivery." }, { companyName: "Axion", description: "Architect a LangChain workflow engine for capital-markets automation." }] };
       const bad = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Builder role at Xero. At Harry the Hirer I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing, and exposed the services as REST APIs for the business and its planning teams, which kept the platform reliable under changing load.\n\nI integrated systems via APIs and designed clean data structures using Jira, Confluence, and enterprise data warehouses while treating internal stakeholders as valued customers and driving rapid prototyping. At Axion I architect a LangChain workflow engine for capital-markets automation, with version-controlled components and governed AI pipelines that investors rely on every day.\n\nI would welcome the opportunity to discuss how my background fits the role.\n\nDang Khoa Le";
       const found = findUnsupportedClaims(bad, profile as never, "Xero", jd, "Senior Engineer - AI Builder");
       assert.ok(found.some((term) => term === "posting name: jira"), `jira: ${found}`);
@@ -116,6 +116,53 @@ const tests: Array<{ name: string; run: () => void }> = [
       // A letter built from the CV, with a closing sentence of ordinary words, is left alone.
       const good = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Builder role at Xero. At Harry the Hirer I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing, and exposed it through REST APIs.\n\nI would welcome the opportunity to discuss how my background and approach to complex problems fit the mission of the team.\n\nDang Khoa Le";
       assert.deepEqual(findUnsupportedClaims(good, profile as never, "Xero", jd, "Senior Engineer - AI Builder"), []);
+    },
+  },
+  {
+    name: "thin CV: invented detail is flagged, record-bound sentences pass, percent figures compare with %",
+    run: () => {
+      const sparse = { name: "Omar Haddad", major: "Diploma of Hospitality", school: "William Angliss Institute", skills: "Barista skills, food safety.", experiences: [{ companyName: "Corner Cafe", role: "Barista", description: "Made coffee and served customers on weekends." }], projects: [] };
+      assert.ok(isThinProfile(sparse as never));
+      assert.ok(!isThinProfile({ name: "X", experiences: [{ companyName: "A", description: Array.from({ length: 130 }, (_, i) => `word${i}`).join(" ") }] } as never));
+      const jd = "Barista to prepare espresso drinks and serve customers.";
+      const honest = "Dear Hiring Manager,\n\nI am applying for the Barista role at Industry Beans. At Corner Cafe I made coffee and served customers on weekends, and I hold a Diploma of Hospitality from William Angliss Institute.\n\nI would welcome the opportunity to discuss the role.\n\nOmar Haddad";
+      assert.deepEqual(findUnsupportedClaims(honest, sparse as never, "Industry Beans", jd, "Barista"), []);
+      const padded = "Dear Hiring Manager,\n\nI am applying for the Barista role at Industry Beans. At Corner Cafe I made coffee and served customers on weekends. I operated commercial equipment, processed payments and communicated special requests to the kitchen.\n\nI would welcome the opportunity to discuss the role.\n\nOmar Haddad";
+      const found = findUnsupportedClaims(padded, sparse as never, "Industry Beans", jd, "Barista");
+      assert.ok(found.some((term) => term.startsWith("invented detail: ")), String(found));
+      const stripped = stripUnsupportedSentences(padded + "\n\n" + "Filler sentence that is long enough to keep the letter above the minimum length used by the strip step, and it is written only to keep the word count high enough for this test case to hold together as a real letter body.".repeat(2), found, "Industry Beans");
+      assert.ok(stripped && !/processed payments/.test(stripped) && /made coffee and served customers/.test(stripped), String(stripped));
+      const withFigure = { name: "A", experiences: [{ companyName: "B", description: "Reduced effort by 80%." }] };
+      assert.ok(!findUnsupportedClaims("I reduced manual effort by 80 percent.", withFigure as never, "C", "", "D").some((term) => /percent|80/.test(term)));
+      assert.ok(findUnsupportedClaims("I reduced data entry time by 40 percent.", withFigure as never, "C", "", "D").some((term) => /40/.test(term)));
+    },
+  },
+  {
+    name: "thin CV: the letter is built from the CV's own text and cannot contain invented detail",
+    run: async () => {
+      const sparse = { name: "Omar Haddad", major: "Diploma of Hospitality", school: "William Angliss Institute", skills: "Barista skills, food safety.", experiences: [{ companyName: "Corner Cafe", role: "Barista", description: "Made coffee and served customers on weekends." }], projects: [] };
+      const letter = buildRecordLetter({ profile: sparse as never, company: "Crown Melbourne", title: "Restaurant Supervisor" });
+      assert.ok(/^Dear Hiring Manager,/.test(letter) && /Sincerely,\nOmar Haddad$/.test(letter), letter);
+      assert.ok(/I am applying for the Restaurant Supervisor role at Crown Melbourne\./.test(letter));
+      assert.ok(/My education is a Diploma of Hospitality at William Angliss Institute\./.test(letter));
+      assert.ok(/As a Barista at Corner Cafe, I made coffee and served customers on weekends\./.test(letter), letter);
+      assert.ok(/Skills on my CV: Barista skills, food safety\./.test(letter));
+      // Nothing in it is a claim the CV lacks, even against a posting full of duties.
+      assert.deepEqual(findUnsupportedClaims(letter, sparse as never, "Crown Melbourne", "Restaurant Supervisor to lead a team of ten, manage rosters, supervise staff and handle complaints.", "Restaurant Supervisor"), []);
+      // The pipeline returns it without a model call, for every redundancy, flagged only as short.
+      const result = await runCoverLetterAgent({ profile: sparse as never, company: "Crown Melbourne", title: "Restaurant Supervisor", jobDescription: "Lead a team of ten." });
+      assert.equal(result.model, "record-only");
+      assert.equal(result.thin, true);
+      assert.deepEqual((result.unsupportedClaims || []).filter((claim) => !claim.startsWith("the letter is short because")), []);
+      // Bullets that are not verb-first are left out rather than rewritten.
+      const mixed = buildRecordLetter({ profile: { name: "A B", experiences: [{ companyName: "X", role: "Clerk", description: "- Responsible for filing.\n- Filed 200 forms a week.\n- Strong communication skills." }], projects: [] } as never, company: "Y", title: "Z" });
+      assert.ok(/I filed 200 forms a week\./.test(mixed) && !/Responsible|Strong communication/.test(mixed), mixed);
+    },
+  },
+  {
+    name: "a profile with nothing on record is refused instead of inventing a history",
+    run: async () => {
+      await assert.rejects(() => runCoverLetterAgent({ profile: { name: "Zoe Carter", experiences: [], projects: [] } as never, company: "Woolworths", title: "Customer Service Team Member", jobDescription: "Serve customers." }), (error: unknown) => error instanceof NoEvidenceError && /add some details to your profile/i.test((error as Error).message));
     },
   },
   {
@@ -298,19 +345,22 @@ const tests: Array<{ name: string; run: () => void }> = [
   },
 ];
 
-let failed = 0;
-for (const test of tests) {
-  try {
-    test.run();
-    console.log(`PASS ${test.name}`);
-  } catch (error) {
-    failed += 1;
-    console.error(`FAIL ${test.name}`);
-    console.error(error);
+async function main() {
+  let failed = 0;
+  for (const test of tests) {
+    try {
+      await test.run();
+      console.log(`PASS ${test.name}`);
+    } catch (error) {
+      failed += 1;
+      console.error(`FAIL ${test.name}`);
+      console.error(error);
+    }
   }
+  if (failed) {
+    console.error(`${failed} of ${tests.length} letter tests failed.`);
+    process.exit(1);
+  }
+  console.log(`${tests.length} letter guard tests passed.`);
 }
-if (failed) {
-  console.error(`${failed} of ${tests.length} letter tests failed.`);
-  process.exit(1);
-}
-console.log(`${tests.length} letter guard tests passed.`);
+void main();
