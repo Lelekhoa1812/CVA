@@ -294,7 +294,9 @@ function makeAnswer(
     const option = matchOption(finalValue, question.options);
     if (option) finalValue = option.label;
     else {
+      // A value that is not one of the form's options cannot be submitted, so leave it for the applicant to choose.
       needsInput = question.required;
+      finalValue = "";
       note = note || "Could not map the answer onto one of the form's options.";
     }
   }

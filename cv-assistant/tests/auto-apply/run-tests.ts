@@ -170,7 +170,7 @@ const tests: TestCase[] = [
       const options = ["1. AU Citizen or Permanent Resident", "2. New Zealand Citizen", "3. Other"];
       const answer = answerDeterministically({ question: q("Please advise what your working rights are?", "multiselect", options), profile, preferences: prefs, memory: [], company: "Prezzee" });
       assert.equal(answer?.needsInput, true);
-      assert.notEqual(answer?.value, "1. AU Citizen or Permanent Resident");
+      assert.equal(answer?.value, "");
       const yesNo = answerDeterministically({ question: q("Do you have the right to work in Australia?", "select", ["Yes - valid working rights or visa", "No - require sponsorship"]), profile, preferences: prefs, memory: [], company: "Neara" });
       assert.equal(yesNo?.value, "Yes - valid working rights or visa");
     },
