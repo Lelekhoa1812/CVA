@@ -153,14 +153,14 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
   if (text.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
-  if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
+  if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement|\b(?:matching|meeting|fulfilling|addressing|directly addressing|directly aligning with) your (?:needs?|requirements?)\b/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
   if (title && new RegExp(`${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40} - I `, "i").test(text.replace(/^[^\n]*\n+/, "").slice(0, 600))) defects.push("contains a garbled run-on title opening");
   if (/(^|\n)\s*(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i.test(text)) defects.push("ends with a chat-style line instead of a closing sentence");
   const openingLine = (text.split(/\n{2,}/).find((block, index) => index > 0 && block.trim()) || "").split(/(?<=[.!?])\s/)[0] || "";
   // A proper opening starts "I am ..."; a title followed by a dash and a clause is the run-on, and a hyphen inside the title itself is not.
   if (!/^I\s/.test(openingLine.trim()) && /\s[–—]\s|\s-\s/.test(openingLine) && /\b(?:Engineer|Developer|Scientist|Architect|Lead)\b/.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
   // A bare title sentence ("Staff Software Engineer, AI Tooling at Airwallex.") is not a proper opening.
-  if (title && company && new RegExp(`(^|\\n\\n|[.!?]\\s+)\\s*${(title.split(/[,(–-]/)[0].trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40}\\bat ${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "i").test(text)) defects.push("repeats the job title as a bare sentence");
+  if (title && company && new RegExp(`(^|\\n\\n|[.!?]\\s+)\\s*${(title.split(/[,(–-]/)[0].trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,60}\\bat ${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[.,\\u2013\\u2014]`, "i").test(text)) defects.push("repeats the job title as a bare sentence");
   // The letter is written by the applicant: their own name in the body (outside the sign-off) means it slipped into the third person.
   const applicantName = (candidateName || "").trim();
   if (applicantName) {
@@ -226,6 +226,14 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   }
   // "In the same organization, I built X" would credit a separate project to an employer.
   fixed = fixed.replace(/\bIn the same (?:organi[sz]ation|company|team|role),?\s+I\b/gi, "I also");
+  // "I at Xero: I designed ..." is a stray label: keep the sentence, drop the label.
+  fixed = fixed.replace(/\bI at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*)?:\s+I\b/g, "I");
+  // A company name the model garbled ("Airwalexecss" for "Airwallex") is put back, when the stem is unmistakable.
+  if (company && company.length >= 6) {
+    const stem = company.slice(0, 6).toLowerCase();
+    const companyWord = company.split(/\s+/)[0];
+    fixed = fixed.replace(/\b[A-Za-z]{5,}\b/g, (word) => (word.toLowerCase().startsWith(stem) && word.toLowerCase() !== companyWord.toLowerCase() && !company.toLowerCase().includes(word.toLowerCase()) && Math.abs(word.length - companyWord.length) <= 4 ? companyWord : word));
+  }
   // "Alex Tester is applying for ..." slipped into the third person: put it back in the first.
   if (name_(candidateName)) fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)${name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is (applying|writing|submitting)\\b`, "g"), (_m, lead, verb) => `${lead}I am ${verb}`);
   // A generic salutation is always "Dear Hiring Manager," (the model drifts to "Dear Recruiter" or "Dear Hiring Team" with no comma).
@@ -361,18 +369,7 @@ export async function runCoverLetterAgent(args: {
       prioritizedItems: selected,
       clarificationContext: args.clarificationContext,
     });
-    // Best of three: the same prompt runs on three differently ordered model chains at once (wall time stays about the same),
-    // and the draft with the fewest unsupported claims and structural defects is kept.
-    const chains = [0, 1, 2].map((shift) => [...COVER_LETTER_MODELS.slice(shift), ...COVER_LETTER_MODELS.slice(0, shift)]);
-    const settled = await Promise.allSettled(chains.map((models) => generateLetterText(prompt, args.signal, { models })));
-    if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
-    const drafts = settled.flatMap((result) => (result.status === "fulfilled" && result.value.text ? [result.value] : []));
-    if (!drafts.length) {
-      const failure = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
-      throw failure?.reason instanceof Error ? failure.reason : new Error("No model returned a cover letter.");
-    }
-    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(draft.text, args.profile?.name, args.company, args.title).length;
-    const generated = drafts.reduce((best, draft) => (score(draft) < score(best) || (score(draft) === score(best) && WORDS(draft.text) > WORDS(best.text) && WORDS(draft.text) <= 380) ? draft : best));
+    const generated = await generateLetterText(prompt, args.signal);
     text = generated.text;
     model = generated.model;
   }
