@@ -1,7 +1,7 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
-import { issueQuotesEvidence } from "../../src/lib/generate/claim-check";
+import { isMissingInputRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
@@ -112,6 +112,9 @@ const tests: Array<{ name: string; run: () => void }> = [
       // Possessive wording ("Candidate's claim to have ... is not supported ...") is read the same way.
       assert.ok(issueQuotesEvidence("Candidate's claim to have led a 6-person team delivering a Vietnamese-language AI assistant is not supported by any evidence in the candidate material", evidence));
       assert.ok(!issueQuotesEvidence("Candidate's claim to have led a 40-person team at Google is not supported by any evidence in the candidate material", evidence));
+      // A remark about missing clarification answers is not a claim.
+      assert.ok(isMissingInputRemark("No clarification answers provided to verify accuracy of job application draft claims"));
+      assert.ok(!isMissingInputRemark("Candidate's claim to have led a 40-person team at Google is not supported"));
     },
   },
   {

@@ -143,3 +143,13 @@ Limit: a single 10-letter sample. The route's cost per letter rises by up to one
 Downer letter on production: 200 in 106 s, 262 words, no deterministic defect. The model evidence check raised three issues, all of which restate CV facts (the 5-person Swinburne team, the VietDan Water Meter OCR result, the VHandicap scorecard scanner). They survived the false-alarm filter because the issues begin "Candidate's claim to have ..." and the unquoted-issue pattern did not accept the possessive or the trailing "is not supported". The pattern now accepts both; a test covers a CV-quoting possessive issue (dropped) and an invented "40-person team at Google" (kept). The two other jobs tried on that session returned 409 "Prepare this application first", which is the intended guard for unprepared jobs.
 
 Re-check on production after 56fa720: the same Downer job returned 200 in 91 s, 178 words, no review warning.
+
+### Production sample of 56fa720 (three pipelines), 2026-11-08
+
+Twelve prepared jobs from the test account (Neara, AustralianSuper, Airwallex, NAB, Binance, Quantium, SymphonyAI, Rosewood, Wagetap, Commonwealth Bank, Prezzee, triniti), run three at a time through the live letter route; nothing approved or submitted.
+
+- All 12 returned 200 in 58-102 s (so up to nine pipelines at once on the deployment did not slow anything past 102 s).
+- Words 174-270. Eleven letters carried no review warning.
+- Prezzee carried "No clarification answers provided to verify accuracy of job application draft claims", a remark about the inputs rather than a claim. Reading the letter against the CV found every figure, employer, tool and role supported (checked .NET/C#, Qwen2.5-VL, Pydantic, Jetson Nano, AI Team Lead, the 400,000+ case figure and the partner names). `isMissingInputRemark` now drops such issues before a warning is built; a test covers it and an invented claim still warns.
+
+Against the earlier two-pipeline production checks: no letter above 102 s (previously some at 130-133 s), no defect found by reading.
