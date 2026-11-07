@@ -156,7 +156,10 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.deepEqual((result.unsupportedClaims || []).filter((claim) => !claim.startsWith("the letter is short because")), []);
       // Bullets that are not verb-first are left out rather than rewritten.
       const mixed = buildRecordLetter({ profile: { name: "A B", experiences: [{ companyName: "X", role: "Clerk", description: "- Responsible for filing.\n- Filed 200 forms a week.\n- Strong communication skills." }], projects: [] } as never, company: "Y", title: "Z" });
-      assert.ok(/I filed 200 forms a week\./.test(mixed) && !/Responsible|Strong communication/.test(mixed), mixed);
+      // A line that is not verb-first English is kept as the CV states it, never dropped.
+      assert.ok(/Clerk at X: Responsible for filing\. I filed 200 forms a week\. Strong communication skills\./.test(mixed), mixed);
+      const viet = buildRecordLetter({ profile: { name: "Nguyen Thi Lan", major: "Cu nhan Ke toan", experiences: [{ companyName: "Cong ty Viet Phat", role: "Ke toan truong", description: "- Quan ly bo phan ke toan gom 5 nhan vien.\n- Lap bao cao tai chinh hang thang." }], projects: [] } as never, company: "Samsung", title: "Chief Accountant" });
+      assert.ok(/Ke toan truong at Cong ty Viet Phat: Quan ly bo phan ke toan gom 5 nhan vien\. Lap bao cao tai chinh hang thang\./.test(viet), viet);
     },
   },
   {

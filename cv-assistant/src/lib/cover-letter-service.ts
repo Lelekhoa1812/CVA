@@ -50,18 +50,18 @@ export function isThinProfile(profile?: Partial<Profile> | null) {
 }
 
 const IRREGULAR_PAST = new Set(["led", "ran", "built", "made", "wrote", "drove", "sold", "taught", "held", "kept", "took", "gave", "began", "won", "set", "put", "cut", "met", "paid", "spent", "grew", "chose", "found", "taught"]);
-const NOT_A_VERB = new Set(["the", "a", "an", "responsible", "experience", "strong", "excellent", "various", "member", "part", "good", "great", "my", "our", "all", "some", "many", "daily", "weekly", "key", "main", "lead", "senior", "junior", "general"]);
+const NOT_A_VERB = new Set(["the", "a", "an", "responsible", "experience", "strong", "excellent", "various", "member", "part", "good", "great", "my", "our", "all", "some", "many", "daily", "weekly", "key", "main", "senior", "junior", "general"]);
 
-/** "Made coffee and served customers on weekends." becomes "I made coffee and served customers on weekends."; anything that is not a verb-first line is left out. */
-function firstPersonSentences(description?: string): string[] {
-  const lines = (description || "").split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map((line) => line.replace(/^[\s\-\u2022*]+/, "").trim()).filter(Boolean);
-  const out: string[] = [];
+/** "Made coffee and served customers on weekends." becomes "I made coffee and served customers on weekends."; a line that is not a verb-first English line is kept as the CV states it. */
+function recordSentences(description?: string): Array<{ text: string; converted: boolean }> {
+  const lines = (description || "").split(/\n+|(?<=[.!?])\s+(?=[\p{Lu}])/u).map((line) => line.replace(/^[\s\-\u2022*]+/, "").trim()).filter(Boolean);
+  const out: Array<{ text: string; converted: boolean }> = [];
   for (const raw of lines) {
     const line = raw.replace(/[.;]+$/, "");
     const first = line.split(/\s+/)[0] || "";
     const word = first.toLowerCase();
-    if (!/^[A-Z][a-z]+$/.test(first) || NOT_A_VERB.has(word) || /ing$/.test(word) || /^(?:i|we|my)$/.test(word)) continue;
-    if (/ed$/.test(word) || IRREGULAR_PAST.has(word) || /^(?:manage|run|teach|own|build|coordinate|serve|handle|prepare|support|assist|maintain|process|schedule|write|create|organise|organize|supervise|train|deliver|operate)$/.test(word)) out.push(`I ${word}${line.slice(first.length)}.`);
+    const verbFirst = /^[A-Z][a-z]+$/.test(first) && !NOT_A_VERB.has(word) && !/ing$/.test(word) && !/^(?:i|we|my)$/.test(word) && (/ed$/.test(word) || IRREGULAR_PAST.has(word) || /^(?:manage|run|teach|own|build|coordinate|serve|handle|prepare|support|assist|maintain|process|schedule|write|create|organise|organize|supervise|train|deliver|operate|plan|design|develop|analyse|analyze|review|monitor|install|repair|test|clean|cook|sell|stock|answer|greet|record|present|research|report|lead)$/.test(word));
+    out.push(verbFirst ? { text: `I ${word}${line.slice(first.length)}.`, converted: true } : { text: `${line}.`, converted: false });
   }
   return out;
 }
@@ -77,14 +77,16 @@ export function buildRecordLetter(args: { profile?: Partial<Profile> | null; com
   paragraphs.push(`I am applying for the ${title} role at ${company}.${education.length ? ` My education is ${[degree, education[1]].filter(Boolean).join(" at ")}${period ? ` (${period})` : ""}.` : ""}`);
   const bits: string[] = [];
   for (const experience of ((profile?.experiences || []) as Array<{ companyName?: string; role?: string; description?: string }>).slice(0, 2)) {
-    const lines = firstPersonSentences(experience.description).slice(0, 3);
+    const lines = recordSentences(experience.description).slice(0, 4);
     if (!lines.length) continue;
-    const where = [experience.role ? `as ${/^[aeiou]/i.test(experience.role) ? "an" : "a"} ${experience.role}` : "", experience.companyName ? `at ${experience.companyName}` : ""].filter(Boolean).join(" ");
-    bits.push(`${where ? `${where.charAt(0).toUpperCase()}${where.slice(1)}, ` : ""}${lines.join(" ")}`);
+    const place = [experience.role || "", experience.companyName ? `at ${experience.companyName}` : ""].filter(Boolean).join(" ");
+    const sentence = lines.map((line) => line.text).join(" ");
+    if (lines[0].converted && experience.role) bits.push(`As ${/^[aeiou]/i.test(experience.role) ? "an" : "a"} ${experience.role}${experience.companyName ? ` at ${experience.companyName}` : ""}, ${sentence}`);
+    else bits.push(`${place ? `${place}: ` : ""}${sentence}`);
   }
   for (const project of ((profile?.projects || []) as Array<{ name?: string; description?: string }>).slice(0, 1)) {
-    const lines = firstPersonSentences(project.description).slice(0, 2);
-    if (lines.length) bits.push(`In my ${project.name ? `${project.name} ` : ""}project, ${lines.join(" ")}`);
+    const lines = recordSentences(project.description).slice(0, 2);
+    if (lines.length) bits.push(lines[0].converted ? `In my ${project.name ? `${project.name} ` : ""}project, ${lines.map((line) => line.text).join(" ")}` : `${project.name ? `${project.name}: ` : ""}${lines.map((line) => line.text).join(" ")}`);
   }
   if (bits.length) paragraphs.push(bits.join("\n"));
   const skills = ((profile as { skills?: string } | null | undefined)?.skills || "").replace(/\s+/g, " ").trim().replace(/[.;]+$/, "").slice(0, 220);
