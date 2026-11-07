@@ -14,7 +14,7 @@ import type { Profile } from "@/lib/models/User";
  * The cover letter agent behind both the /generate studio and Auto Apply. One prompt, one model chain, one quality
  * guard and one evidence check, so every letter in the product is written and verified the same way.
  */
-const COVER_LETTER_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "poolside/laguna-xs-2.1", "deepseek-ai/deepseek-v4.1-flash"];
+const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "deepseek-ai/deepseek-v4.1-flash"];
 
 /** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
 const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
@@ -161,6 +161,16 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (!/^I\s/.test(openingLine.trim()) && /\s[–—]\s|\s-\s/.test(openingLine) && /\b(?:Engineer|Developer|Scientist|Architect|Lead)\b/.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
   // A bare title sentence ("Staff Software Engineer, AI Tooling at Airwallex.") is not a proper opening.
   if (title && company && new RegExp(`(^|\\n\\n|[.!?]\\s+)\\s*${(title.split(/[,(–-]/)[0].trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40}\\bat ${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "i").test(text)) defects.push("repeats the job title as a bare sentence");
+  // Stock filler says nothing about the applicant and reads as mass-produced.
+  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
+  if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
+  // "As Senior Software Engineer for AI Tooling, I led..." uses the posting's own title as past experience.
+  if (title) {
+    const core = title.split(/[,(–]|\s-\s/)[0].replace(/^(?:senior|staff|lead|principal|junior)\s+/i, "").trim();
+    if (core.length > 4 && new RegExp(`\\bAs (?:an? |the )?(?:senior |staff |lead |principal )?${core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?: for [A-Za-z/ ]{3,30})?,\\s+I\\b`, "i").test(text.replace(/^[^\n]*\n+/, ""))) defects.push("uses the job title as past experience ('As <title>, I ...')");
+  }
+  // "In the same organization, I built <project>" credits a personal project to an employer.
+  if (/\bIn the same (?:organi[sz]ation|company|team|role)\b/i.test(text)) defects.push("says 'in the same organization' and so credits a separate project to an employer");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\bcandidate\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
@@ -198,6 +208,19 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
   // A greeting run into the first sentence ("Dear Hiring Manager, I am writing...") gets its own line.
   fixed = fixed.replace(/^(Dear [^,\n]{2,60},)[ \t]+(?=[A-Z])/, "$1\n\n");
+  // "As Senior Engineer at Acme, I built X" claims the posting's job as past experience: keep the work, drop the borrowed title.
+  if (title) {
+    const core = title.split(/[,(–]|\s-\s/)[0].replace(/^(?:senior|staff|lead|principal|junior)\s+/i, "").trim();
+    if (core.length > 4) {
+      const escCore = core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escCompany = (company || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)As (?:an? |the )?(?:senior |staff |lead |principal )?${escCore}(?: for [A-Za-z/ ]{3,30})?(?: at ${escCompany || "\\S+"})?,\\s+I\\b`, "gi"), "$1I");
+    }
+  }
+  // "In the same organization, I built X" would credit a separate project to an employer.
+  fixed = fixed.replace(/\bIn the same (?:organi[sz]ation|company|team|role),?\s+I\b/gi, "I also");
+  // A generic salutation is always "Dear Hiring Manager," (the model drifts to "Dear Recruiter" or "Dear Hiring Team" with no comma).
+  fixed = fixed.replace(/^Dear (?:Recruiter|Recruiting Team|Hiring Team|Hiring Committee|Sir or Madam|Sir\/Madam)[ \t]*,?[ \t]*(?=\n|$)/i, "Dear Hiring Manager,");
   if (!/^(dear|hello|hi|to the|greetings)\b/i.test(fixed)) fixed = `Dear Hiring Manager,\n\n${fixed}`;
   // The opening must say which role at which company this is for, in the posting's own words.
   // "Senior Engineer at Xero - led development of..." is a title run into the first sentence: turn it into a real opening.

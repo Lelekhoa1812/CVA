@@ -542,6 +542,33 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "stock filler and same-organization framing are flagged and repaired",
+    run: () => {
+      const body = "I built agent platforms, shipped them, and measured results. ".repeat(14);
+      const stock = `Dear Hiring Manager,\n\nI am excited to apply for the Engineer role at Acme. ${body}\n\n${body}\n\nSincerely,\nDang Khoa Le`;
+      assert.ok(findLetterDefects(stock, "Dang Khoa Le", "Acme", "Engineer").some((d) => d.includes("stock filler")));
+      const clean = `Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. ${body}\n\n${body}\n\nSincerely,\nDang Khoa Le`;
+      assert.ok(!findLetterDefects(clean, "Dang Khoa Le", "Acme", "Engineer").some((d) => d.includes("stock filler")));
+      const same = `Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme.\n\nIn the same organization, I built a horse breeding ranker.\n\nSincerely,\nDang Khoa Le`;
+      assert.ok(findLetterDefects(`${same} ${body}\n\n${body}`, "Dang Khoa Le", "Acme", "Engineer").some((d) => d.includes("same organization")));
+      assert.ok(repairLetterStructure(same, "Dang Khoa Le", "Acme", "Engineer").includes("I also built a horse breeding ranker."));
+    },
+  },
+  {
+    name: "job title as experience is flagged and generic greetings are normalised",
+    run: () => {
+      const body = "I built agent platforms, shipped them, and measured results. ".repeat(14);
+      const bad = `Dear Hiring Manager,\n\nI am applying for the Senior Software Engineer, AI Tooling role at Airwallex. As Senior Software Engineer for AI Tooling, I led an enterprise platform. ${body}\n\n${body}\n\nSincerely,\nDang Khoa Le`;
+      assert.ok(findLetterDefects(bad, "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling").some((d) => d.includes("job title as past experience")));
+      const good = `Dear Hiring Manager,\n\nI am applying for the Senior Software Engineer, AI Tooling role at Airwallex. At Mizco, I led an enterprise platform. ${body}\n\n${body}\n\nSincerely,\nDang Khoa Le`;
+      assert.ok(!findLetterDefects(good, "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling").some((d) => d.includes("job title as past experience")));
+      const fixedTitle = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Machine Learning Engineer role at Contoso Cloud.\n\nAs Senior Machine Learning Engineer at Contoso Cloud, I built a Python service.", "Dang Khoa Le", "Contoso Cloud", "Senior Machine Learning Engineer");
+      assert.ok(fixedTitle.includes("\n\nI built a Python service.") && !fixedTitle.includes("As Senior Machine Learning Engineer at Contoso Cloud, I"), fixedTitle);
+      assert.ok(repairLetterStructure("Dear Recruiter,\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
+      assert.ok(repairLetterStructure("Dear Hiring Team\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
+    },
+  },
+  {
     name: "payload hash changes when any approved content changes",
     run: () => {
       const base = { answers: [{ fieldName: "email", value: "a@b.co" }], coverLetter: "Hello", applyUrl: "https://x.test" };
