@@ -17,10 +17,27 @@ function Bookmarklet() {
   const ref = useCallback((node: HTMLAnchorElement | null) => {
     if (node) node.setAttribute("href", href);
   }, [href]);
+  const [copied, setCopied] = useState(false);
   return (
-    <a ref={ref} onClick={(event) => event.preventDefault()} draggable className="button-primary min-h-11 cursor-grab" title="Drag this to your bookmarks bar">
-      Autofill with CV Assistant
-    </a>
+    <div className="flex flex-wrap items-center gap-2">
+      <a ref={ref} onClick={(event) => event.preventDefault()} draggable className="button-primary min-h-11 cursor-grab" title="Drag this to your bookmarks bar">
+        Autofill with CV Assistant
+      </a>
+      <button
+        type="button"
+        className="button-secondary min-h-11 px-3 text-xs"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(href);
+            setCopied(true);
+          } catch {
+            setCopied(false);
+          }
+        }}
+      >
+        {copied ? "Copied. Make a bookmark and paste it as the address" : "Copy bookmarklet code"}
+      </button>
+    </div>
   );
 }
 

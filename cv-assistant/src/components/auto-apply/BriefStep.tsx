@@ -102,7 +102,7 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
                     brief.mode === value ? "border-primary/50 bg-primary/10" : "border-border/80 hover:border-primary/30",
                   )}
                 >
-                  <input type="radio" name="mode" checked={brief.mode === value} onChange={() => setBrief({ mode: value })} className="mt-1 accent-[hsl(var(--primary))]" />
+                  <input type="radio" name="mode" checked={brief.mode === value} onChange={() => setBrief({ mode: value })} className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(var(--primary))]" />
                   <span>
                     <span className="text-foreground block text-sm font-semibold">{label}</span>
                     <span className="text-muted-foreground block text-xs leading-5">{hint}</span>
