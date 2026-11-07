@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { AUTOMATIC_RETRY_MESSAGE, streamSearchJobs } from "../../src/lib/search/server/stream";
 import type { SearchRequest, SearchStreamEvent } from "../../src/lib/search/types";
-import { stripHtmlTags } from "../../src/lib/search/server/utils";
+import { sharesNoTitleTerm, stripHtmlTags } from "../../src/lib/search/server/utils";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 type Fetch = typeof globalThis.fetch;
@@ -344,7 +344,39 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: "careerone cards show decoded detail text and keep non-matching titles as partial matches instead of dropping them",
+    name: "careerone cards show decoded detail text",
+    run: async () => {
+      stubBoardPages({
+        "https://www.careerone.com.au/jobs-in-melbourne/keyword-ai-engineer": `<html><body>
+          <div class="job-card-small"><a href="/jobview/detail/job-1">AI Engineer</a></div>
+        </body></html>`,
+        "https://www.careerone.com.au/jobview/detail/job-1": jsonLdPage({
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          title: "AI &amp; Data Engineer",
+          hiringOrganization: { "@type": "Organization", name: "Ana &amp; Sons Bakery" },
+          jobLocation: {
+            "@type": "Place",
+            address: { "@type": "PostalAddress", addressLocality: "Chatswood", addressRegion: "NSW", addressCountry: "AU" },
+          },
+          datePosted: "2026-11-01",
+          description: "<p>Bread &amp; pastry team</p>",
+        }),
+      });
+
+      const events = await collectEvents(careerOneRequest);
+      const results = events.flatMap((event) => (event.type === "result" ? [event.result] : []));
+      assert.equal(results.length, 1);
+      assert.equal(results[0].title, "AI & Data Engineer");
+      assert.equal(results[0].company, "Ana & Sons Bakery");
+      assert.equal(results[0].location, "Chatswood NSW AU");
+      assert.equal(results[0].snippet, "Bread & pastry team");
+      assert.equal(results[0].searchQueryMatch, "strong");
+      assert.ok(events.some((event) => event.type === "complete" && event.totalResults === 1));
+    },
+  },
+  {
+    name: "careerone listings that share no word with the searched title are dropped",
     run: async () => {
       stubBoardPages({
         "https://www.careerone.com.au/jobs-in-melbourne/keyword-ai-engineer": `<html><body>
@@ -366,13 +398,7 @@ const tests: TestCase[] = [
 
       const events = await collectEvents(careerOneRequest);
       const results = events.flatMap((event) => (event.type === "result" ? [event.result] : []));
-      assert.equal(results.length, 1);
-      assert.equal(results[0].title, "Retail & Wholesale Manager");
-      assert.equal(results[0].company, "Ana & Sons Bakery");
-      assert.equal(results[0].location, "Chatswood NSW AU");
-      assert.equal(results[0].snippet, "Bread & pastry team");
-      assert.equal(results[0].searchQueryMatch, "partial");
-      assert.ok(events.some((event) => event.type === "complete" && event.totalResults === 1));
+      assert.equal(results.length, 0);
     },
   },
   {
@@ -402,6 +428,16 @@ const tests: TestCase[] = [
           (event) => event.type === "source-progress" && event.source === "talent" && event.status === "complete" && event.resultsFound === 2,
         ),
       );
+    },
+  },
+  {
+    name: "listings that share no word with the searched title are detected, related ones are kept",
+    run() {
+      assert.equal(sharesNoTitleTerm("AI Engineer", ["Baker / Pastrycook", "Melbourne bakery"]), true);
+      assert.equal(sharesNoTitleTerm("AI Engineer", ["Retail Manager", ""]), true);
+      assert.equal(sharesNoTitleTerm("AI Engineer", ["Software Engineer", ""]), false);
+      assert.equal(sharesNoTitleTerm("AI Engineer", ["Senior AI Specialist", ""]), false);
+      assert.equal(sharesNoTitleTerm("", ["Anything", ""]), false);
     },
   },
 ];

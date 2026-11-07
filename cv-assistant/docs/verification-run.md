@@ -100,7 +100,7 @@ These records were not removed. Remove them if they are not wanted.
 | `&amp;` in Job Search card text, and a lead titled "Show more" | HTML entities were not decoded in JSON-LD text, and a UI control label was accepted as a title | Decode once, skip listings with no real title. 3 tests added (`test:search` 15 of 15) | No. Offline tests only |
 | Cover-letter eval passed 1 of 3, then 3 of 3 | Model output varies between runs. A separate session added deterministic repairs for third-person sentences and misplaced name blocks (commits 9c8efe5 and 2504a11) and tests for them | Not part of this documentation change | **Re-run once after those commits: 2 of 3 passed, exit 100.** Contoso Cloud failed with a 106-word letter ("too short"), a third-person body sentence, and the unsupported claim "employment at Contoso Cloud". The eval is still not stable, and the third-person gap that `2504a11` left (title run-ons and "Name, who..." appositives) is the likely cause |
 
-Still open, and needing a product decision: Job Search relevance for boards that ignore the keyword (default the Match filter to strong, improve the matcher, or pause CareerOne), and Advanced Mode latency (a faster model preset or fewer steps).
+Job Search relevance: CareerOne listings that share no word with the searched title are now dropped (offline tests only, 17 of 17; not re-run against live CareerOne). Still open, and needing a product decision: Advanced Mode latency (about 397 s with the limits raised; a faster model preset, fewer steps, or higher limits).
 
 ## Not verified
 

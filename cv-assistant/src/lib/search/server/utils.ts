@@ -182,6 +182,18 @@ export function deriveSearchTermsFromRequest(request: SearchRequest): string[] {
   );
 }
 
+// True when none of the job title's words appear in the listing text. CareerOne ignores the keyword in its search URL,
+// so this is used to drop its unrelated listings (for example a Baker for an "AI Engineer" search).
+export function sharesNoTitleTerm(jobTitle: string, searchableParts: string[]): boolean {
+  const tokens = cleanText(jobTitle)
+    .toLowerCase()
+    .match(/[a-z0-9]+/g)
+    ?.filter((token) => token.length > 1 && !STOP_WORDS.has(token)) || [];
+  if (tokens.length === 0) return false;
+  const haystack = searchableParts.map((part) => cleanText(part).toLowerCase()).join(" ");
+  return !tokens.some((token) => new RegExp(`\\b${token}\\b`).test(haystack));
+}
+
 export function computeSearchQueryMatch(
   jobTitle: string,
   searchableParts: string[],

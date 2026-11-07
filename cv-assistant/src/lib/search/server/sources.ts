@@ -19,6 +19,7 @@ import {
   decodeHtmlEntities,
   detectBlockedPage,
   extractApplyLink,
+  sharesNoTitleTerm,
   stripHtmlTags,
   truncateText,
 } from "@/lib/search/server/utils";
@@ -788,6 +789,8 @@ async function crawlLandingPage(
     // A listing with no title from its detail page or its link text (for example, a bare "Show more" control) is skipped
     // rather than shown under that label.
     if (!title) continue;
+    // CareerOne ignores the keyword in its search URL, so drop listings that share no word with the searched title.
+    if (source === "careerone" && sharesNoTitleTerm(request.jobTitle, [title, link.context])) continue;
 
     const result = buildResult({
       source,

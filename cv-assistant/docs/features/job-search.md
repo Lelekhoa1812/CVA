@@ -344,8 +344,8 @@ Changes made after the verification run (2026-11-07):
 
 - **HTML entities.** Title, company and location read from JSON-LD, and text read from detail pages, are decoded once (`decodeHtmlEntities`), so `&amp;` no longer shows in cards.
 - **Control labels are not titles.** A listing whose title is empty after the detail page and the link text are tried is skipped. UI labels such as "Show more" are not accepted as titles. The earlier Talent.com lead titled "Show more" came from this gap.
-- **Relevance is not enforced.** CareerOne returned unrelated roles (Retail Manager, Baker, Handyperson) for "AI Engineer", because the keyword slug in its URL is not honoured. The Match filter can hide them, but the default does not. This is an open product decision, not a fixed defect.
-- **Tests.** `npm run test:search` now runs 15 offline tests (3 added for the points above).
+- **CareerOne relevance.** CareerOne returned unrelated roles (Retail Manager, Baker, Handyperson) for "AI Engineer", because the keyword slug in its URL is not honoured. `crawlLandingPage` now drops a CareerOne listing when none of the searched title's words appear in its title or card text (`sharesNoTitleTerm` in `utils.ts`). A listing that shares one word, such as "Software Engineer" for "AI Engineer", is kept, so the Match filter still matters. Other boards are not filtered this way. This was checked by offline tests only, not by a live CareerOne run.
+- **Tests.** `npm run test:search` now runs 17 offline tests (5 added for the points above).
 
 The crawl runs in these steps:
 

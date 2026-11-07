@@ -26,7 +26,7 @@ The content was derived from the source code. Observed results and timings come 
 | `npm run lint` | ESLint over the project | No | No | No | Exit 0, 7 warnings, 0 errors (about 2 s) |
 | `npm run test:unit` | Career, profile import, strategist, resume ATS check | No | No | No | Exit 0, 18 of 18 passed (about 1 s) |
 | `npm run test:auto-apply` | Auto Apply rules, letter guards, ATS parsing | No | No | No | Exit 0, 55 of 55 passed (under 1 s) |
-| `npm run test:search` | Search streaming, retries, cancellation | No (fetch is stubbed) | No | No | Exit 0, 15 of 15 passed (about 8 s) |
+| `npm run test:search` | Search streaming, retries, cancellation | No (fetch is stubbed) | No | No | Exit 0, 17 of 17 passed (about 8 s) |
 | `npm run test:ai` | NVIDIA NIM key rotation, model cascade, streaming | No (fetch is stubbed) | No (fake keys are set by the script) | No | Exit 0, summary line printed (about 1 s) |
 | `npm run verify:career` | `lint`, then `test:unit`, then `test:auto-apply` | No | No | No | Exit 0 (about 3 s) |
 | `npm run test:autofill-safari` | Live autofill in Safari through `safaridriver` | Yes (live employer form) | No | No | Not run in this review |
