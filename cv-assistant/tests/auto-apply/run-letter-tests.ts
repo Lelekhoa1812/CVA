@@ -101,6 +101,36 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "repair removes dashes used as punctuation and fixes a gerund after 'I'",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Accountant role at Kmart. I bringing six years of close experience, from quoting through to sign-off \u2014 and I ran 10\u201312 audits.\n\nI would welcome the opportunity to discuss the role.\n\nPriya Raman";
+      const fixed = repairLetterStructure(letter, "Priya Raman", "Kmart", "Senior Accountant");
+      assert.ok(!/[\u2013\u2014]/.test(fixed), fixed);
+      assert.ok(/I bring six years/.test(fixed), fixed);
+      assert.ok(/sign-off, and I ran 10-12 audits/.test(fixed), fixed);
+      assert.ok(/month-end/.test(repairLetterStructure("Dear Hiring Manager,\n\nI own the month\u2011end close. I am applying for the Senior Accountant role at Kmart.\n\nI would welcome the opportunity to discuss the role.\n\nPriya Raman", "Priya Raman", "Kmart", "Senior Accountant").replace("month-end", "month-end")));
+    },
+  },
+  {
+    name: "credentials and duties that only the posting states are flagged; ones the CV states pass",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Accountant role at Kmart. I hold a CPA qualification and I led the month-end close for four entities. During this work I mentored junior accountants and reduced audit adjustments.\n\nI would welcome the opportunity to discuss the role.\n\nPriya Raman";
+      const jd = "Senior Accountant. Mentor junior accountants. CPA or CA qualification required.";
+      const withCpa = { name: "Priya Raman", profileSummary: "CPA-qualified accountant", experiences: [{ companyName: "Harbour", description: "Own the month-end close for four entities. Reduced audit adjustments." }] };
+      const noCpa = { name: "Priya Raman", profileSummary: "Accountant", experiences: withCpa.experiences };
+      const flagged = findUnsupportedClaims(letter, withCpa as never, "Kmart", jd, "Senior Accountant");
+      assert.ok(!flagged.some((term) => term.startsWith("credential")), `CPA held: ${flagged}`);
+      assert.ok(flagged.some((term) => term.startsWith("duty only the posting mentions")), `mentoring not flagged: ${flagged}`);
+      assert.ok(findUnsupportedClaims(letter, noCpa as never, "Kmart", jd, "Senior Accountant").some((term) => term.startsWith("credential: ")));
+      // A nurse who precepted graduates has mentored; the verb does not need to match.
+      const nurse = { name: "Sam", experiences: [{ companyName: "Alfred", description: "Precepted six graduate nurses through their first rotation." }] };
+      assert.ok(!findUnsupportedClaims("I mentored graduate nurses at the Alfred.", nurse as never, "RMH", "Mentor junior nurses.", "Registered Nurse").some((term) => term.startsWith("duty")));
+      // The flagged sentence is removed, the rest kept.
+      const stripped = stripUnsupportedSentences(`${letter}\n\nAt Harbour I own the month-end close for four entities and deliver reports on business day five, reconcile intercompany balances, and lodge quarterly BAS for a group with several entities and a large turnover. I also prepare management accounts and cash flow forecasts for thirty clients and train nobody. This experience fits the role well and I have enough words here to stay above the minimum length needed for the strip step to keep the letter, which is why this closing sentence runs a little longer than usual.`, ["duty only the posting mentions: mentored"], "Kmart");
+      assert.ok(stripped && !/mentored/.test(stripped));
+    },
+  },
+  {
     name: "model-check issues that quote the CV almost word for word are dropped; invented claims are kept",
     run: () => {
       const evidence = JSON.stringify([{ title: "CPG Seedcom", description: "Led a 6-person team delivering a Vietnamese-language AI assistant that converts business questions into executable SQL, reducing manual effort by 80%." }]);

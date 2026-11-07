@@ -1,6 +1,7 @@
 import { generateJsonSafe, getModel } from "@/lib/ai";
 import {
   buildCoverLetterPrompt,
+  buildQualificationsBlock,
   buildExperienceRankingPrompt,
   getCoverLetterContactDetails,
   getCoverLetterItems,
@@ -108,7 +109,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 
 const CLAIM_LEXICON = [
   "marketplace", "linux", "unix", "terabyte", "terabytes", "petabyte", "petabytes", "bare metal", "ansible", "jenkins", "prometheus", "grafana", "datadog", "splunk", "snowflake", "bigquery", "redshift", "kafka", "spark", "hadoop", "airflow", "dbt", "cloudformation", "helm", "istio", "nginx", "postgresql", "mongodb atlas", "oracle cloud", "sre", "devops", "site reliability",
-  "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
+  "cpa", "ahpra", "pmp", "cfa", "white card", "working with children", "police check", "security clearance", "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
   "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "master of", "doctor of", "master's degree", "masters degree", "postgraduate", "graduate diploma", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
@@ -184,9 +185,35 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
       if (words.some((word) => !educationWords.some((known) => known.startsWith(stem(word)) || word.startsWith(stem(known))))) degreeClaims.push(`degree field: ${field.trim()}`);
     }
   }
+  // "I hold an A-grade electrical licence" must come from the CV; a licence the posting requires is not the applicant's.
+  const credentialClaims: string[] = [];
+  {
+    const generic = new Set(["licence", "license", "licences", "licenses", "certification", "certifications", "certificate", "qualification", "qualifications", "registration", "accreditation", "ticket", "clearance", "current", "valid", "full", "with", "that", "this", "from", "have", "hold", "possess", "carry"]);
+    const stem = (word: string) => word.slice(0, 5);
+    const factWords = new Set(facts.replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter(Boolean).map(stem));
+    const pattern = /\b(?:I|I also|I currently)\s+(?:hold|possess|carry|have|am)\s+(?:an?\s+|the\s+|current\s+|valid\s+|full\s+|my\s+)*([^.,;:]{0,60}?\b(?:licen[cs]e|certificat(?:e|ion)|registration|accreditation|qualification|ticket|clearance)\b)/gi;
+    for (const match of text.matchAll(pattern)) {
+      const words = normalise(match[1]).replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter((word) => word.length >= 3 && !generic.has(word));
+      if (words.length && words.some((word) => !factWords.has(stem(word)))) credentialClaims.push(`credential: ${match[1].trim().slice(0, 60)}`);
+    }
+  }
+  // Duties the posting asks for ("mentor apprentices", "supervise a team") are not the applicant's unless the CV shows them.
+  const dutyClaims: string[] = [];
+  if (jobDescription) {
+    const jd = normalise(jobDescription);
+    const duties: Array<[string, string[]]> = [
+      ["mentor", ["mentor", "precept", "coach", "supervis", "train"]], ["coach", ["coach", "mentor", "precept", "supervis", "train"]],
+      ["supervis", ["supervis", "lead", "led ", "manag"]], ["manag", ["manag", "lead", "led ", "supervis", "own"]],
+      ["recruit", ["recruit", "hiring", "hired"]], ["negotiat", ["negotiat"]], ["onboard", ["onboard", "induct"]],
+    ];
+    for (const [verb, supported] of duties) {
+      const inLetter = new RegExp(`\\b${verb}\\w*`, "i").exec(text);
+      if (inLetter && jd.includes(verb) && !supported.some((word) => facts.includes(word))) dutyClaims.push(`duty only the posting mentions: ${inLetter[0].toLowerCase()}`);
+    }
+  }
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...relationship, ...echoes, ...postingTerms, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...relationship, ...echoes, ...postingTerms, ...credentialClaims, ...dutyClaims, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Turns a guard token ("echo: ...", "posting term: x") into wording an applicant can act on. */
@@ -196,6 +223,8 @@ export function describeClaim(term: string): string {
   if (term.startsWith("degree field: ")) return `a degree in ${term.slice(14)}, which your education record does not show`;
   if (term.startsWith("project as employer: ")) return `${term.slice(21)} is described as an employer, but it is a project in your CV`;
   if (term.startsWith("claims a history with the employer: ")) return `a past connection with the employer ("${term.slice(35)}")`;
+  if (term.startsWith("credential: ")) return `the credential "${term.slice(12)}", which your CV does not show`;
+  if (term.startsWith("duty only the posting mentions: ")) return `"${term.slice(32)}", a duty that only the job posting mentions`;
   if (term.startsWith("employment at ")) return `work at ${term.slice(14)}, which is not in your CV`;
   return term;
 }
@@ -266,7 +295,7 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.split(/(?<=[.!?])\s+(?=[A-Z"\u201C])/).map((sentence) => `${sentence} `);
-    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
+    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : term.startsWith("duty only the posting mentions: ") ? new RegExp(`\\b${term.slice(32).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(sentence) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
@@ -476,6 +505,11 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
       fixed = blocksNow.join("\n\n");
     }
   }
+  // The prompt forbids dashes as punctuation: "X — Y" becomes "X, Y", a numeric range keeps a hyphen, a non-breaking hyphen becomes a plain one.
+  fixed = fixed.replace(/(\d)\s*[\u2013\u2014]\s*(\d)/g, "$1-$2").replace(/\s*[\u2013\u2014]\s*/g, ", ").replace(/[\u2011\u2010]/g, "-");
+  // A sentence that starts "I bringing six years ..." lost its verb ending: use the base form.
+  const base: Record<string, string> = { bringing: "bring", having: "have", leading: "lead", owning: "own", delivering: "deliver", building: "build", designing: "design", developing: "develop", driving: "drive", combining: "combine", holding: "hold", architecting: "architect", spearheading: "spearhead", offering: "offer", providing: "provide" };
+  fixed = fixed.replace(/(^|[.!?]\s+|\n\n)I (bringing|having|leading|owning|delivering|building|designing|developing|driving|combining|holding|architecting|spearheading|offering|providing)\b/g, (_m, lead, gerund) => `${lead}I ${base[gerund]}`);
   return fixed;
 }
 
@@ -509,6 +543,7 @@ async function runCoverLetterPipeline(args: {
   const allItems = getCoverLetterItems(args.profile);
   const contact = getCoverLetterContactDetails(args.profile);
   const jobText = `${args.title} at ${args.company}\n${args.jobDescription.slice(0, 6000) || args.title}`;
+  const qualifications = buildQualificationsBlock(args.profile as Parameters<typeof buildQualificationsBlock>[0]);
   const selected = await selectEvidenceForJob(allItems, jobText, args.signal);
 
   let text = "";
@@ -548,6 +583,7 @@ async function runCoverLetterPipeline(args: {
       contactLines: contact.promptLines,
       prioritizedItems: selected,
       clarificationContext: args.clarificationContext,
+      qualifications,
     });
     // Two drafts on the same primary chain run side by side (the draft step takes seconds, so no wall time is added);
     // the draft with the fewest unsupported claims and structural defects is kept, the nearer to 230 words on a tie.
@@ -571,7 +607,8 @@ async function runCoverLetterPipeline(args: {
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\n${unsupportedTerms.length ? `Remove or avoid these unsupported items: ${unsupportedTerms.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${defectList.length ? ` The previous draft ${defectList.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
+        qualifications,
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupportedTerms.length ? `Remove or avoid these unsupported items: ${unsupportedTerms.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : describeClaim(term)).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${defectList.length ? ` The previous draft ${defectList.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
   });
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
@@ -623,7 +660,7 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   // (the usual case) its result is reused, so the check overlaps the verifier instead of following it.
   const finalise = (value: string) => repairLetterStructure(value, args.profile?.name, args.company, args.title).replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const speculativeText = finalise(text);
-  const runClaimCheck = (draft: string) => checkDraftClaims({ draft, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  const runClaimCheck = (draft: string) => checkDraftClaims({ draft, candidateName: args.profile?.name, evidence: qualifications ? [...allItems, { index: allItems.length, type: "experience" as const, title: "Qualifications on record", summary: "", description: qualifications }] : allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const speculativeCheck = within(85_000) ? runClaimCheck(speculativeText) : undefined;
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
