@@ -125,3 +125,15 @@ Production check of `73eac46` (pair in the letter route and in prepare; Artifici
 **Final configuration, three samples (2026-11-08)**: with the pipeline pair, the full guard and repair set, and the final redraw, three runs of the same 10 postings (r18 sequential, r19 three at a time, r21 sequential; 30 letters) scored 10/10, 9/10 and 10/10 clean. All 30 letters had 0 unsupported terms and 0 orphan sentences; the one structural defect (a third-person opening in r19) is now repaired; 1 of 30 letters was under 170 words. Letter time over the 30 letters is p50 92 s and p95 130 s, with one letter above 130 s (133 s, in the load run; the slowest sequential letter was 130 s). Metric 8 (letter p95 at most 130 s) is therefore met at its limit. The single-pipeline configurations before the pair had clean counts of 4/10 to 10/10 across runs and 5 letters above 130 s in 60.
 
 **Six-job prepare on production (2026-11-08, build `73eac46`, test account, nothing approved or submitted)**: six jobs prepared through the per-job prepare route three at a time (the same call and concurrency the batch prepare uses). All six returned 200 in 87-119 s each and 218 s in total, so a run of this size ends well inside the 285 s prepare deadline. Letters were 198-260 words, each opening with the role and company and ending with the plain sign-off. Four letters carried no warning; one showed the generic "We could not complete the evidence check" notice; one (Airwallex, the hardest posting for this CV) carried one model-check warning for the applicant to review. Job statuses were prepared or needs input (unanswered form questions).
+
+## Run r22 — three pipelines racing on the single-letter route (2026-11-08)
+
+Change: `runCoverLetterAgent` accepts `redundancy` up to 3; the `/api/auto-apply/job/[jobId]/cover-letter` route asks for 3 (advanced agent still runs once). `preparePending` keeps the pair, because it already runs three jobs at a time and a third pipeline would add model load there.
+
+Result, 10 live letters as lelekhoa1812 on localhost (same ten postings as r4–r21):
+
+- Clean: 10 of 10 (no defect, no unsupported claim, no orphan sentence, none under 150 words). No review warnings on any letter.
+- Latency: 53–104 s per letter (median about 79 s; the previous pair had a median of 92 s and p95 of 130 s). The slowest letter was 104 s.
+- Average length 220 words; the shortest was 181.
+
+Limit: a single 10-letter sample. The route's cost per letter rises by up to one extra pipeline's model calls (the losing pipelines are cancelled as soon as one is clean). Not yet checked on production.

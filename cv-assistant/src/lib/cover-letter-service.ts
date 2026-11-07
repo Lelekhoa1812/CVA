@@ -716,11 +716,11 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
 type CoverLetterPipelineArgs = Parameters<typeof runCoverLetterPipeline>[0];
 
 /**
- * Writes one cover letter. By default two complete pipelines run side by side: a letter with no findings is returned as soon as it
+ * Writes one cover letter. By default two complete pipelines run side by side (up to three with `redundancy: 3`): a letter with no findings is returned as soon as it
  * exists (the other pipeline is cancelled), otherwise the letter with the fewest findings wins. The advanced agent and `redundancy: 1` run once.
  */
 export async function runCoverLetterAgent(args: CoverLetterPipelineArgs & { redundancy?: number }): Promise<CoverLetterAgentResult> {
-  const copies = args.advanced ? 1 : Math.max(1, Math.min(2, args.redundancy ?? 2));
+  const copies = args.advanced ? 1 : Math.max(1, Math.min(3, args.redundancy ?? 2));
   if (copies === 1) return runCoverLetterPipeline(args);
 
   const controllers = Array.from({ length: copies }, () => new AbortController());

@@ -43,6 +43,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
       signal,
     });
     const result = await runCoverLetterAgent({
+      redundancy: advanced ? 1 : 3,
       profile,
       company: job.company,
       title: job.title,
