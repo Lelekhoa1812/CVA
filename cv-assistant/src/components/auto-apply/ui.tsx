@@ -79,7 +79,7 @@ export function timeAgo(value?: string) {
 
 export const STAGE_LABELS: Record<string, { label: string; tone: ChipTone }> = {
   discovered: { label: "Found", tone: "neutral" },
-  shortlisted: { label: "Good match", tone: "info" },
+  shortlisted: { label: "Shortlisted", tone: "info" },
   selected: { label: "Queued", tone: "info" },
   preparing: { label: "Preparing", tone: "info" },
   needs_input: { label: "Needs you", tone: "warning" },

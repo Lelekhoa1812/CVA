@@ -36,7 +36,7 @@ export default function Stepper({ steps, current, onSelect }: { steps: StepDef[]
                 <span className="min-w-0">
                   <span className="text-foreground block text-sm font-semibold sm:truncate">
                     {step.label}
-                    {step.count ? <span className="text-muted-foreground ml-1.5 text-xs font-medium">{step.count}</span> : null}
+                    {step.count ? <span className="text-muted-foreground block text-xs font-medium sm:ml-1.5 sm:inline">{step.count}</span> : null}
                   </span>
                   <span className="text-muted-foreground hidden truncate text-xs sm:block">{step.hint}</span>
                 </span>

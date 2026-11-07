@@ -132,6 +132,15 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "remembered sponsorship answers carry across differently worded questions",
+    run: () => {
+      const memory = [{ questionPattern: "Will you now or in the future require visa sponsorship?", answer: "No" }];
+      const other = answerDeterministically({ question: q("Will you now or in the future require visa sponsorship to work in the country this role is located?", "boolean"), profile, preferences: EMPTY_PREFERENCES, memory, company: "Decagon" });
+      assert.equal(other?.value, "No");
+      assert.equal(other?.needsInput, false);
+    },
+  },
+  {
     name: "user edits resolve missing answers and mapping failures stay flagged",
     run: () => {
       const missing = answerDeterministically({ question: q("What is your desired salary?"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "X" })!;

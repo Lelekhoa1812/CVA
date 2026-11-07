@@ -330,7 +330,9 @@ export function findMemoryAnswer(question: FormQuestion, memory: MemoryEntry[]):
     const score = (2 * shared) / (tokens.length + targetTokens.size || 1);
     if (!best || score > best.score) best = { entry, score };
   }
-  return best && best.score >= 0.8 ? best.entry : null;
+  // Employer-independent questions share one intent across phrasings, so a looser match is safe.
+  const threshold = question.category === "sponsorship" || question.category === "work_rights" || question.category === "notice" ? 0.4 : 0.8;
+  return best && best.score >= threshold ? best.entry : null;
 }
 
 /**
