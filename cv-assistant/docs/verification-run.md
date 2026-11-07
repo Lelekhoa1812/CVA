@@ -96,7 +96,7 @@ These records were not removed. Remove them if they are not wanted.
 | Defect seen in the run | Finding | Change | Re-run live? |
 |---|---|---|---|
 | Auto Apply "stopped early" message named a Prepare button that does not exist after a stalled search | The message was one fixed string. The stall itself came from the process ending while the dev server restarted, which is not an app defect | `stalledRunMessage(phase)` in `state.ts`: Matches and Prepare for a stalled preparation, "Press Search again" for a stalled search. Test added (`test:auto-apply` 55 of 55) | No. Unit test only |
-| Advanced Mode returned 504 with no letter | The advanced run used the whole 240 s request limit, leaving nothing for a fallback. The route also had no `maxDuration` | Advanced Mode has its own 150 s budget, then the standard writer runs and the letter carries a warning. `maxDuration = 300` is exported | No. Not re-run live. Advanced latency itself is unchanged |
+| Advanced Mode returned 504 with no letter | The advanced run used the whole 240 s request limit, leaving nothing for a fallback. The route also had no `maxDuration` | Advanced Mode has its own 150 s budget, then the standard writer runs and the letter carries a warning. `maxDuration = 300` is exported | **Yes.** Two live runs after the fix. The UI run returned 200 after about 161 s, where it had returned 504 at about 4 minutes. A direct request returned 200 in 167 s with `advancedFallback: true`, no trace, a 190-word letter and the warning "Advanced Mode did not finish, so the standard writer wrote this letter." So the fallback works. Advanced Mode still did not finish inside 150 s, so it did not produce its own letter in either run |
 | `&amp;` in Job Search card text, and a lead titled "Show more" | HTML entities were not decoded in JSON-LD text, and a UI control label was accepted as a title | Decode once, skip listings with no real title. 3 tests added (`test:search` 15 of 15) | No. Offline tests only |
 | Cover-letter eval passed 1 of 3, then 3 of 3 | Model output varies between runs. A separate session added deterministic repairs for third-person sentences and misplaced name blocks (commits 9c8efe5 and 2504a11) and tests for them | Not part of this documentation change | Not re-run after those commits |
 
@@ -105,7 +105,7 @@ Still open, and needing a product decision: Job Search relevance for boards that
 ## Not verified
 
 - Auto Apply prepare and the apply handoff (the run never completed, and the fix was only unit tested).
-- Cover-letter Advanced Mode producing its own letter, and the new fallback path live.
+- Cover-letter Advanced Mode producing its own letter. It did not finish within its 150 s budget in either re-run, so only the fallback path was seen live.
 - `agent:fill` and the Safari autofill script.
 - The eval's stability after the letter-guard commits.
 - Job Search results from the blocked platforms.
