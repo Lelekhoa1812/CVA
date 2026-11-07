@@ -1,6 +1,6 @@
 # CV Assistant architecture
 
-This document describes how the CV Assistant (CVA) app is built. It was written from the working tree of `cv-assistant/` on `main` (HEAD `e471681`) and checked on 2026-11-07. At that time the working tree had uncommitted changes to `README.md`, `src/lib/cover-letter-service.ts` and `tests/auto-apply/run-tests.ts`.
+This document describes how the CV Assistant (CVA) app is built. It was written from the working tree of `cv-assistant/` on `main` (HEAD `1ad5a82`) and checked on 2026-11-07. At that time the working tree had one uncommitted change, to `src/lib/cover-letter-service.ts`.
 
 Method and limits:
 
@@ -101,7 +101,7 @@ Runtime requirements: `package.json` has no `engines` field. The installed Next.
 | Path | Contents |
 |---|---|
 | `src/` | Application source (section 4) |
-| `public/` | UI fonts (`fonts/Manrope-Variable.ttf`, `fonts/Fraunces-Variable.ttf`) with their licence files, Noto Sans for PDFs (`fonts/NotoSans-Regular.ttf`, `fonts/NotoSans-Bold.ttf`), sample resume PDFs `style1.pdf` to `style5.pdf` used as style previews, `favicon.svg` and `logo.svg`. Several other files are not referenced (section 20) |
+| `public/` | UI fonts (`fonts/Manrope-Variable.ttf`, `fonts/Fraunces-Variable.ttf`) with licence files `fonts/Manrope-OFL.txt` and `fonts/Fraunces-OFL.txt`, Noto Sans for PDFs (`fonts/NotoSans-Regular.ttf`, `fonts/NotoSans-Bold.ttf`), style preview PDFs `style1.pdf` to `style5.pdf`, and `favicon.svg`. `logo.svg` and several other files are not referenced by the source (section 20) |
 | `docs/` | Reference notes (`ai-layer.md`, `api-reference.md`, `configuration.md`, `contributing.md`, `deployment.md`, `testing.md`, `auto-apply-quality-metrics.md`, `career-evaluation-pipeline.md`, a `features/` folder) and this document |
 | `scripts/` | Local browser-autofill tools (section 19). Not part of the web app |
 | `tests/` | Custom test runners without a test framework, for the AI client, search, Auto Apply, career and generation code (section 19) |
@@ -127,6 +127,7 @@ src/
   app/                        App Router: pages, root layout, global CSS, route handlers
     layout.tsx                Root layout: fonts, theme init script, ThemeProvider, Navbar
     globals.css               Design tokens (CSS variables), component classes, Tailwind layers
+    favicon.ico               Favicon served by the app directory
     page.tsx                  Home (/)
     login/page.tsx            Sign in and create account
     profile/layout.tsx        Mounts ExperienceLocationInjector on profile routes
@@ -179,11 +180,11 @@ There are no `loading.tsx`, `not-found.tsx` or global `error.tsx` files.
 | `Navbar.tsx` | Navigation bar, theme toggle, logout and mobile menu. Section 10.3 |
 | `ui/` | `button.tsx`, `badge.tsx`, `card.tsx`, `dialog.tsx`, `input.tsx`, `label.tsx`, `separator.tsx`, `switch.tsx`, `tabs.tsx`, `textarea.tsx`, `GlassPanel.tsx`, `HoverTooltip.tsx`, `ModuleShell.tsx`, `SectionHeading.tsx`. Section 11 |
 | `motion/Reveal.tsx` | `Reveal`, `StaggerGroup`, `StaggerItem`. Section 11.3 |
-| `auto-apply/useAutoApply.ts` | Controller hook for the Auto Apply workspace: loads sessions, polls the active session every 2.5 s while a run is active, runs actions |
+| `auto-apply/useAutoApply.ts` | Controller hook for the Auto Apply workspace: loads sessions, polls the active session every 2.5 s while the run phase is `searching`, `scoring` or `preparing`, runs actions |
 | `auto-apply/api.ts` | Typed client for the Auto Apply endpoints, all built with `buildApiUrl()` |
 | `auto-apply/types.ts`, `auto-apply/ui.tsx` | Client types (including `RUNNING_PHASES`) and small presentation primitives (`Chip`, `Spinner`, `Disclosure`, `EmptyState`, `timeAgo`) |
 | `auto-apply/BriefStep.tsx`, `MatchesStep.tsx`, `ReviewStep.tsx`, `ApplyStep.tsx`, `Stepper.tsx` | The four workspace steps: `brief`, `matches`, `review` and `apply` |
-| `auto-apply/ApplyStep.tsx` | Shows the autofill bookmarklet (built by `buildBookmarklet()`) and the pack for an approved job |
+| `auto-apply/ApplyStep.tsx` | Shows the autofill bookmarklet (`buildBookmarklet()` from `autofill-script.ts`) and the pack for an approved job |
 | `auto-apply/ActivityRail.tsx` | Session event log |
 | `generate/SectionNavigator.tsx`, `WorkspaceChrome.tsx`, `MobileGenerateBar.tsx` | Section navigation, disclosure and choice rows, and the mobile action bar |
 | `generate/ClarificationQuestions.tsx`, `ResultBlock.tsx`, `TracePanel.tsx` | Clarifying questions, generated-letter panel, and the Advanced Mode trace |
@@ -204,7 +205,7 @@ There are no `loading.tsx`, `not-found.tsx` or global `error.tsx` files.
 | `db.ts` | `connectToDatabase()`: cached Mongoose connection to the `cv_assistant` database. Section 8 |
 | `utils.ts` | `cn()` joins class names (it does not resolve Tailwind conflicts). `humanizeIdentifier()` |
 | `profile-import.ts` | Turns pasted text, a PDF (page images sent to NIM) or a DOCX (mammoth text) into a candidate profile |
-| `profile-sync.ts` | Writes a `localStorage` timestamp and dispatches `cv-assistant:profile-updated` so open views refresh |
+| `profile-sync.ts` | `broadcastProfileUpdated()` writes a `localStorage` timestamp and dispatches `cv-assistant:profile-updated`. No code in `src/` listens for either (section 20) |
 | `experience-ordering.ts` | Parses experience dates (including `present` and `current`) and sorts by recency |
 | `cover-letter.ts` | Selects evidence items and builds prompts for letters and employer answers |
 | `cover-letter-service.ts` | Auto Apply cover-letter agent (`runCoverLetterAgent`): generation, grounding, defect checks and repair |
@@ -219,7 +220,7 @@ One file per model: `User.ts`, `UserContext.ts`, `JobLead.ts`, `SearchCampaign.t
 | File | Role |
 |---|---|
 | `engine.ts` | Pipeline: discover, rank, resolve, score, shortlist, select and prepare. Also the run lock, heartbeat and standing-answer refresh. Section 15 |
-| `state.ts` | Stage list, allowed transitions (`canTransition`, `assertTransition`), lock and stall constants, and session phase helpers (`deriveSessionPhase`, `remainingApplicationSlots`) |
+| `state.ts` | Stage list, allowed transitions (`canTransition`, `assertTransition`), lock and stall constants, and session helpers (`deriveSessionPhase`, `remainingApplicationSlots`, `withJobDefaults`) |
 | `routes.ts` | `requireAutoApplyAuth()` and ownership loaders: `loadOwnedSession`, `loadOwnedJob`, `loadOwnedDraft`, `loadOwnedDraftByJob`. The loaders connect to MongoDB |
 | `types.ts` | Zod schemas for session creation and updates, filters, answers and submit requests |
 | `persistence.ts` | `createSessionWithSnapshot()` and `logAutoApplyEvent()` |
@@ -238,7 +239,7 @@ One file per model: `User.ts`, `UserContext.ts`, `JobLead.ts`, `SearchCampaign.t
 | `profile-draft.ts` | LLM distillation of the profile into an Auto Apply draft (used by the profile-draft route) |
 | `pack.ts` | Builds the autofill pack, its text form, and the URL-fragment encoding for the bookmarklet |
 | `autofill-script.ts` | Browser-side form filler, `AUTOFILL_VERSION = 6`. Runs as a bookmarklet or in the dev browser |
-| `submit-guard.ts` | Init script and matcher that block form submission in the browser flows |
+| `submit-guard.ts` | Init script and matcher that block form submission. Used only by `scripts/agent-fill.ts` and its tests (section 15.5) |
 | `browser.ts` | Screenshot data URLs, job-platform host detection, automation-blocker detection |
 | `browser-session.ts` | Dev-only visible Playwright Chromium sessions and single actions |
 | `site-auth.ts` | Per-site browser storage state and optional encrypted credentials, stored on local disk. Used only by `browser-session.ts`. Section 20 |
@@ -304,7 +305,7 @@ Only variable names are listed here. Values belong in local environment files or
 |---|---|---|
 | `MONGO_URI` | `src/lib/db.ts` | MongoDB connection string. Required. `connectToDatabase()` throws without it |
 | `JWT_SECRET` | `src/lib/auth.ts`. Also a fallback key source in `src/lib/auto-apply/site-auth.ts` | Signs and verifies auth tokens. Required for sign-in and account creation |
-| `NEXT_PUBLIC_BASE_PATH` | `next.config.ts`, `src/lib/api.ts` | Optional path prefix. Trimmed, trailing slashes removed, leading slash added. The `NEXT_PUBLIC_` prefix means client code receives it at build time |
+| `NEXT_PUBLIC_BASE_PATH` | `next.config.ts` (line 15), `src/lib/api.ts` (line 4) | Optional path prefix. Trimmed, trailing slashes removed, leading slash added. The `NEXT_PUBLIC_` prefix means client code receives it at build time |
 | `NVIDIA_NIM_API_KEY_1` to `NVIDIA_NIM_API_KEY_9` | `src/lib/ai.ts`, `src/instrumentation.ts` | Up to nine NIM keys. Blank values and duplicates are ignored |
 | `NVIDIA_NIM_BASE_URL` | `src/lib/ai.ts` | Default `https://integrate.api.nvidia.com/v1`. Trailing slashes are removed |
 | `NVIDIA_NIM_EASY_MODELS`, `NVIDIA_NIM_HARD_MODELS`, `NVIDIA_NIM_DOCUMENT_MODELS` | `src/lib/ai.ts` (built from the preset name) | Comma-separated model lists for each preset. Defaults in section 13.1. Not used by the fixed lists in `cover-letter-service.ts` |
@@ -317,8 +318,8 @@ Only variable names are listed here. Values belong in local environment files or
 | `CONTROL_ROOM_STRATEGIST_MODE` | `src/lib/career/career-strategist.ts` | Set to `heuristic` to use the non-LLM scorer. `tests/career/run-tests.ts` sets it |
 | `AUTO_APPLY_DEV_BROWSER` | `src/lib/auto-apply/browser-session.ts` | `true` enables visible browser sessions, but only when `NODE_ENV` is not `production` |
 | `AUTO_APPLY_BROWSER_HEADLESS` | `src/lib/auto-apply/browser-session.ts` | `true` or `false` overrides headless mode. Default: headless only in production |
-| `AUTO_APPLY_SITE_AUTH_SECRET` | `src/lib/auto-apply/site-auth.ts` | Key material for remembered site credentials. Falls back to `JWT_SECRET`, then to a fixed default string in the source (section 20) |
-| `NODE_ENV` | `src/lib/auth.ts` (cookie `secure` flag), `src/lib/auto-apply/browser-session.ts` | Set by Next.js and by the hosting platform |
+| `AUTO_APPLY_SITE_AUTH_SECRET` | `src/lib/auto-apply/site-auth.ts` | Key material for remembered site credentials. Falls back to `JWT_SECRET`, then to a fixed default string defined in `site-auth.ts` (section 20) |
+| `NODE_ENV` | `src/lib/auth.ts` (cookie `secure` flag), `src/lib/auto-apply/browser-session.ts` and other files | Set by Next.js and by the hosting platform |
 | `NEXT_RUNTIME` | `src/instrumentation.ts` | Set by Next.js. The key check runs only for the `nodejs` runtime |
 
 Names that appear in local environment files but are not read by any code in `src/`, `scripts/`, `tests/` or `evals/`:
@@ -341,7 +342,7 @@ Names that are read or set only by tests or evals:
 Browser
   |  GET /profile                        cookie auth_token (present once signed in)
   v
-middleware.ts (root) --re-exports--> src/middleware.ts     no runtime is set in the file, so Next.js applies its default
+middleware.ts (root) --re-exports--> src/middleware.ts     no runtime is set in the file
   |-- path starts with /login          -> next()
   |-- path starts with /api            -> next()   (route handlers check the JWT themselves)
   |-- no auth_token cookie             -> redirect (307) to {basePath}/login
@@ -385,8 +386,6 @@ export const config = {
 };
 ```
 
-The middleware imports only `next/server`.
-
 Which paths are guarded:
 
 | Request path | No cookie | Cookie present |
@@ -406,7 +405,7 @@ Setting `NEXT_PUBLIC_BASE_PATH` mounts the whole app under a path prefix:
 - `next.config.ts` normalises the value and sets Next.js `basePath`. Next.js then prefixes `<Link>` targets, router navigation and static asset URLs.
 - The middleware removes the base path before it matches guarded paths, and includes it in its redirect.
 - Client code calls the API through `buildApiUrl()`, defined in `src/lib/api.ts`. Nine other files import it: the Navbar, the control-room, search, generate and profile pages, the Auto Apply client (`auto-apply/api.ts`), the resume hook (`useResumeStudio.ts`), `resume/style-options.ts` and `ExperienceLocationInjector.tsx`.
-- Three call sites do not use the prefix. The sign-in page (`src/app/login/page.tsx`) calls both auth endpoints with plain `fetch` and redirects to a literal `/profile`. The resume route (`src/app/api/generate-resume/route.ts`) calls its own style routes through `req.nextUrl.origin`. Section 20 covers them.
+- Three call sites do not use the prefix. The sign-in page (`src/app/login/page.tsx`) calls both auth endpoints with plain `fetch` and literal paths, then calls `window.location.replace('/profile')`, which is not basePath-prefixed. The resume route (`src/app/api/generate-resume/route.ts`) calls its own style routes through `req.nextUrl.origin`. Section 20 covers them.
 
 ### 6.3 Pages and route handlers
 
@@ -451,7 +450,7 @@ Setting `NEXT_PUBLIC_BASE_PATH` mounts the whole app under a path prefix:
 | Route | Method | Behaviour |
 |---|---|---|
 | `/api/auth/register` | POST | Requires both fields (400). Checks whether the name is taken before it checks length and characters: a taken name returns 409 with four alternative usernames. Length 3 to 20 and the character rule return 400. Creates the user with the bcrypt hash, then signs the token and sets the cookie. Returns `{ ok: true }`. Any exception returns 500 with the raw `error.message` |
-| `/api/auth/login` | POST | 400 when a field is missing. 401 `Invalid credentials` for both an unknown user and a wrong password. Malformed JSON and any other exception return 500 `Server error`. Sets the cookie and returns `{ ok: true }` on success |
+| `/api/auth/login` | POST | 400 when a field is missing. The username is passed to `UserModel.findOne` unchanged. 401 `Invalid credentials` for both an unknown user and a wrong password. Malformed JSON and any other exception return 500 `Server error`. Sets the cookie and returns `{ ok: true }` on success |
 | `/api/auth/logout` | POST | Clears `auth_token`. The token itself is not revoked |
 
 The sign-in page (`src/app/login/page.tsx`) uses one form for both routes, with a toggle. After a successful response it calls `window.location.replace('/profile')`, a full document navigation that lets the browser apply the new cookie before the guarded page loads.
@@ -483,7 +482,7 @@ Handlers take `userId` from the verified token and use it in the queries they ma
 - Model files export their models with the `mongoose.models.X || mongoose.model(...)` pattern. This avoids a re-registration error when modules are reloaded in development.
 - `mongoose` is listed in `serverExternalPackages`, so Next.js does not bundle it.
 - Index creation uses Mongoose's defaults. No `autoIndex`, `syncIndexes` or `ensureIndexes` call appears in the code.
-- Handlers connect only when they query MongoDB, either directly or through a helper. The loaders in `src/lib/auto-apply/routes.ts` call `connectToDatabase()`, and so do some library functions such as `loadUserContextSnapshot()`.
+- Handlers connect only when they query MongoDB, either directly or through a helper. The loaders in `src/lib/auto-apply/routes.ts` (lines 17, 23, 29 and 38) and `src/lib/career/context.ts` (lines 235 and 308) call `connectToDatabase()`.
 - There are no migrations and no seed scripts.
 
 The 14 registered models and their collections are listed in [data-models.md](data-models.md#model-index).
@@ -557,7 +556,7 @@ The Navbar does not read the session. It renders the same links and the same Log
 
 ### 11.1 Components
 
-The UI kit is hand-written. It has no third-party component library and no Radix or class-variance dependency. Most components import React and `cn()`. Some also import other UI components: `dialog.tsx` imports `buttonVariants` from `button.tsx`, and `textarea.tsx` imports `controlClassName` from `input.tsx`.
+The UI kit is hand-written. It has no third-party component library and no Radix or class-variance dependency. Components import React, `cn()` and sometimes other UI modules (`dialog.tsx` imports `buttonVariants`; `textarea.tsx` imports `controlClassName`).
 
 | Component | File | Notes |
 |---|---|---|
@@ -583,14 +582,14 @@ The UI kit is hand-written. It has no third-party component library and no Radix
 - Design tokens are defined in `globals.css` on `:root` (dark defaults) and `.light` (overrides). They include `--background`, `--foreground`, `--card`, `--primary`, `--accent`, `--muted-foreground`, `--surface-1` to `--surface-3`, and status colours.
 - Component classes are in `@layer components`. Those used in the code are `.button-primary`, `.button-secondary`, `.input-premium`, `.textarea-premium`, `.glass-panel`, `.page-shell`, `.hero-card`, `.hero-title`, `.hero-copy`, `.section-kicker`, `.surface-subtle`, `.status-dot` and `.halo-ring`.
 - The Tailwind `content` globs list `./src/pages/**` (that folder does not exist), `./src/components/**` and `./src/app/**`.
-- Fonts: `font-display` maps to Fraunces and the body font to Manrope.
+- Fonts are set in `globals.css`, not in the Tailwind config. The `body` rule sets `font-family: var(--font-body), sans-serif` (line 102), and `.font-display` sets `font-family: var(--font-display), serif` (lines 185 and 186). `tailwind.config.ts` has no font mapping.
 
 ### 11.3 Motion helpers
 
 `src/components/motion/Reveal.tsx` (client component) exports three helpers built on framer-motion:
 
 - `Reveal` fades and lifts its children (opacity 0 to 1, 18 px upwards). It runs once when the element enters the viewport, with a `-10%` margin, over 0.55 s with the easing `[0.22, 1, 0.36, 1]`. The optional `delay` prop sets the start time.
-- `StaggerGroup` and `StaggerItem` stagger a list of children.
+- `StaggerGroup` staggers its children by 0.07 s after a 0.06 s delay. `StaggerItem` starts at opacity 0, 20 px lower and scaled to 0.985, and animates over 0.45 s.
 - All three use `useReducedMotion()`. When the user prefers reduced motion, they render a plain `<div>` without animation.
 
 `Reveal` is used on the home, profile and search pages. `StaggerGroup` and `StaggerItem` are used on the home, profile and generate pages.
@@ -603,12 +602,12 @@ The UI kit is hand-written. It has no third-party component library and no Radix
 |---|---|---|---|
 | `export const maxDuration = 300` | `auto-apply/session/[id]/run`, `auto-apply/job/[jobId]/prepare`, `auto-apply/job/[jobId]/cover-letter` | Raises the function time limit to 300 s | No other route sets `maxDuration` |
 | `after()` | `src/app/api/auto-apply/session/[id]/run/route.ts` (lines 32 and 41) | Returns `202 {"started": true}`, then runs `runPipeline()` or `preparePending()` after the response is sent | `RUN_BUDGET_MS` is 270 s |
-| Run lock | `claimRun()` in `src/lib/auto-apply/engine.ts` | An atomic `findOneAndUpdate` sets the phase to `searching`. A second run gets 409 unless the previous run is idle or stale | Stale means `run.updatedAt` is older than `RUN_STALL_MS` (150 s) |
+| Run lock | `claimRun()` in `src/lib/auto-apply/engine.ts` (lines 68 to 84) | An atomic `findOneAndUpdate` sets the phase to `searching`. It matches only when the current phase is not `searching`, `scoring` or `preparing`, or when `run.updatedAt` is older than `RUN_STALL_MS` or missing. Otherwise the run route returns 409 | `run.updatedAt` counts as stale when it is older than `RUN_STALL_MS` (150 s) |
 | Heartbeat | `startHeartbeat()` in `engine.ts` (line 60) | Updates `run.updatedAt` every 20 s while the phase is `searching`, `scoring` or `preparing` | Stopped when the run ends |
-| Stall recovery | `GET /api/auto-apply/session/[id]` (lines 24 to 32) | Marks a run as stalled when its heartbeat has stopped, so the workspace does not show "running" forever | Recovery happens on read, not in a background job |
-| Cancel | `POST /api/auto-apply/session/[id]/cancel` | Sets `run.phase` to `cancelled`. `isCancelled()` checks stop the pipeline | Cooperative. Checked between stages and before each application is prepared |
+| Stall recovery | `GET /api/auto-apply/session/[id]` (lines 24 to 32) | When `isRunStalled()` is true (`state.ts`, line 71), sets the run phase to `idle` (line 26) and moves jobs in `preparing` back to `selected` (line 30) | Recovery happens on read, not in a background job |
+| Cancel | `POST /api/auto-apply/session/[id]/cancel` | Sets `run.phase` to `cancelled`. `isCancelled()` is checked in `runPipeline()` (`engine.ts` line 117) and in `preparePending()` (lines 377 and 385) | Cooperative. Takes effect at the next check |
 | Polling | `useAutoApply()` in `src/components/auto-apply/useAutoApply.ts` (line 156) | Refreshes the active session every 2,500 ms while the run phase is `searching`, `scoring` or `preparing` | Client-side. No push channel |
-| NDJSON stream | `POST /api/search/jobs/stream` (lines 173 and 174) | One JSON event per line, `application/x-ndjson`, `Cache-Control: no-cache, no-transform` | Intent expansion (an LLM call) runs before the first byte. The search page reads the body with `getReader()` and can abort with an `AbortController` |
+| NDJSON stream | `POST /api/search/jobs/stream` (lines 173 and 174) | One JSON event per line, `application/x-ndjson`, `Cache-Control: no-cache, no-transform` | Intent expansion runs before the first byte and calls NIM only when the request has a search instruction (`intent.ts`, lines 40 to 43). The search page reads the body with `getReader()` and can abort with an `AbortController` |
 | Source retries | `src/lib/search/server/stream.ts` (`SOURCE_ERROR_RETRIES` = 2) | Up to two retries per source, after waits of 600 ms and 1,200 ms | Sources run one after another |
 | Client timeout | `src/app/generate/page.tsx` (line 279) | An `AbortController` aborts the clarifying-questions request after 60 s | Client-side |
 
@@ -624,9 +623,13 @@ There is no Server-Sent Events endpoint and no WebSocket. In `src/`, the only `t
 | Auto Apply run budget | 270 s (`RUN_BUDGET_MS`) | `src/lib/auto-apply/engine.ts` |
 | Auto Apply board crawl | 70 s (`BOARD_CRAWL_MS`) | `engine.ts` |
 | Employer form resolution | 20 s per job. New resolutions stop after 60 % of the run budget | `engine.ts` |
-| Fit scoring | 90 s overall | `engine.ts` |
-| Auto Apply preparation lock | 4 minutes (`PREPARE_LOCK_MS`) | `src/lib/auto-apply/state.ts` |
-| Cover-letter model call | 40 s default (`timeoutMs`). Grounding calls use `GROUNDING_CALL_TIMEOUT_MS` | `src/lib/cover-letter-service.ts` |
+| Fit scoring | 90 s overall | `engine.ts` (line 253) |
+| Application preparation | 200 s (`AbortSignal.timeout(200_000)`) | `engine.ts` (line 442) |
+| Auto Apply preparation lock | 4 minutes (`PREPARE_LOCK_MS`) | `src/lib/auto-apply/state.ts` (line 64) |
+| Cover-letter model call | 40 s (`MODEL_CALL_TIMEOUT_MS`, line 34), overridable per call with `timeoutMs` | `src/lib/cover-letter-service.ts` |
+| Cover-letter grounding call | 40 s (`GROUNDING_CALL_TIMEOUT_MS`, line 21) | `src/lib/cover-letter-service.ts` (line 422) |
+| Cover-letter request, standard and advanced | 240 s overall signal | `src/app/api/generate/cover-letter/route.ts` (line 51) |
+| Job description page fetch | 12 s | `src/lib/auto-apply/jd.ts` (line 51) |
 | Claim check | 18 s (`CHECK_TIMEOUT_MS`) | `src/lib/generate/claim-check.ts` |
 | ATS client requests | 9 s default; 12 s for Ashby | `src/lib/auto-apply/ats-clients.ts` |
 | Listing fetch for Control Room enrichment | 10 s | `src/lib/career/market-analyst.ts` |
@@ -660,21 +663,24 @@ Which features use which preset:
 | Profile section enhance and explore | `hard` | `src/app/api/enhance/route.ts` |
 | Resume enhance, summarise and style parser | `easy` | `src/app/api/resume/enhance`, `summarize`, `style-parser` |
 | Resume coach, targeted rewrite and beautify | `hard` | `src/app/api/resume/coach`, `enhance-targeted`, `beautify` |
-| Resume PDF helpers (`maybeEnhanceContent`, `maybePrepareNarrative`) | `hard`, then `easy` | `src/lib/resume/pdf-renderer.ts` |
+| Resume PDF helpers | `hard` in `maybeEnhanceContent()` (line 207). `easy` in `maybePrepareNarrative()` (line 237) | `src/lib/resume/pdf-renderer.ts` |
 | Resume AI coaching board | `hard` | `src/lib/resume/ai-coaching.ts` |
 | Evidence selection on `/generate` | `hard` | `src/app/api/generate/select/route.ts` |
 | Clarifying questions | `easy` | `src/app/api/generate/clarifications/route.ts` |
-| Standard cover letter | `hard`, then `easy` | `src/app/api/generate/cover-letter/route.ts` |
-| Advanced cover letter | Preset from `AsyncLocalStorage`, default `hard` | `src/lib/cover-letter-advanced.ts` |
-| Cover-letter agent: ranking and generation | `easy`, plus fixed model lists | `src/lib/cover-letter-service.ts` |
-| Cover-letter verifier | `hard` | `src/lib/cover-letter-service.ts` (line 404) |
-| Employer question | Chosen in the route | `src/app/api/generate/employer-question/route.ts` |
+| Standard cover letter | `hard` (line 28), a second `hard` attempt (line 35), then `easy` (line 40) | `src/app/api/generate/cover-letter/route.ts` (`generateWithFallback`) |
+| Advanced cover letter | Preset from `AsyncLocalStorage` (`presetStore`, line 227), default `hard` | `src/lib/cover-letter-advanced.ts` |
+| Cover-letter agent: experience ranking | `easy` (line 85) | `src/lib/cover-letter-service.ts` |
+| Cover-letter agent: letter generation and repairs | `easy` preset with a per-call override from `COVER_LETTER_MODELS` (line 17), used by `generateLetterText` (line 38) | `src/lib/cover-letter-service.ts` |
+| Cover-letter agent: grounding rewrite | `easy` preset with a per-call override from `GROUNDING_MODELS` (line 20) | `src/lib/cover-letter-service.ts` (line 422) |
+| Cover-letter verifier (returns JSON issues) | `hard` | `src/lib/cover-letter-service.ts` (line 440) |
+| Employer question | `hard` (`generateWithFallback`), a second `hard` attempt after 500 ms, then `easy`. `advancedMode` (line 82) falls back to this path (line 106) | `src/app/api/generate/employer-question/route.ts` |
 | Claim check | `easy` | `src/lib/generate/claim-check.ts` |
 | Job understanding (Control Room) | `easy` | `src/lib/career/job-understanding.ts` |
 | Lead fit strategist | `hard` | `src/lib/career/career-strategist.ts` |
 | Lead display parsing (detail view only, `allowAi: true`) | `easy` | `src/lib/career/control-room.ts` (line 129) |
 | Overview recommendations | `easy` | `src/lib/career/control-room.ts` (line 239) |
-| Search intent and advanced questions | `easy` | `src/lib/search/server/intent.ts` |
+| Search instruction expansion | `easy`, only when the request has a search instruction. Otherwise a deterministic fallback (lines 40 to 43) | `src/lib/search/server/intent.ts` |
+| Advanced search questions | `easy` | `src/lib/search/server/intent.ts` |
 | Auto Apply fit scoring | `easy` | `src/lib/auto-apply/fit.ts` |
 | Auto Apply answers | `easy` | `src/lib/auto-apply/prepare.ts` |
 | Auto Apply profile draft | `easy` | `src/lib/auto-apply/profile-draft.ts` |
@@ -692,6 +698,8 @@ Rules in the client:
 - `max_tokens` is the smaller of `NVIDIA_NIM_MAX_TOKENS` (default 65536) and a per-model cap: 16,384 for `poolside/laguna-xs-2.1`; 65,536 for `nemotron-3-nano-omni`; 1,048,576 for `step-5-preview` and `deepseek-v4.1-flash`; 32,768 for the rest.
 - The scheduling state lives in module-level maps. Each serverless instance has its own copy, as the comment in `ai.ts` notes.
 - Requests that set `previousResponseId`, `tools` or `extraInputItems` throw. Those fields need the Responses API, which this client does not use.
+
+The cover-letter agent keeps its own fixed model lists, `COVER_LETTER_MODELS` (`src/lib/cover-letter-service.ts`, line 17) and `GROUNDING_MODELS` (line 20). It passes each model to the client as a per-call override, so the `NVIDIA_NIM_*_MODELS` variables do not change those calls.
 
 ### 13.2 Employer ATS APIs
 
@@ -716,9 +724,9 @@ The discovery source `ats-directory.ts` holds 59 employer boards, each with a pr
 
 ### 13.4 Documents and browser automation
 
-- **Profile import.** `src/lib/profile-import.ts` renders up to 12 PDF pages to JPEG (quality 85) with pdf.js and `@napi-rs/canvas`, sends them to the `document` preset, and extracts DOCX text with mammoth.
+- **Profile import.** `src/lib/profile-import.ts` rejects a PDF with more than 12 pages (line 168). Each PDF page contributes its text. A page with under 100 characters of text, or with image operators, is also rendered with `@napi-rs/canvas` as a JPEG (quality 85). The text and page images go to the `document` preset. DOCX text comes from `mammoth.extractRawText()` (line 214).
 - **Resume PDFs.** `src/lib/resume/pdf-renderer.ts` draws A4 pages (595.28 by 841.89 points) with pdf-lib and Noto Sans, limited to `MAX_PAGES` = 2. The same module can call NIM through `maybeEnhanceContent()` (preset `hard`) and `maybePrepareNarrative()` (preset `easy`, for the summary and skills text).
-- **Cover-letter PDFs.** `src/app/api/generate/cover-letter/pdf/route.ts` draws US Letter pages (612 by 792 points). It renders the `premium`, `compact` and `micro` presets in that order and returns the first render that fits `MAX_PDF_BYTES` (512 KB). If none fits, it returns the smallest render with `withinLimit` set to `false`.
+- **Cover-letter PDFs.** `src/app/api/generate/cover-letter/pdf/route.ts` draws US Letter pages (612 by 792 points). It renders the `premium`, `compact` and `micro` presets in that order and returns the first render that fits `MAX_PDF_BYTES` (512 KB). If none fits, it returns the smallest render with `withinLimit` set to `false` (lines 457 to 467). The 512 KB limit is therefore not guaranteed (section 20).
 - **Playwright.** `src/lib/auto-apply/browser-session.ts` launches Chromium. The browser routes (`browser/start` and `browser/action`) return 404 unless `isVisibleBrowserEnabled()` is true, which requires `NODE_ENV` not to be `production` and `AUTO_APPLY_DEV_BROWSER` to be `true`. The scripts in `scripts/` also use Playwright or safaridriver.
 
 ### 13.5 MongoDB
@@ -769,7 +777,7 @@ Browser  POST /api/auth/login {username, password}
 ```text
 Browser  POST /api/ocr   (multipart file, or JSON {text})
   -> getAuthFromCookies
-  -> PDF:  pdf.js renders up to 12 pages to JPEG -> NIM "document" preset
+  -> PDF:  page text, and JPEG renders of pages with little text or images (over 12 pages is rejected) -> NIM "document" preset
      DOCX: mammoth extracts text                 -> NIM "document" preset
      text:                                       -> NIM "document" preset
   <- normalised profile JSON (not saved yet)
@@ -805,7 +813,7 @@ Browser  POST /api/generate/cover-letter/pdf     -> pdf-lib letter (premium, com
 Browser  POST /api/search/jobs/stream {search request}
   -> getAuthFromCookies; zod (searchRequestSchema)
   -> usercontexts: loadUserContextSnapshot
-  -> expandSearchInstruction (intent.ts, NIM "easy")
+  -> expandSearchInstruction (intent.ts; NIM "easy" only when a search instruction is given)
   -> searchcampaigns.create
   -> streamSearchJobs: sources one after another (fetch and cheerio)
        events: status | source-progress | progress | result | complete | error   (NDJSON)
@@ -820,7 +828,7 @@ Browser  POST /api/control-room/leads/{id}/orchestrate
   -> usercontexts, outcome telemetry, users.profile
   -> enrichLead: fetch listing (10 s) -> text -> liveness -> job understanding (NIM "easy")
                  -> jobleads saved (lifecycle "enriched")
-  -> scoreLeadFit: NIM "hard" strategist, or the heuristic (section 16) -> jobevaluations
+  -> scoreLeadFit: NIM "hard" strategist, or the heuristic (section 16; forced heuristic mode skips guardrails) -> jobevaluations
   -> if recommendation is not "skip": createTailoringArtifacts
        -> tailoringruns + generatedartifacts (resume_html, resume_json)
   -> applicationevents: scored, then tailored and exported (or self_filtered and stop);
@@ -867,7 +875,7 @@ Browser  POST /api/auto-apply/job/{id}/applied {confirm: true}   -> "applied" (s
 | `skipped` | Excluded by the user or by a run guard |
 | `failed` | Preparation failed. Can be retried |
 
-Legacy values written by the previous engine (`ready_for_review`, `submitted`, `manual_apply_recommended`) are still in the enum. `normalizeStage()` maps them when it reads them (`LEGACY_STAGES`: `prepared`, `applied` and `discovered`). Unknown values also normalise to `discovered`.
+Legacy values written by the previous engine (`ready_for_review`, `submitted`, `manual_apply_recommended`) are still in the enum. `normalizeStage()` maps them when it reads them (`LEGACY_STAGES`: `ready_for_review` to `prepared`, `submitted` to `applied`, and `manual_apply_recommended` to `discovered`). Unknown values also normalise to `discovered`.
 
 Allowed transitions (`TRANSITIONS` in `state.ts`). Staying in the same stage is always allowed (`canTransition`):
 
@@ -888,11 +896,11 @@ Allowed transitions (`TRANSITIONS` in `state.ts`). Staying in the same stage is 
 
 ### 15.2 Pipeline steps (runPipeline)
 
-1. **Discovery.** The board crawl (`streamSearchJobs`, capped at 70 s) and `discoverFromDirectory()` run in parallel (`Promise.all` in `engine.ts`). The directory search covers the employer boards in `ats-directory.ts` (59 entries). Employer-board postings get a `career_site` source.
-2. **Heuristic ranking.** `rankAutoApplyCandidates()` scores everything. Employer-board postings get a +12 bonus when sorting. Duplicate apply URLs are skipped. The top 28 (`SCORE_TOP_N`) go to the next step.
+1. **Discovery.** The board crawl (`streamSearchJobs`, capped at 70 s) and `discoverFromDirectory()` run in parallel (`Promise.all` in `engine.ts`). The directory search covers the employer boards in `ats-directory.ts` (59 entries). Employer-board postings are tagged `discoveredVia` `career_site` (`engine.ts` line 167).
+2. **Heuristic ranking.** `rankAutoApplyCandidates()` scores everything. Employer-board postings get a +12 bonus in the sort (`engine.ts` line 206). Duplicates are removed by dedupe key and by exact title and company (`dedupeJobs()`, `ranking.ts` lines 43 to 77), not by apply URL. The top 28 (`SCORE_TOP_N`) go to the next step.
 3. **Resolution.** Each of the 28 is resolved to its employer form, six at a time (`mapWithConcurrency`). Each lookup has a 20-second timeout signal. New resolutions stop once 60 % of the run budget has elapsed.
-4. **LLM fit scoring.** `scoreJobsWithLlm()` scores the 28 in batches of six, with a 90-second overall signal. A job without an LLM result keeps a heuristic score capped at 58 (`Math.min(job.fitScore, 58)`).
-5. **Persist.** `bulkWrite` upserts one `AutoApplyJobCandidate` per job, keyed by session and dedupe key. Scores are capped by guards: with no location the score is capped at 61 (one below the shortlist threshold), a location that does not match the target gives at most 40, and a board result whose title does not match the role gives at most 74. Jobs with a fit score of 62 or more and no blacklist flag move to `shortlisted`.
+4. **LLM fit scoring.** `scoreJobsWithLlm()` (`fit.ts`) scores the 28 in batches of six, four batches at a time, under a 90-second overall signal (`engine.ts` line 253). A failed batch returns no LLM results (`fit.ts` lines 87 and 88). A job without an LLM result is capped at `Math.min(job.fitScore, 58)` (`engine.ts` line 261).
+5. **Persist.** `bulkWrite` upserts one `AutoApplyJobCandidate` per job, keyed by session and dedupe key. Scores are capped by guards: with no location, at most 61 (one below the shortlist threshold, `engine.ts` line 264); a location that does not match the target, at most 40 (line 265); a job-board result whose title does not match the role, at most 74 (line 266). Jobs with a fit score of 62 or more and no blacklist or exclusion flag move to `shortlisted` (line 311).
 6. **Selection.** In `manual_curate` mode the run stops with status `awaiting_selection`. In any other mode (the default is `ai_coaching`), `autoSelect(applicationLimit)` selects the best shortlisted jobs, then `preparePending()` prepares them three at a time.
 
 ### 15.3 Preparation (prepareJobById)
@@ -913,19 +921,19 @@ Allowed transitions (`TRANSITIONS` in `state.ts`). Staying in the same stage is 
 | `BOARD_CRAWL_MS` | 70,000 ms | `engine.ts` (line 26) |
 | Resolution concurrency | 6 | `engine.ts` |
 | Preparation concurrency | 3 | `engine.ts` |
-| Fit batch size | 6 | `src/lib/auto-apply/fit.ts` |
+| Fit batch size and batch concurrency | 6 and 4 | `src/lib/auto-apply/fit.ts` (lines 15 and 68) |
 | Heartbeat interval | 20,000 ms | `engine.ts` (line 63) |
-| `RUN_STALL_MS` | 150,000 ms | `state.ts` |
-| `PREPARE_LOCK_MS` | 240,000 ms | `state.ts` |
+| `RUN_STALL_MS` | 150,000 ms | `state.ts` (line 66) |
+| `PREPARE_LOCK_MS` | 240,000 ms | `state.ts` (line 64) |
 | Employer ATS description text | Up to 20,000 characters (`MAX_DESCRIPTION_CHARS`) | `ats-clients.ts` |
 | Job board description | `MAX_DESCRIPTION_CHARS` 9,000; `RICH_DESCRIPTION_CHARS` 1,500; `MIN_USEFUL_CHARS` 300 | `src/lib/auto-apply/jd.ts` |
 
 ### 15.5 Submission safety
 
 - The app never submits an application. `applied` is the user's own attestation, recorded with `confirm: true`.
-- `submit-guard.ts` provides an init script and a matcher that block form submission in the browser flows.
+- `submit-guard.ts` is used only by `scripts/agent-fill.ts` (lines 15, 53, 56 and 60) and its tests. `isSubmitRequest()` decides which requests look like submissions, and `SUBMIT_GUARD_INIT_SCRIPT` is the in-page init script.
 - `scripts/agent-fill.ts` aborts requests that look like application submissions at the network layer.
-- The autofill bookmarklet tells the user to review every field and press the employer's Submit button themselves.
+- The autofill bookmarklet tells the user to review every field and press the employer's Submit button themselves (`src/lib/auto-apply/autofill-script.ts`, line 261).
 
 ## 16. Control Room pipeline
 
@@ -933,7 +941,7 @@ Leads come from search (`recordSearchLead`) or from the Control Room. Each lead 
 
 - Lifecycle states are declared as `lead_found`, `enriched`, `scored`, `tailored`, `exported`, `tracked` and `followup_due` (`src/lib/career/types.ts`). The code writes `lead_found`, `enriched`, `scored` and `exported`. `tailored` is read but never written, and `tracked` and `followup_due` are never written (section 20).
 - Recommendations are `unscored`, `prioritize`, `consider` and `skip`. Evaluations use `prioritize`, `consider` and `skip`.
-- `analysisSource` on evaluations is `llm`, `heuristic` or `fallback`. `CONTROL_ROOM_ANALYSIS_VERSION` is 2.
+- `analysisSource` on evaluations is `llm`, `heuristic` or `fallback`. Fallback results record `CONTROL_ROOM_ANALYSIS_VERSION` (2). Results from the forced heuristic mode record `analysisVersion` 0.
 
 `orchestrateLead()` in `src/lib/career/workflow.ts` runs the steps in order:
 
@@ -950,8 +958,9 @@ Leads come from search (`recordSearchLead`) or from the Control Room. Each lead 
 
 `getControlRoomOverview()` and `getLeadDetail()` in `src/lib/career/control-room.ts` read these collections:
 
+- The overview reads the six most recent campaigns, the 24 most recently updated leads, the 24 most recent evaluations, and counts all generated artifacts (lines 262 to 265). Its lifecycle counts are computed over those 24 leads (lines 262 to 273), not over the whole pipeline (section 20).
 - Company and location display parsing can call NIM (`parseCompanyLocationWithAi`, preset `easy`). It runs only when `buildLeadDisplayInfo()` receives `allowAi: true`. The overview passes `allowAi: false` (line 314), and the single-lead detail view passes `allowAi: true` (line 365).
-- The overview also calls `buildStrategistRecommendations()` (line 215), which asks NIM (preset `easy`, line 239) for 2 to 3 short recommendations from a pipeline summary. A heuristic version exists at line 162. This call is not gated by `allowAi` (section 20).
+- `getControlRoomOverview()` calls `buildStrategistRecommendations()` (defined at line 215, called at line 342). That function asks NIM (preset `easy`, line 239) for 2 to 3 short recommendations from a pipeline summary. The heuristic version (line 162) is returned at line 253. This call is not gated by `allowAi` (section 20).
 
 The shorter note `docs/career-evaluation-pipeline.md` covers the same pipeline. It was not used as a source for this document.
 
@@ -968,14 +977,14 @@ Purpose: the landing screen for signed-in users. It presents three pillars (Prof
 
 ### 17.2 `/login`: `src/app/login/page.tsx`
 
-Purpose: one form for signing in and creating an account, switched by a toggle. It shows the server's error, and for a taken username it offers up to four alternatives as buttons. A successful response triggers a full navigation to `/profile`. The page is not guarded, because the middleware passes `/login` through.
+Purpose: one form for signing in and creating an account, switched by a toggle. It shows the server's error. For a taken username it offers the server's alternative usernames as buttons that fill the username field. A successful response triggers a full navigation to `/profile`. The page is not guarded, because the middleware passes `/login` through.
 
 - Main components: `GlassPanel`.
 - API routes: `POST /api/auth/login` and `POST /api/auth/register`, called with plain `fetch` and no base-path prefix (section 20).
 
 ### 17.3 `/profile`: `src/app/profile/page.tsx` with `layout.tsx`
 
-Purpose: the editor for the candidate profile stored on `User.profile`. It covers identity, skills, experiences and projects. An import dialog accepts pasted text, a PDF or a DOCX. Each item has an AI enhance and explore action. Experience ordering uses `experience-ordering.ts`. Saved changes are announced with `profile-sync.ts`, so other open views refresh. The layout adds `ExperienceLocationInjector`, which adds location fields to experience cards.
+Purpose: the editor for the candidate profile stored on `User.profile`. It covers identity, skills, experiences and projects. An import dialog accepts pasted text, a PDF or a DOCX. AI help calls `POST /api/enhance`, in `enhance` or `explore` mode for text sections, and through a separate bullet path for items. Experience ordering (`experience-ordering.ts`) is used by this page and by `api/profile/route.ts`. Saves call `broadcastProfileUpdated()` (`profile-sync.ts`), but no code in `src/` listens for the event (section 20). The layout adds `ExperienceLocationInjector`, which adds location fields to experience cards.
 
 - Main components: `ModuleShell`, `SectionHeading`, `GlassPanel`, `Reveal`, `StaggerGroup`, `StaggerItem`, `HoverTooltip`, `ExperienceLocationInjector`.
 - API routes: `GET` and `PUT /api/profile`; `POST /api/enhance` (`enhance` and `explore` modes); `POST /api/ocr` (file or text import). The injector also calls `GET` and `PUT /api/profile`.
@@ -1028,7 +1037,7 @@ Auth column: "cookie" means the handler calls `getAuthFromCookies` or `requireAu
 | `/api/auth/register` | POST | none | Creates an account and sets the cookie (section 7.4) |
 | `/api/auth/login` | POST | none | Signs in and sets the cookie |
 | `/api/auth/logout` | POST | none | Clears the cookie. No server-side revocation |
-| `/api/test` | GET | none | MongoDB connectivity check. Returns the raw error message with 500. No caller in the repository |
+| `/api/test` | GET | none | MongoDB connectivity check. Returns the raw error message with status 500 on failure (`src/app/api/test/route.ts` lines 4 to 14). No caller in the repository |
 
 ### 18.2 Auto Apply (16 files)
 
@@ -1068,7 +1077,7 @@ Auth column: "cookie" means the handler calls `getAuthFromCookies` or `requireAu
 | `/api/generate/clarifications` | POST | cookie | Clarifying questions (NIM "easy"). Rejects a `Content-Length` above 100,000 bytes (413). Input limits: company 300, job description 18,000, question 4,000 characters |
 | `/api/generate/cover-letter` | POST | cookie | Letter with standard (NIM "hard", then "easy") or Advanced Mode (`advancedMode` in the body). Runs the claim check. Same `Content-Length` check |
 | `/api/generate/cover-letter/pdf` | POST | cookie | Letter PDF. Renders the `premium`, `compact` and `micro` presets in turn and returns the first within 512 KB (section 13.4) |
-| `/api/generate/employer-question` | POST | cookie | Answers one employer question, standard or advanced. Same `Content-Length` check |
+| `/api/generate/employer-question` | POST | cookie | Answers one employer question. Standard generation tries `hard`, a second `hard` attempt after 500 ms, then `easy`. `advancedMode` falls back to standard generation on error. Same `Content-Length` check |
 | `/api/profile` | GET, PUT | cookie | Reads or updates `User.profile`. Writes summaries for changed items (NIM "easy") |
 | `/api/enhance` | POST | cookie | Enhances or explores one profile text section (NIM "hard"). Used by `/profile` |
 | `/api/ocr` | POST | cookie | Profile import from a multipart file (PDF of up to 12 pages, or DOCX) or from a JSON `{text}` body |
@@ -1078,7 +1087,7 @@ Auth column: "cookie" means the handler calls `getAuthFromCookies` or `requireAu
 | Route | Methods | Auth | Purpose and notes |
 |---|---|---|---|
 | `/api/generate-resume` | POST | cookie | Orchestrates the resume PDF. Validates the body with zod. Optional AI coaching. Calls the style route on its own origin, forwarding the cookie. Used by `/resume` |
-| `/api/resume/style1` to `/api/resume/style5` | POST (each) | cookie | Renders the resume PDF in one template with `renderResumePdf`. Rejects more than `MAX_RESUME_ITEMS` (20) selected items. Called by `/api/generate-resume` |
+| `/api/resume/style1` to `/api/resume/style5` | POST (each) | cookie | Renders the resume PDF in one template with `renderResumePdf`. Returns 400 `Please select at least one project or experience` for an empty selection, and 400 `Too many items selected` when the selection is over the limit. Called by `/api/generate-resume` |
 | `/api/resume/enhance-targeted` | POST | cookie | Targeted rewrite of one item (NIM "hard"). Used by `/resume` |
 | `/api/resume/beautify` | POST | cookie | Adds Markdown emphasis without changing facts (NIM "hard"). Used by `/resume` |
 | `/api/resume/enhance` | POST | cookie | Expands content by about 50 % (NIM "easy"). No caller in the repository |
@@ -1110,16 +1119,17 @@ Auth column: "cookie" means the handler calls `getAuthFromCookies` or `requireAu
 | `test:auto-apply` | Same runner, `tests/auto-apply/run-tests.ts` | Auto Apply rules, state and questions |
 | `verify:career` | `npm run lint && npm run test:unit && npm run test:auto-apply` | Combined check |
 | `eval:letters` | `npx --yes promptfoo@0.125.1 eval -c evals/promptfooconfig.yaml --no-cache` | Cover-letter regression suite. Makes live NIM calls |
-| `agent:fill` | `scripts/agent-fill.ts` | Local Playwright fill. Never submits |
-| `test:autofill-live` | `scripts/autofill-live.ts` | Playwright harness that runs the autofill script against a live form |
-| `test:autofill-safari` | `scripts/autofill-safari.ts` | Autofill in Safari through safaridriver. Nothing is submitted |
+| `agent:fill` | Same runner, `scripts/agent-fill.ts` | Local Playwright fill. Never submits |
+| `test:autofill-live` | Same runner, `scripts/autofill-live.ts` | Playwright harness that runs the autofill script against a live form |
+| `test:autofill-safari` | Same runner, `scripts/autofill-safari.ts` | Autofill in Safari through safaridriver. Nothing is submitted |
 
-The six files in `tests/generate/` (clarifications, claim check, cancellation, prompts and validation) have no npm script and must be run by hand. `tests/` is excluded from the TypeScript project in `tsconfig.json`, so `next build` does not type-check it.
+The six files in `tests/generate/` (`cancellation-tests.ts`, `claim-check-tests.ts`, `clarifications-ui.test.ts`, `clarifications.test.ts`, `prompt-tests.ts` and `validation.test.ts`) have no npm script and must be run by hand. `tests/` is excluded from the TypeScript project in `tsconfig.json`, so `next build` does not type-check it.
 
 ### 19.2 Evaluation suite
 
 - `evals/promptfooconfig.yaml` defines one prompt, `{{title}} at {{company}}`, with a provider at `file://provider.js`.
-- The default assertion requires the letter to have between 170 and 400 words.
+- `defaultTest` has four JavaScript assertions. The letter must have 170 to 400 words, or at least 100 words when the agent flags it as short (warning text "letter is short because"). It must have no unsupported claims and no defects, where "too short" is ignored for a flagged letter. It must be written in the first person ("I") and must not use the word "candidate".
+- There are three test cases: Northwind Labs (AI Engineer, skills that match the fixture profile), Contoso Cloud (Senior Machine Learning Engineer, asking for Go, Databricks and OAuth skills the profile does not support) and Fabrikam (Software Engineer, a thin job description).
 - `evals/provider.js` runs `evals/run-letter.ts`. That script loads `.env` and `.env.local` by hand, sets any variables not already set, and calls `runCoverLetterAgent()` (the same code as Auto Apply). The suite therefore makes live NIM calls.
 - `evals/fixtures/profile.json` is the fixture profile (name, email, major, school, skills, projects and experiences).
 - The config comment says the suite needs `NVIDIA_API_KEY`. The code reads the `NVIDIA_NIM_API_KEY_n` variables (section 20).
@@ -1138,7 +1148,7 @@ The items below were found while reading the code. Each one names its location. 
 |---|---|---|---|---|
 | 1 | Base path | The sign-in form posts to literal `/api/auth/login` and `/api/auth/register`, and redirects to literal `/profile`. None of these uses the base path, so they break when `NEXT_PUBLIC_BASE_PATH` is set | `src/app/login/page.tsx` (the two fetch calls and the `window.location.replace` call) | Use `buildApiUrl()` for the requests, and a base-path-aware redirect |
 | 2 | Base path | The resume route calls `${req.nextUrl.origin}/api/resume/...`. That skips the base path, and it makes a second HTTP request for each resume | `src/app/api/generate-resume/route.ts` (line 91) | Call the shared renderer directly instead of fetching over HTTP. Otherwise use the base path |
-| 3 | Middleware | Two middleware files exist: `middleware.ts` at the root and `src/middleware.ts`. The root file only re-exports the other, so behaviour is the same either way. Next.js decides which file it uses at build time | `middleware.ts`, `src/middleware.ts`, `node_modules/next/dist/build/index.js` | Confirm with a production build, then delete the root file |
+| 3 | Middleware | Two middleware files exist: `middleware.ts` at the root and `src/middleware.ts`. The root file only re-exports the other, so behaviour is the same either way. Which file Next.js loads was not confirmed, because no build was run | `middleware.ts`, `src/middleware.ts` | Confirm with a production build, then delete the root file |
 | 4 | Middleware | The matcher excludes only `_next/` and `favicon.ico`. Other public files, such as `/favicon.svg`, the fonts and the style PDFs, pass through the cookie check. A signed-out visitor gets a redirect instead of the file, including for the favicon the layout declares | `src/middleware.ts`, `src/app/layout.tsx` | Extend the matcher to cover static assets, then check on a deployed build |
 | 5 | Auth | Sign-out does not revoke the token. A copied token stays valid for up to 7 days. No server-side session exists | `src/lib/auth.ts`, logout route | Accept as a known limit, or add a token version or deny list |
 | 6 | Auth | `/api/test` is unauthenticated and returns the raw error message on failure | `src/app/api/test/route.ts` | Remove the route, or protect it and return a generic message |
@@ -1146,27 +1156,32 @@ The items below were found while reading the code. Each one names its location. 
 | 8 | Auth | Login and register check only that fields are present. A JSON object is passed to `findOne` unchanged, so Mongo query operators are accepted as the username. Register runs its duplicate lookup before its format checks. Malformed JSON on sign-in returns 500 rather than 400. Sign-in runs bcrypt only for existing users, so response timing reveals whether a username exists | `src/app/api/auth/login/route.ts`, `register/route.ts` | Require string values with zod, validate before the lookup, return 400 for bad bodies, and compare against a dummy hash for unknown users |
 | 9 | Auth | No password policy. Username uniqueness is case-sensitive, so `Alice` and `alice` can both exist | `register/route.ts`, `User.ts` | Add a minimum length, and decide whether usernames are case-insensitive |
 | 10 | Database | `connectToDatabase()` keeps a rejected connection promise. Every later call in that process fails until it is recycled, even after the database recovers | `src/lib/db.ts` (lines 22 to 25) | Clear `global.mongoose.promise` when the connect call fails |
-| 11 | Secrets | Remembered site credentials use AES-256-GCM. The key is SHA-256 of `AUTO_APPLY_SITE_AUTH_SECRET`, else `JWT_SECRET`, else a fixed default string defined in the source. With no secret set, the key is public. If the key comes from `JWT_SECRET`, rotating that secret breaks saved credentials | `src/lib/auto-apply/site-auth.ts` (line 24) | Require an explicit secret for this feature |
+| 11 | Secrets | Remembered site credentials use AES-256-GCM. The key is SHA-256 of `AUTO_APPLY_SITE_AUTH_SECRET`, else `JWT_SECRET`, else a fixed default string defined in `site-auth.ts`. With no secret set, the key is public. If the key comes from `JWT_SECRET`, rotating that secret breaks saved credentials | `src/lib/auto-apply/site-auth.ts` (line 24) | Require an explicit secret for this feature |
 | 12 | Secrets | Browser storage state (cookies and local storage for job sites) is written as plain JSON under `.codex-data/auto-apply/site-auth/`. Only the development browser path uses this module | `src/lib/auto-apply/site-auth.ts` (line 104) | Encrypt the storage state, or keep it in memory |
 | 13 | Rendering | Resume and letter PDF code reads fonts with `fs.readFileSync(path.join(process.cwd(), 'public', 'fonts', ...))` at module load. Only `/api/ocr` is listed in `outputFileTracingIncludes`. The fonts may be missing from the deployed function bundle | `src/app/api/resume/embed-noto-sans-fonts.ts` (lines 10 to 13), `next.config.ts` (lines 20 to 25) | Add the font paths to `outputFileTracingIncludes`, then test the PDF routes on a preview deployment |
-| 14 | Rendering | The resume PDF library (`src/lib/resume/pdf-renderer.ts`) imports from `src/app/api/resume/`. Library code therefore depends on the app directory | `pdf-renderer.ts` | Move the two helper modules to `src/lib/` |
+| 14 | Structure | Library code imports from the app directory. `src/lib/resume/pdf-renderer.ts` (lines 3 and 5) and the letter PDF route (`src/app/api/generate/cover-letter/pdf/route.ts`, lines 6 and 7) import helpers from `src/app/api/resume/` | `pdf-renderer.ts`, `cover-letter/pdf/route.ts` | Move the helper modules (`pdf-layout.ts`, `embed-noto-sans-fonts.ts`) to `src/lib/` |
 | 15 | Workflow | The `state.ts` header says every route that changes a stage calls `assertTransition`. Only the job PATCH route does. Other routes rely on query guards or direct writes | `src/lib/auto-apply/state.ts` (lines 1 and 2), job route (line 70) | Correct the comment, or route every stage change through the same guard |
 | 16 | Data | `AutoApplyUploadedFile` (binary `data` in MongoDB) is never created or read. The `uploadedResumeId`, `uploadedAdditionalDocumentIds`, `resumeFileId`, `coverLetterFileId` and `additionalDocumentFileIds` fields point at it and are never set. No upload route exists, so there are no upload size limits in the code | `src/lib/models/AutoApplyUploadedFile.ts` and the fields above | Remove the model and fields, or implement upload with size limits |
-| 17 | Data | Enum values with no writer. `JobLead.lifecycleState`: `tailored` (read only), `tracked`, `followup_due`. `ApplicationEvent.type`: `context_updated`, `tracked`, `followup_due`. `TailoringRun.status`: `planned` (schema default, always overwritten) and `generated`. `GeneratedArtifact.artifactType`: `cover_letter_html`. `AutoApplyMemory.scope`: `session`. `AutoApplyMemory.source`: all values except `user`. `AutoApplySession.status`: `ranking`, `applying`, `browser_active`, `awaiting_user_answer`, `submitting`, `submitted`, `blocked`, `ready_for_review`, `completed`. `AutoApplyApplicationDraft.finalReviewStatus`: `confirmed`, `submitted`, `blocked`. `browser_active` is used only as a browser mode value | Models, `src/lib/career/types.ts`, `src/lib/auto-apply/browser-session.ts` | Remove the unused values, or add the missing writes |
+| 17 | Data | Enum values with no writer. `JobLead.lifecycleState`: `tailored` (read only), `tracked`, `followup_due`. `ApplicationEvent.type`: `context_updated`, `tracked`, `followup_due`. `TailoringRun.status`: `generated` (`planned` is only the schema default). `GeneratedArtifact.artifactType`: `cover_letter_html`. `AutoApplyMemory.scope`: `session`. `AutoApplyMemory.source`: all values except `user`. `AutoApplySession.status`: `ranking`, `applying`, `browser_active`, `awaiting_user_answer`, `submitting`, `submitted`, `blocked`, `ready_for_review`, `completed`. `AutoApplyApplicationDraft.finalReviewStatus`: `confirmed`, `submitted`, `blocked`. `AutoApplyJobCandidate.status`: `manual_apply_recommended` is set in memory only (`ranking.ts`), and `ready_for_review` and `submitted` are legacy values read through `LEGACY_STAGES`. `browser_active` is a browser session mode (`browser-session.ts` and the browser routes), not a session status | Models, `src/lib/career/types.ts`, `src/lib/auto-apply/browser-session.ts` | Remove the unused values, or add the missing writes |
 | 18 | Routes | Routes with no caller in `src/`, `scripts/` or `evals/`: `/api/search/advanced`, `/api/auto-apply/session/[id]/events`, `/api/auto-apply/profile-draft`, `/api/auto-apply/job/[jobId]/browser/start` and `browser/action`, `/api/resume/enhance`, `/api/resume/summarize`, `/api/resume/style-parser`, `/api/resume/coach`, `/api/test` | Section 18 | Confirm nothing outside the repository calls them, then remove them or document them |
 | 19 | Config | `evals/promptfooconfig.yaml` says it needs `NVIDIA_API_KEY`. The code reads `NVIDIA_NIM_API_KEY_1` to `_9`, so the comment is stale | `evals/promptfooconfig.yaml` (line 1) | Correct the comment |
 | 20 | Config | Names in local environment files that no code reads: Azure AI Foundry variables and `GEMINI_API` in `.env`, and the E2E and user test variables in `.env.test.local`. `AUTO_APPLY_BROWSER_ENABLED` is read only by a test | Section 5 | Remove them, or document why they exist |
 | 21 | Dependencies | `sucrase` is used by the test scripts and by `tests/generate/clarifications-ui.test.ts` but is not declared. It is present only as a dependency of `tailwindcss`. `formidable` is declared but never imported | `package.json` | Declare `sucrase` as a dev dependency. Remove `formidable` |
 | 22 | Tests | The six `tests/generate/*` files have no npm script. `tests/` is excluded from the TypeScript project | `package.json`, `tsconfig.json` | Add a script, or add the files to the test set |
 | 23 | Models | The cover-letter agent keeps its own hard-coded model lists (`COVER_LETTER_MODELS`, `GROUNDING_MODELS`), so the `NVIDIA_NIM_*_MODELS` overrides do not reach it | `src/lib/cover-letter-service.ts` (lines 17 and 20) | Read these lists from the same configuration |
-| 24 | Theme | `ThemeProvider` starts with `'dark'` and writes the class and `localStorage` before the stored preference is read. The final state is right. A flash or a briefly overwritten preference is possible | `src/contexts/ThemeContext.tsx` (lines 14 and 26) | Read the stored preference in the inline script only, and keep the provider as a reader |
+| 24 | Theme | `ThemeProvider` starts with `'dark'` and writes the class and `localStorage` before the stored preference is read. The final state is right. A flash or a briefly overwritten preference is possible | `src/contexts/ThemeContext.tsx` (line 14 and lines 22 to 27) | Read the stored preference in the inline script only, and keep the provider as a reader |
 | 25 | Navigation | The Navbar does not read the session. It shows the same links and Logout to everyone, including on `/login` | `src/components/Navbar.tsx` | Accept as a design choice, or hide the navigation on `/login` |
 | 26 | Profile | `ExperienceLocationInjector` adds inputs to React-rendered cards with DOM queries and a `MutationObserver`, and saves by PUTting the full experiences array. It re-reads the profile before each save, which reduces but does not remove the risk of overwriting a concurrent edit | `src/components/profile/ExperienceLocationInjector.tsx` | Move the field into the React profile form |
-| 27 | Concurrency | `recordSearchLead()` finds a lead and then creates it. Two simultaneous searches can hit the unique `(userId, dedupeKey)` index and fail with a duplicate-key error. `loadUserContextSnapshot()` has the same shape, with the unique `userId` index | `src/lib/career/search-persistence.ts` (line 21), `src/lib/career/context.ts` (lines 237 and 245) | Use an upsert, and catch the duplicate-key error |
+| 27 | Concurrency | `recordSearchLead()` finds a lead and then creates it. Two simultaneous searches can hit the unique `(userId, dedupeKey)` index and fail with a duplicate-key error. `loadUserContextSnapshot()` has the same shape, with the unique `userId` index | `src/lib/career/search-persistence.ts` (lines 21 and 43), `src/lib/career/context.ts` (lines 237 and 245) | Use an upsert, and catch the duplicate-key error |
 | 28 | UI | `cn()` joins class names without resolving Tailwind conflicts | `src/lib/utils.ts` | Use `tailwind-merge` if conflicts become a problem |
-| 29 | Assets | `public/1.pdf`, `public/harvard.webp`, `public/file.svg`, `public/next.svg`, `public/window.svg` and `public/logo.svg` are not referenced by the source. `logo.svg` is the only one of these with a plausible use | `public/` | Remove them if they are not used by an external document |
+| 29 | Assets | None of these files is referenced by the source: `public/1.pdf`, `public/harvard.webp`, `public/file.svg`, `public/next.svg`, `public/window.svg` and `public/logo.svg` | `public/` | Remove them if no external document uses them |
 | 30 | Scripts | `scripts/autofill-live.ts` contains hard-coded sample applicant details and a specific live job URL | `scripts/autofill-live.ts` | Move the sample data to a fixture file |
 | 31 | Limits | No rate limiting on sign-in or on the NIM-backed routes. The per-process key scheduler is the only throttle, and it is not shared between instances | `src/lib/ai.ts` | Add rate limiting at the platform or in middleware |
-| 32 | Limits | Only three generation routes check `Content-Length` (`generate/cover-letter`, `generate/employer-question` and `generate/clarifications`), and each check is skipped when the header is absent. The other generation and resume routes have no body-size guard | `src/app/api/generate/*` | Read the body with a size cap |
-| 33 | Limits | The Control Room overview can make a NIM call on each request that reaches `buildStrategistRecommendations()`. The call is not gated by `allowAi`, and the code does not show a cache | `src/lib/career/control-room.ts` (line 239) | Cache the recommendations per user and pipeline state, or move them to a background step |
-| 34 | Limits | The resume PDF renderer calls NIM (`maybeEnhanceContent` and `maybePrepareNarrative`). The five style routes depend on NIM availability for that step, and none of them sets `maxDuration` | `src/lib/resume/pdf-renderer.ts` (lines 201 to 237), `src/app/api/resume/style1` to `style5` | Set an explicit time budget for the PDF routes, and document the NIM dependency |
+| 32 | Limits | Only three generation routes check `Content-Length` (`generate/cover-letter`, `generate/employer-question` and `generate/clarifications`), and each check is skipped when the header is absent. The other generation and resume routes have no `Content-Length` check | `src/app/api/generate/*` | Read the body with a size cap |
+| 33 | Limits | `getControlRoomOverview()` calls `buildStrategistRecommendations()` (line 342), which can make a NIM call (line 239) on each overview request. The call is not gated by `allowAi`, and no cache is shown | `src/lib/career/control-room.ts` (lines 239 and 342) | Cache the recommendations per user and pipeline state, or move them to a background step |
+| 34 | Limits | The resume PDF renderer calls NIM (`maybeEnhanceContent` and `maybePrepareNarrative`). The five style routes depend on NIM availability for that step, and none of them sets `maxDuration` | `src/lib/resume/pdf-renderer.ts` (`maybeEnhanceContent`, line 207; `maybePrepareNarrative`, line 237), `src/app/api/resume/style1` to `style5` | Set an explicit time budget for the PDF routes, and document the NIM dependency |
+| 35 | Limits | The letter PDF route does not guarantee its 512 KB limit. When no preset fits, it returns the smallest render with `withinLimit` set to `false` | `src/app/api/generate/cover-letter/pdf/route.ts` (lines 457 and 467) | Return an error, or a reduced-content fallback, when `withinLimit` is `false` |
+| 36 | Auto Apply | LinkedIn and Indeed postings are marked `manual_apply_recommended` in memory, with a `restricted_source_manual_guidance` flag. The persist step drops risk flags that start with `restricted`, and stores these jobs as `discovered`, so they can be shortlisted and prepared like other jobs | `src/lib/auto-apply/ranking.ts` (lines 28, 108 and 126 to 127), `src/lib/auto-apply/engine.ts` (lines 295 and 303) | Decide the intended behaviour, then persist the restriction or block those sources |
+| 37 | Control Room | The overview's lifecycle counts are computed in JavaScript over the 24 most recently updated leads, not over all of the user's leads. The artifact count is a full `countDocuments` | `src/lib/career/control-room.ts` (lines 262 to 273) | Count with a database aggregation if totals are needed |
+| 38 | Profile | `broadcastProfileUpdated()` writes `cv-assistant:profile-updated-at` to `localStorage` and dispatches `cv-assistant:profile-updated`. No listener for either exists in `src/`, so the event refreshes no open view | `src/lib/profile-sync.ts` (lines 1 to 14) | Add the listener, or remove the broadcast |
+| 39 | Documentation | `docs/api-reference.md` (2,734 lines) overlaps the route inventory in this document and was not reconciled with it | `docs/api-reference.md` | Reconcile the two, and keep one as the source for route details |
