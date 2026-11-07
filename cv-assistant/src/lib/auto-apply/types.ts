@@ -77,7 +77,6 @@ export const createAutoApplySessionSchema = z.object({
 
 export const updateAutoApplySessionSchema = z.object({
   mode: autoApplyModeSchema.optional(),
-  status: autoApplyStatusSchema.optional(),
   prompt: z.string().trim().optional(),
   filters: autoApplyFiltersSchema.partial().optional(),
   selectedGroundTruthIds: z.array(z.string()).optional(),

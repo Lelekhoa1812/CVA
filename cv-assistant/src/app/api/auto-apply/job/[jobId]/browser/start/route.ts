@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAutoApplySupervisorModel } from "@/lib/ai";
 import { isKnownJobPlatformUrl } from "@/lib/auto-apply/browser";
-import { startVisibleBrowserSession } from "@/lib/auto-apply/browser-session";
+import { isVisibleBrowserEnabled, startVisibleBrowserSession } from "@/lib/auto-apply/browser-session";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 
@@ -21,8 +21,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
 
   const hasRestrictedSourceGuidance = job.riskFlags.includes("restricted_source_manual_guidance");
 
-  const body = await req.json().catch(() => ({}));
-  let screenshotBase64 = typeof body.screenshotBase64 === "string" ? body.screenshotBase64 : "";
+  if (!isVisibleBrowserEnabled()) return NextResponse.json({ error: "Not available." }, { status: 404 });
+  let screenshotBase64 = "";
   let startReason = "";
   let startBlockers: string[] = [];
   if (!screenshotBase64) {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
   const employerLoginActive = startBlockers.includes("employer_login_required");
   const isJobPlatform = isKnownJobPlatformUrl(job.applyUrl || job.url);
   let guidance = employerLoginActive
-    ? "Employer-site login or account creation is visible. Continue autonomously: click through the flow, create or use an account when possible, fill fields from the candidate profile, and ask the user only for secrets, CAPTCHA, MFA, or missing facts."
+    ? "Employer-site login or account creation is visible. The user should sign in or create their own account before continuing."
     : isJobPlatform
       ? PLATFORM_LOGIN_GUIDANCE
       : "Browser preview is live. Continue autonomously through the application flow and ask the user only when a required answer cannot be inferred safely.";
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
             role: "user",
             parts: [
               {
-                text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only as plain UI text. Do not use Markdown, bold markers, italic markers, headings, numbered lists, hyphen bullets, or raw snake_case identifiers. Prioritize autonomous browser actions. If this is an employer-site login or account creation flow, proceed with clicks, scrolling, field completion, and document upload where possible; ask the user only for secrets, CAPTCHA, MFA, or facts not available in the profile. If this is a job platform login such as LinkedIn, SEEK, Indeed, CareerOne, Adzuna, Talent.com, or a LinkedIn sign-in modal, instruct the user to sign in manually before the assistant continues. Mention that Google sign-in can fail inside the agent browser with a browser-not-secure warning and should be completed in the user's normal browser instead.`,
+                text: `Inspect the visible job application page for ${job.title} at ${job.company}. Return safe next action guidance only as plain UI text. Do not use Markdown, bold markers, italic markers, headings, numbered lists, hyphen bullets, or raw snake_case identifiers. Describe what is visible and what the user should do next. Never create accounts or enter passwords on the user's behalf. If this is a job platform login such as LinkedIn, SEEK, Indeed, CareerOne, Adzuna, Talent.com, or a LinkedIn sign-in modal, instruct the user to sign in manually before the assistant continues. Mention that Google sign-in can fail inside the agent browser with a browser-not-secure warning and should be completed in the user's normal browser instead.`,
               },
               { inlineData: { data: screenshotBase64, mimeType: "image/png" } },
             ],

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cv-assistant",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "cv-assistant", "run", "dev", "--", "-p", "3100"],
+      "port": 3100
+    }
+  ]
+}

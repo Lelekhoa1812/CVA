@@ -29,3 +29,8 @@ export async function loadOwnedDraft(userId: string, applicationId: string) {
 export function isAuthPayload(value: AuthTokenPayload | NextResponse): value is AuthTokenPayload {
   return !(value instanceof NextResponse);
 }
+
+export async function loadOwnedDraftByJob(userId: string, jobId: string) {
+  await connectToDatabase();
+  return AutoApplyApplicationDraftModel.findOne({ jobCandidateId: jobId, userId });
+}

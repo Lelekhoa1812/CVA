@@ -235,6 +235,18 @@ The application uses MongoDB with the following main collections:
 - **Projects**: Project portfolio items with AI-enhanced content
 - **Skills**: User skills and competencies
 
+### 🤖 Auto Apply (assisted apply)
+
+`/auto-apply` finds roles, reads each employer's real application form, and prepares complete applications that **you** submit.
+
+1. **Brief** – role, location and standing answers (work rights, salary, notice, relocation). Sensitive answers come only from you, never from AI guesses.
+2. **Matches** – roles from employer career sites (Greenhouse, Lever, Ashby, SmartRecruiters) plus job boards, LLM-scored against your profile. Autopilot picks the best matches; or choose manually.
+3. **Review** – per-job answers and a tailored cover letter. Tick "Remember" to reuse an answer. Approve one job or "Approve all ready".
+4. **Apply** – "Open form & copy pack" opens the employer form; the bookmarklet autofills it and never submits. Confirm "I submitted it" to track progress.
+
+Pipeline runs after the response (`after()`, `maxDuration = 300`) and the UI polls the session. Tests: `npm run test:auto-apply`.
+The legacy Playwright live preview is dev-only: set `AUTO_APPLY_DEV_BROWSER=true` (never active in production).
+
 ## 🎯 Usage Guide
 
 ### 1. Getting Started

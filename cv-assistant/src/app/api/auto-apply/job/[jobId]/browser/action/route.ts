@@ -6,7 +6,7 @@ import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-ap
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const allowedActions = new Set(["click", "type", "select", "upload", "screenshot", "read_dom", "scroll", "save_site_login", "stop"]);
+const allowedActions = new Set(["click", "type", "select", "screenshot", "read_dom", "scroll", "save_site_login", "stop"]);
 
 export async function POST(req: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   const auth = requireAutoApplyAuth(req);
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
   if (!job) return NextResponse.json({ error: "Job candidate not found." }, { status: 404 });
 
   if (!isVisibleBrowserEnabled()) {
-    return NextResponse.json({ error: "Browser automation is disabled." }, { status: 403 });
+    return NextResponse.json({ error: "Not available." }, { status: 404 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -30,7 +30,6 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
       type: body.type,
       selector: body.selector,
       value: body.value,
-      filePath: body.filePath,
       direction: body.direction,
       url: body.url,
       userId: auth.userId,

@@ -209,9 +209,8 @@ const tests: TestCase[] = [
       process.env.NODE_ENV = "production";
       delete process.env.AUTO_APPLY_BROWSER_ENABLED;
       delete process.env.AUTO_APPLY_BROWSER_HEADLESS;
-      assert.equal(isVisibleBrowserEnabled(), true);
+      assert.equal(isVisibleBrowserEnabled(), false, "the local Playwright browser is never available in production");
 
-      process.env.AUTO_APPLY_BROWSER_ENABLED = "false";
       const disabled = await startVisibleBrowserSession("test-browser-session", "https://example.com");
       assert.equal(disabled.mode, "manual_guided");
       assert.equal(disabled.reason, "browser_unavailable");

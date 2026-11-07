@@ -31,11 +31,17 @@ const AutoApplyApplicationDraftSchema = new Schema(
     riskNotes: { type: [String], default: [] },
     finalReviewStatus: {
       type: String,
-      enum: ["not_ready", "ready", "confirmed", "submitted", "blocked"],
+      enum: ["not_ready", "needs_input", "ready", "approved", "applied", "confirmed", "submitted", "blocked"],
       default: "not_ready",
       index: true,
     },
     submittedAt: { type: Date, default: null },
+    applyUrl: { type: String, default: "" },
+    formSource: { type: String, default: "" },
+    payloadHash: { type: String, default: "" },
+    approvedAt: { type: Date, default: null },
+    generatedBy: { type: String, default: "" },
+    preparedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

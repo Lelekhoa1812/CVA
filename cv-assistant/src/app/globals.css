@@ -32,9 +32,25 @@
     --hero-muted: 218 24% 79%;
     --kicker: 192 89% 76%;
     --shadow-color: 229 63% 4%;
+    --success: 152 62% 62%;
+    --success-soft: 152 60% 40% / 0.16;
+    --warning: 40 96% 66%;
+    --warning-soft: 40 95% 55% / 0.16;
+    --info: 204 94% 72%;
+    --info-soft: 204 90% 60% / 0.16;
+    --danger: 0 86% 74%;
+    --danger-soft: 0 80% 60% / 0.16;
   }
 
   .light {
+    --success: 152 70% 24%;
+    --success-soft: 152 60% 40% / 0.14;
+    --warning: 32 90% 28%;
+    --warning-soft: 40 95% 50% / 0.2;
+    --info: 206 80% 30%;
+    --info-soft: 206 88% 48% / 0.12;
+    --danger: 0 70% 38%;
+    --danger-soft: 0 74% 50% / 0.12;
     --background: 48 100% 97%;
     --foreground: 222 41% 16%;
     --card: 0 0% 100%;
@@ -339,6 +355,18 @@
     background: hsl(var(--surface-1) / 0.75);
     color: hsl(var(--muted-foreground));
   }
+
+  .status-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-5;
+    border-color: hsl(var(--chip) / 0.35);
+    background: hsl(var(--chip-soft));
+    color: hsl(var(--chip));
+  }
+  .status-success { --chip: var(--success); --chip-soft: var(--success-soft); }
+  .status-warning { --chip: var(--warning); --chip-soft: var(--warning-soft); }
+  .status-info { --chip: var(--info); --chip-soft: var(--info-soft); }
+  .status-danger { --chip: var(--danger); --chip-soft: var(--danger-soft); }
+  .status-neutral { --chip: var(--muted-foreground); --chip-soft: var(--surface-2) / 0.7; }
 
   .status-dot {
     @apply inline-block h-2 w-2 rounded-full;

@@ -27,6 +27,8 @@ const AutoApplyEventSchema = new Schema(
   { timestamps: true },
 );
 
+AutoApplyEventSchema.index({ sessionId: 1, createdAt: -1 });
+
 export type AutoApplyEvent = InferSchemaType<typeof AutoApplyEventSchema>;
 
 export const AutoApplyEventModel: Model<AutoApplyEvent> =

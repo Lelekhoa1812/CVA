@@ -44,6 +44,8 @@ const UserSchema = new Schema({
   username: { type: String, required: true, unique: true, index: true },
   passwordHash: { type: String, required: true },
   profile: { type: ProfileSchema, default: {} },
+  // Answers to recurring application questions (work rights, salary, notice...) reused by Auto Apply.
+  autoApplyPreferences: { type: Schema.Types.Mixed, default: {} },
 });
 
 export type Project = InferSchemaType<typeof ProjectSchema>;

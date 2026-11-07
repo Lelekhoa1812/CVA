@@ -39,10 +39,10 @@ declare global {
 const sessions = globalThis.autoApplyBrowserSessions ?? new Map<string, BrowserSession>();
 globalThis.autoApplyBrowserSessions = sessions;
 
+// Local-development only: a Playwright browser cannot persist between serverless invocations, so this is never
+// available in production. Enable locally with AUTO_APPLY_DEV_BROWSER=true.
 export function isVisibleBrowserEnabled() {
-  if (process.env.AUTO_APPLY_BROWSER_ENABLED === "true") return true;
-  if (process.env.AUTO_APPLY_BROWSER_ENABLED === "false") return false;
-  return true;
+  return process.env.NODE_ENV !== "production" && process.env.AUTO_APPLY_DEV_BROWSER === "true";
 }
 
 function shouldLaunchHeadlessBrowser() {
@@ -61,7 +61,7 @@ export async function startVisibleBrowserSession(
       mode: "manual_guided" as const,
       reason: "browser_unavailable",
       guidance:
-        "Browser automation is disabled on this deployment. Set AUTO_APPLY_BROWSER_ENABLED=true to allow browser sessions.",
+        "Browser automation is disabled on this deployment. It is a local-development tool (AUTO_APPLY_DEV_BROWSER=true) and never runs in production.",
       blockers: [],
       screenshotBase64: "",
     };
@@ -176,10 +176,9 @@ export async function saveVisibleBrowserSessionSiteAuth(
 export async function runVisibleBrowserAction(
   sessionKey: string,
   action: {
-    type: "click" | "type" | "select" | "upload" | "screenshot" | "read_dom" | "scroll" | "save_site_login" | "stop";
+    type: "click" | "type" | "select" | "screenshot" | "read_dom" | "scroll" | "save_site_login" | "stop";
     selector?: string;
     value?: string;
-    filePath?: string;
     direction?: "up" | "down";
     url?: string;
     userId?: string;
@@ -215,11 +214,6 @@ export async function runVisibleBrowserAction(
   if (action.type === "select") {
     if (!action.selector) throw new Error("Selector is required for select.");
     await page.locator(action.selector).selectOption(action.value || "", { timeout: 10000 });
-  }
-
-  if (action.type === "upload") {
-    if (!action.selector || !action.filePath) throw new Error("Selector and file path are required for upload.");
-    await page.locator(action.selector).setInputFiles(action.filePath, { timeout: 10000 });
   }
 
   if (action.type === "scroll") {

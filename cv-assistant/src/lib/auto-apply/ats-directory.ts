@@ -1,0 +1,72 @@
+import type { AtsProvider } from "./ats";
+
+export type DirectoryBoard = { provider: AtsProvider; board: string; company: string };
+
+// Employer career boards verified (2026-11) to be public and to list Australia-based or APAC-remote roles.
+// These power the "Company career sites" discovery source: postings come straight from the employer's ATS with
+// full descriptions and a readable application form, so they are the highest-quality auto-apply targets.
+export const ATS_DIRECTORY: DirectoryBoard[] = [
+  // Greenhouse
+  { provider: "greenhouse", board: "cultureamp", company: "Culture Amp" },
+  { provider: "greenhouse", board: "octopusdeploy", company: "Octopus Deploy" },
+  { provider: "greenhouse", board: "bugcrowd", company: "Bugcrowd" },
+  { provider: "greenhouse", board: "prospa", company: "Prospa" },
+  { provider: "greenhouse", board: "quantium", company: "Quantium" },
+  { provider: "greenhouse", board: "spaceship", company: "Spaceship" },
+  { provider: "greenhouse", board: "anthropic", company: "Anthropic" },
+  { provider: "greenhouse", board: "databricks", company: "Databricks" },
+  { provider: "greenhouse", board: "mongodb", company: "MongoDB" },
+  { provider: "greenhouse", board: "elastic", company: "Elastic" },
+  { provider: "greenhouse", board: "gitlab", company: "GitLab" },
+  { provider: "greenhouse", board: "stripe", company: "Stripe" },
+  { provider: "greenhouse", board: "coinbase", company: "Coinbase" },
+  { provider: "greenhouse", board: "vercel", company: "Vercel" },
+  { provider: "greenhouse", board: "figma", company: "Figma" },
+  { provider: "greenhouse", board: "datadog", company: "Datadog" },
+  { provider: "greenhouse", board: "okta", company: "Okta" },
+  { provider: "greenhouse", board: "intercom", company: "Intercom" },
+  { provider: "greenhouse", board: "pagerduty", company: "PagerDuty" },
+  { provider: "greenhouse", board: "neo4j", company: "Neo4j" },
+  { provider: "greenhouse", board: "assemblyai", company: "AssemblyAI" },
+  { provider: "greenhouse", board: "togetherai", company: "Together AI" },
+  { provider: "greenhouse", board: "coreweave", company: "CoreWeave" },
+  { provider: "greenhouse", board: "asana", company: "Asana" },
+  { provider: "greenhouse", board: "airtable", company: "Airtable" },
+  { provider: "greenhouse", board: "planetscale", company: "PlanetScale" },
+  // Lever
+  { provider: "lever", board: "immutable", company: "Immutable" },
+  { provider: "lever", board: "deputy", company: "Deputy" },
+  { provider: "lever", board: "mable", company: "Mable" },
+  { provider: "lever", board: "blinq", company: "Blinq" },
+  { provider: "lever", board: "atomi", company: "Atomi" },
+  { provider: "lever", board: "q-ctrl", company: "Q-CTRL" },
+  { provider: "lever", board: "pexa", company: "PEXA" },
+  { provider: "lever", board: "brighte", company: "Brighte" },
+  { provider: "lever", board: "crypto", company: "Crypto.com" },
+  // Ashby
+  { provider: "ashby", board: "airwallex", company: "Airwallex" },
+  { provider: "ashby", board: "xero", company: "Xero" },
+  { provider: "ashby", board: "zip", company: "Zip Co" },
+  { provider: "ashby", board: "lorikeet", company: "Lorikeet" },
+  { provider: "ashby", board: "relevanceai", company: "Relevance AI" },
+  { provider: "ashby", board: "dovetail", company: "Dovetail" },
+  { provider: "ashby", board: "airtasker", company: "Airtasker" },
+  { provider: "ashby", board: "openai", company: "OpenAI" },
+  { provider: "ashby", board: "snowflake", company: "Snowflake" },
+  { provider: "ashby", board: "notion", company: "Notion" },
+  { provider: "ashby", board: "harvey", company: "Harvey" },
+  { provider: "ashby", board: "decagon", company: "Decagon" },
+  { provider: "ashby", board: "cognition", company: "Cognition" },
+  { provider: "ashby", board: "sierra", company: "Sierra" },
+  { provider: "ashby", board: "deepgram", company: "Deepgram" },
+  { provider: "ashby", board: "elevenlabs", company: "ElevenLabs" },
+  { provider: "ashby", board: "linear", company: "Linear" },
+  { provider: "ashby", board: "langchain", company: "LangChain" },
+  { provider: "ashby", board: "clickup", company: "ClickUp" },
+  // SmartRecruiters
+  { provider: "smartrecruiters", board: "canva", company: "Canva" },
+  { provider: "smartrecruiters", board: "seek", company: "SEEK" },
+  { provider: "smartrecruiters", board: "carsales", company: "carsales" },
+  { provider: "smartrecruiters", board: "nearmap", company: "Nearmap" },
+  { provider: "smartrecruiters", board: "judobank", company: "Judo Bank" },
+];
