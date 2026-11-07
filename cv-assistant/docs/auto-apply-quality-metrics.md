@@ -57,6 +57,7 @@ Single runs of ten letters are noisy (a difference of one letter is within noise
 - Best-of-3 drafts on rotated model orders: Promptfoo 2/3 then 3/3, but worse live (weaker models first, chosen by guard score not prose quality; garbled sentences, closers after the sign-off, invented duties).
 - Constrained evidence top-up (an extra paragraph from unused CV items), final strip of flagged claims, and moving closers out of body paragraphs: scored worse live (see the table).
 - Longer expansion window with a looser claim gate: garbled prose.
+- Skipping the grounding editor when the draft already passes every deterministic guard (2026-11-08, 10 live letters): no time saved (101-139 s, mean 111 s, against 82-150 s and 56-137 s in the other runs) and shorter letters (mean 167 words, 6 of 10 under 170, 5/10 clean). The editor also restores supported detail, so it stays.
 - Keeping a sentence to stay above 170 words let "I hold a Master's degree in Computer Science" through (copied from the posting's "a plus"). Unsupported sentences are always stripped; the last claim-clean full-length draft is kept if verifier pruning would shorten the letter.
 
 **Open**
