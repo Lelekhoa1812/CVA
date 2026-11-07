@@ -24,7 +24,7 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 Final live run of all 10 prepared jobs (after the greeting fix), every letter read in full:
 
 - Greeting fix confirmed live: all 10 open "Dear Hiring Manager," on its own line.
-- Structure: 10 of 10 are 197-262 words... (see counts in the run), name the role and company, have paragraphs and a sign-off.
+- Structure: all 10 are 197-262 words, name the role and company, have paragraphs and a sign-off.
 - Open defects found on the full read:
   - Airwallex Senior (281e): opening run-on "Senior Software Engineer, AI Tooling at Airwallex - AI platform architect with production Kubernetes experience who built AI infrastructure..." and a closing chat line ("Let me know if you would like to discuss...").
   - Airwallex Staff (281f): "Thank you for your consideration" followed by a second closing sentence.
