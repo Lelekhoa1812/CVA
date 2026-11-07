@@ -16,6 +16,7 @@ export default function Stepper({ steps, current, onSelect }: { steps: StepDef[]
               <button
                 type="button"
                 disabled={!step.enabled}
+                title={!step.enabled ? `Available once earlier steps are done${step.id === "apply" ? ": approve a role in Review first" : ""}` : undefined}
                 aria-current={active ? "step" : undefined}
                 aria-label={`Step ${index + 1}: ${step.label}${step.count ? `, ${step.count}` : ""}${step.done ? ", done" : ""}`}
                 onClick={() => onSelect(step.id)}

@@ -91,7 +91,7 @@ function Detail({ c }: { c: AutoApplyController }) {
   const job = detail.job;
   const editable = !["approved", "applied"].includes(job.status);
   const letterClaims = detail.draft.letterClaims || [];
-  const flaggedLetter = letterClaims.length ? { note: `The letter mentions ${letterClaims.join("; ")}, which your profile does not support. Edit the letter or confirm it is accurate before approving.` } : undefined;
+  const flaggedLetter = letterClaims.length ? { note: `The letter needs checking: ${letterClaims.map((item) => item.replace(/^the letter /i, "")).join("; ")}. Edit it, or confirm it is accurate, before approving.` } : undefined;
   const ordered = [...answers].filter((answer) => answer.type !== "file" && answer.category !== "cover_letter");
   const needs = ordered.filter((answer) => answer.needsInput && !(values[answer.questionId] ?? "").trim());
   const rest = ordered.filter((answer) => !needs.includes(answer));
