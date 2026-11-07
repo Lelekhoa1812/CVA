@@ -93,6 +93,36 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
   return heuristicRank(items, jobText, limit);
 }
 
+
+const CLAIM_LEXICON = [
+  "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
+  "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
+  "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
+];
+
+function normalise(value: string) {
+  return value.toLowerCase().replace(/[‘’]/g, "'");
+}
+
+/** Technology, credential and certification terms the letter asserts but the candidate's profile never mentions. */
+export function findUnsupportedClaims(text: string, profile?: Partial<Profile> | null): string[] {
+  const facts = normalise(JSON.stringify(profile || {}));
+  const letter = normalise(text);
+  const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return CLAIM_LEXICON.filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts));
+}
+
+/** Drops sentences that assert unsupported terms; returns null when that would leave too little of a letter. */
+export function stripUnsupportedSentences(text: string, terms: string[]): string | null {
+  if (!terms.length) return text;
+  const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
+    const sentences = paragraph.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [paragraph];
+    return sentences.filter((sentence) => findUnsupportedClaims(sentence, null).filter((term) => terms.includes(term)).length === 0).join("").trim();
+  }).filter(Boolean);
+  const stripped = paragraphs.join("\n\n");
+  return stripped.split(/\s+/).length >= 150 ? stripped : null;
+}
+
 export type CoverLetterAgentResult = {
   text: string;
   model: string;
@@ -165,6 +195,30 @@ export async function runCoverLetterAgent(args: {
     model = generated.model;
   }
 
-  const { reviewWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
+  let unsupported = findUnsupportedClaims(text, args.profile);
+  if (unsupported.length) {
+    try {
+      const retryPrompt = buildCoverLetterPrompt({
+        candidateName: args.profile?.name || "",
+        company: args.company,
+        jobDescription: jobText,
+        contactLines: contact.promptLines,
+        prioritizedItems: selected,
+        clarificationContext: `${args.clarificationContext || ""}\nThe candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, and state only the degree and skills in the evidence.`.trim(),
+      });
+      const retried = await generateLetterText(retryPrompt, args.signal);
+      if (findUnsupportedClaims(retried.text, args.profile).length < unsupported.length) text = retried.text;
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+    }
+    unsupported = findUnsupportedClaims(text, args.profile);
+    if (unsupported.length) text = stripUnsupportedSentences(text, unsupported) ?? text;
+  }
+  const remaining = findUnsupportedClaims(text, args.profile);
+  const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
+
+  const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   return { text, model, mode, indices, reviewWarning, fallbackNote };
 }

@@ -402,7 +402,7 @@ export function answerDeterministically(args: {
         }
       }
       if (question.options.length || question.type === "boolean") {
-        const hasRights = /citizen|permanent|unrestricted|full|yes/i.test(preferences.workRights);
+        const hasRights = /citizen|permanent|unrestricted|full|yes|valid|working visa|right to work|authori[sz]ed/i.test(preferences.workRights) && !/\b(no|not|requires?|need)\b/i.test(preferences.workRights);
         const answer = preferences.workRights ? (hasRights ? "Yes" : preferences.workRights) : "";
         return makeAnswer(question, answer, "preference", 0.9);
       }
@@ -423,6 +423,10 @@ export function answerDeterministically(args: {
       const hybridOption = question.options.length ? question.options.find((option) => /\bhybrid\b/i.test(option.label)) : undefined;
       const isYesNoList = question.options.every((option) => YES.test(normalizeQuestionLabel(option.label)) || NO.test(normalizeQuestionLabel(option.label)));
       if (!remembered && wantsHybrid && hybridOption && !isYesNoList) return makeAnswer(question, hybridOption.label, "preference", 0.85);
+      // "In the office five days a week" is stricter than hybrid: a hybrid preference never answers it.
+      if (!remembered && /\b(in[- ]?office|on[- ]?site|five days|5 days|full[- ]?time in)\b/i.test(question.label)) {
+        return { ...makeAnswer(question, "", "default", 0, "Your hybrid preference does not cover full-time office attendance; please confirm."), needsInput: question.required };
+      }
       const value = remembered?.answer || yesNo(preferences.hybridOk);
       return value ? makeAnswer(question, value, remembered ? "memory" : "preference", 0.85) : null;
     }
@@ -437,7 +441,7 @@ export function answerDeterministically(args: {
     case "relatives":
       return makeAnswer(question, remembered?.answer || "No", remembered ? "memory" : "default", 0.7, "Defaulted to No; change it if you have relatives at this company.");
     case "source":
-      return makeAnswer(question, remembered?.answer || preferences.howHeard || "Company careers page", remembered ? "memory" : "preference", 0.8);
+      return makeAnswer(question, remembered?.answer || preferences.howHeard || "Company careers page", remembered ? "memory" : preferences.howHeard ? "preference" : "default", 0.8, remembered || preferences.howHeard ? undefined : "Defaulted to the company careers page; change it if you heard another way.");
     case "demographic": {
       const decline = question.options.find((option) => DECLINE_OPTION.test(normalizeQuestionLabel(option.label)));
       if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.95);
@@ -445,9 +449,9 @@ export function answerDeterministically(args: {
       return { ...makeAnswer(question, "", "default", 0), needsInput: question.required };
     }
     case "consent": {
-      const agree = question.options.find((option) => /yes|agree|acknowledge|accept|confirm|consent|i have read/i.test(option.label));
-      const value = remembered?.answer || agree?.label || (question.type === "boolean" ? "Yes" : "");
-      return makeAnswer(question, value, remembered ? "memory" : "default", 0.8, "Acknowledgement pre-checked; it is shown for your approval.");
+      // A declaration is the applicant's own attestation: only a remembered confirmation fills it, otherwise it waits for them once.
+      if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.9);
+      return { ...makeAnswer(question, "", "default", 0, "Your confirmation is required. Tick Remember and it is filled automatically next time."), needsInput: question.required };
     }
     default:
       if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.9);

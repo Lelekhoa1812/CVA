@@ -134,7 +134,7 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
                 <label
                   key={source}
                   className={cn(
-                    "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors",
+                    "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
                     on ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/80 text-muted-foreground hover:border-primary/30",
                   )}
                 >

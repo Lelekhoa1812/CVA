@@ -18,6 +18,7 @@ import {
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
+import { findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
@@ -30,6 +31,37 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
   buildQuestion({ id: label, fieldName: label, label, type, required, options: options.map((value) => ({ label: value, value })) });
 
 const tests: TestCase[] = [
+  {
+    name: "declarations and in-office questions are never auto-confirmed",
+    run: () => {
+      const hybrid = { ...prefs, hybridOk: "yes" as const };
+      const decl = answerDeterministically({ question: q("Declaration & Background Checking", "boolean"), profile, preferences: hybrid, memory: [], company: "Xero" });
+      assert.equal(decl?.value, "");
+      assert.equal(decl?.needsInput, true);
+      const office = answerDeterministically({ question: q("Are you excited to work in-office five days a week?", "select", ["Yes", "No"]), profile, preferences: hybrid, memory: [], company: "Decagon" });
+      assert.equal(office?.value, "");
+      assert.equal(office?.needsInput, true);
+    },
+  },
+  {
+    name: "working-visa preference maps to a Yes work-authorisation option",
+    run: () => {
+      const visa = { ...prefs, workRights: "Working visa (valid work rights)" };
+      const answer = answerDeterministically({ question: q("Work Authorization", "select", ["Yes", "No"]), profile, preferences: visa, memory: [], company: "AA" });
+      assert.equal(answer?.value, "Yes");
+    },
+  },
+  {
+    name: "cover letter claims absent from the profile are detected and stripped",
+    run: () => {
+      const cv = { projects: [{ title: "Chatbot", description: "Python and React" }], major: "Bachelor of Software Engineering" } as never;
+      const letter = "I build Python services. I hold a Master's in Computer Science. I used OAuth and React daily. " + "Filler words continue here. ".repeat(40);
+      const found = findUnsupportedClaims(letter, cv);
+      assert.deepEqual(found.sort(), ["master's", "oauth"].sort());
+      const stripped = stripUnsupportedSentences(letter, found);
+      assert.ok(stripped && !/master|oauth/i.test(stripped) && /Python services/.test(stripped));
+    },
+  },
   {
     name: "detectAts identifies each supported provider and ignores unsafe schemes",
     run: () => {

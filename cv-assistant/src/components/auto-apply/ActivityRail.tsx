@@ -41,7 +41,7 @@ export default function ActivityRail({ c }: { c: AutoApplyController }) {
       <div className="surface-subtle rounded-2xl p-4">
         <p className="text-foreground text-sm font-semibold">Activity</p>
         {c.data?.events.length ? (
-          <ol className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+          <ol tabIndex={0} aria-label="Activity events" className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto pr-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             {[...c.data.events].reverse().map((event) => (
               <li key={event._id} className="text-sm leading-5">
                 <div className="flex items-start gap-2">

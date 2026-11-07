@@ -178,7 +178,7 @@ export default function MatchesStep({ c }: { c: AutoApplyController }) {
             type="button"
             aria-selected={filter === id}
             onClick={() => setFilter(id)}
-            className={cn("min-h-10 rounded-full border px-4 text-sm font-medium transition-colors", filter === id ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/80 text-muted-foreground hover:border-primary/30")}
+            className={cn("min-h-11 rounded-full border px-4 text-sm font-medium transition-colors", filter === id ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/80 text-muted-foreground hover:border-primary/30")}
           >
             {label} <span className="text-muted-foreground ml-1 text-xs">{count}</span>
           </button>
