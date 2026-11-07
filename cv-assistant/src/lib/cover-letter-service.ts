@@ -659,14 +659,23 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
     const current = leftover(text);
     if (current.unsupported.length + current.defects.length > 0) {
       try {
-        const redraw = await generateLetterText(buildRetryPrompt(current.unsupported, current.defects), args.signal);
-        let candidate = finalise(redraw.text);
-        const candidateUnsupported = findUnsupportedClaims(candidate, args.profile, args.company, jobText, args.title);
-        if (candidateUnsupported.length) candidate = finalise(stripUnsupportedSentences(candidate, candidateUnsupported, args.company) ?? candidate);
-        const next = leftover(candidate);
-        if (next.unsupported.length + next.defects.length < current.unsupported.length + current.defects.length && isWellFormedLetter(candidate) && WORDS(candidate) >= MIN_HONEST_WORDS) {
-          text = candidate;
-          model = redraw.model || model;
+        // Two redraws side by side (the wall time of one); the one with the fewest findings is kept, and only if it beats the current letter.
+        const retryPrompt = buildRetryPrompt(current.unsupported, current.defects);
+        const redraws = await Promise.allSettled([generateLetterText(retryPrompt, args.signal), generateLetterText(retryPrompt, args.signal)]);
+        if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
+        let best: { text: string; model: string; findings: number } | undefined;
+        for (const result of redraws) {
+          if (result.status !== "fulfilled" || !result.value.text) continue;
+          let candidate = finalise(result.value.text);
+          const candidateUnsupported = findUnsupportedClaims(candidate, args.profile, args.company, jobText, args.title);
+          if (candidateUnsupported.length) candidate = finalise(stripUnsupportedSentences(candidate, candidateUnsupported, args.company) ?? candidate);
+          const next = leftover(candidate);
+          const findings = next.unsupported.length + next.defects.length;
+          if (isWellFormedLetter(candidate) && WORDS(candidate) >= MIN_HONEST_WORDS && (!best || findings < best.findings || (findings === best.findings && Math.abs(WORDS(candidate) - 230) < Math.abs(WORDS(best.text) - 230)))) best = { text: candidate, model: result.value.model, findings };
+        }
+        if (best && best.findings < current.unsupported.length + current.defects.length) {
+          text = best.text;
+          model = best.model || model;
         }
       } catch (error) {
         if (args.signal?.aborted) throw error;
