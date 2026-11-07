@@ -164,7 +164,8 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   // The letter is written by the applicant: their own name in the body (outside the sign-off) means it slipped into the third person.
   const applicantName = (candidateName || "").trim();
   if (applicantName) {
-    const body = text.trim().split(/\n+/).slice(0, -1).join("\n");
+    // The sign-off name, contact lines and salutation are not the body.
+    const body = text.trim().split(/\n+/).filter((line) => line.trim() !== applicantName && !/@|\||^\+?\d[\d\s-]{6,}$|^(?:sincerely|regards|kind regards|best regards|yours)/i.test(line.trim())).join("\n");
     if (new RegExp(`\\b${applicantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(body.replace(/^Dear[^\n]*\n/i, ""))) defects.push("refers to the applicant by name in the body (third person)");
   }
   // Stock filler says nothing about the applicant and reads as mass-produced.
@@ -360,7 +361,18 @@ export async function runCoverLetterAgent(args: {
       prioritizedItems: selected,
       clarificationContext: args.clarificationContext,
     });
-    const generated = await generateLetterText(prompt, args.signal);
+    // Best of three: the same prompt runs on three differently ordered model chains at once (wall time stays about the same),
+    // and the draft with the fewest unsupported claims and structural defects is kept.
+    const chains = [0, 1, 2].map((shift) => [...COVER_LETTER_MODELS.slice(shift), ...COVER_LETTER_MODELS.slice(0, shift)]);
+    const settled = await Promise.allSettled(chains.map((models) => generateLetterText(prompt, args.signal, { models })));
+    if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
+    const drafts = settled.flatMap((result) => (result.status === "fulfilled" && result.value.text ? [result.value] : []));
+    if (!drafts.length) {
+      const failure = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      throw failure?.reason instanceof Error ? failure.reason : new Error("No model returned a cover letter.");
+    }
+    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(draft.text, args.profile?.name, args.company, args.title).length;
+    const generated = drafts.reduce((best, draft) => (score(draft) < score(best) || (score(draft) === score(best) && WORDS(draft.text) > WORDS(best.text) && WORDS(draft.text) <= 380) ? draft : best));
     text = generated.text;
     model = generated.model;
   }

@@ -33,7 +33,11 @@ Latest clean live run: all 10 prepared jobs on the original model chain with the
 - Claim-check warnings (warn only): 4 of 10 letters (2840, 2835, 2861 earlier run, 281e); at least one is a false positive (2835, Mizco).
 - Latency (metric 8): 62-111 s, median about 72 s. The p95 target of 60 s is not met.
 
-Promptfoo (`npm run eval:letters`) is unstable, not green. Results across the last runs on the same code family: 2/3, 2/3, 3/3 (hollow, see below), 0/3, 2/3, 0/3. Failures vary by run: third-person letters ("Alex Tester is applying ..."), a job title used as experience, stock filler, and short letters. The detectors catch these, but the retry rounds and repairs do not reliably fix them, so the first-draft model's reliability is the open problem.
+Promptfoo (`npm run eval:letters`): after best-of-3 drafts and the detector fix, 2/3 then 3/3 over two runs (5 of 6 cases). The remaining failure was a real third-person letter (131 words). Earlier runs (2/3, 2/3, 0/3, 0/3, 2/3, 0/3) were partly distorted: a first version of the third-person detector counted the sign-off name as "name in the body", so several earlier "third-person" failures and the 0/3 runs were false positives of that detector, now fixed with a test. Real failures seen: third-person openings, job title as experience, stock filler, short letters.
+
+Best-of-3: the first draft now runs on three differently ordered model chains in parallel and keeps the draft with the fewest unsupported claims and defects. Eval latency per letter is 88-127 s under 4-way concurrency.
+
+Still open: Contoso's letter says its triage bot "demonstrates my ability to build and own security tooling", a stretch copied from the posting. The model-based claim check warns about it, but the deterministic guard does not.
 
 Thin-evidence policy (Contoso Cloud, whose CV items cover only a few lines): an honest letter is short. Padding it to 170 words made the model invent duties ("mentoring junior engineers", "access controls, encryption protocols, audit trails"), which no guard caught, and that run scored 3/3 only because the padding passed. The rebuild was reverted. The app now adds "the letter is short because your profile gives little to draw on" to the review warnings, and the eval accepts 100-169 words only when that warning is present.
 

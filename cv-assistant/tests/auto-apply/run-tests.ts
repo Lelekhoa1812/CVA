@@ -567,6 +567,8 @@ const tests: TestCase[] = [
       const third = repairLetterStructure("Dear Hiring Manager,\n\nAlex Tester is applying for the Engineer role at Acme.\n\nSincerely,\nAlex Tester", "Alex Tester", "Acme", "Engineer");
       assert.ok(third.includes("I am applying for the Engineer role at Acme."), third);
       assert.ok(findLetterDefects(`Dear Hiring Manager,\n\nAlex Tester built agents. ${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\n${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\nSincerely,\nAlex Tester`, "Alex Tester", "Acme", "Engineer").some((d) => d.includes("third person")));
+      const signed = `Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. ${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\n${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\nSincerely,\nAlex Tester\nalex@example.com`;
+      assert.ok(!findLetterDefects(signed, "Alex Tester", "Acme", "Engineer").some((d) => d.includes("third person")), "sign-off name and contact lines are not third person");
       assert.ok(repairLetterStructure("Dear Recruiter,\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
       assert.ok(repairLetterStructure("Dear Hiring Team\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
     },
