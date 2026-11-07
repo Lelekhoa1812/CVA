@@ -70,6 +70,14 @@ The eval asserts 170 to 400 words. The letter prompt asks for 250 to 350 words. 
 
 **Rerun:** a second run of the same suite passed all three cases (`Results: 3 passed`, exit 0). The first two defects did not recur on that run. Model output varies between runs, so a single eval result is not a reliable pass or fail signal.
 
+**Root cause (traced after the run, from stored eval outputs and the code).**
+
+- **Third person (Northwind).** The writer prompt never requires first person. Only the grounding editor asks for it, and that pass runs only when under 50 s have elapsed. The name rule in `src/lib/cover-letter-service.ts` then matched only "is applying/writing/submitting", so "Alex Tester designed and built..." passed repair. The eval recomputes defects on the final text, so it failed.
+- **Sign-off (Contoso).** The model put the name and email before its closing sentence. Repair skipped adding "Sincerely," because the name was in the last three lines, and the check never tested the name itself.
+- **Why runs differ.** No temperature or seed is sent. Repair passes are time-gated (retry and grounding under 50 s, verifier under 85 s, expansion under 100 s), and cases took 86 to 125 s. Promptfoo runs four cases at once, so they share model keys.
+- **Fix status.** Commit `2504a11` (another session) fixes the sign-off shape and most third-person shapes. Replaying 82 stored letters through it: sign-off defects 1 to 0, third-person defects 12 to 6. The remaining cases are title run-ons and "Name, who..." appositives. No eval has run since, so the fix has no live evidence.
+- **Blind spot.** The eval's unsupported-claim check ignores the model claim check, so the Contoso letter with three unsupported claims ("terabytes", "backbone", "model inference") still passed.
+
 **Status:** the first run's defects are real occurrences of the failure, and the letter agent is not changed by this documentation work. The eval should be run several times before a result is trusted. Any fix needs a decision from the user.
 
 ## Data written by these runs
