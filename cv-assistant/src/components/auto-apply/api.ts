@@ -59,6 +59,7 @@ export const autoApplyApi = {
     call<{ ok: boolean }>(`/api/auto-apply/job/${id}`, { method: "PATCH", body: JSON.stringify({ stage }) }),
   saveAnswers: (id: string, body: { answers?: Array<{ questionId: string; value: string; remember?: boolean }>; coverLetterText?: string }) =>
     call<{ ok: boolean }>(`/api/auto-apply/job/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  rewriteCoverLetter: (id: string, advanced: boolean) => call<{ coverLetter: string; mode: string; reviewWarning?: string; fallbackNote?: string }>(`/api/auto-apply/job/${id}/cover-letter`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ advanced }) }),
   prepare: (id: string) => call<{ outcome: string }>(`/api/auto-apply/job/${id}/prepare`, { method: "POST" }),
   pack: (id: string) => call<{ pack: unknown; text: string; applyUrl: string }>(`/api/auto-apply/job/${id}/pack`),
   markApplied: (id: string, undo = false) => call<{ stage: string }>(`/api/auto-apply/job/${id}/applied`, { method: "POST", body: JSON.stringify(undo ? { undo: true } : { confirm: true }) }),

@@ -16,6 +16,7 @@ import {
   standardQuestionSet,
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
+import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
 
@@ -173,6 +174,18 @@ const tests: TestCase[] = [
       assert.equal(answer?.value, "");
       const yesNo = answerDeterministically({ question: q("Do you have the right to work in Australia?", "select", ["Yes - valid working rights or visa", "No - require sponsorship"]), profile, preferences: prefs, memory: [], company: "Neara" });
       assert.equal(yesNo?.value, "Yes - valid working rights or visa");
+    },
+  },
+  {
+    name: "job description crawl keeps rich text and reports none when nothing is readable",
+    run: async () => {
+      const rich = "Requirements: Python, PyTorch, LLM evaluation. ".repeat(60);
+      const kept = await crawlJobDescription({ description: rich, urls: [] });
+      assert.equal(kept.source, "provided");
+      assert.ok(kept.text.length >= 1500);
+      const none = await crawlJobDescription({ description: "short", urls: ["ftp://example.com/job", "javascript:alert(1)"] });
+      assert.equal(none.source, "none");
+      assert.equal(none.text, "");
     },
   },
   {

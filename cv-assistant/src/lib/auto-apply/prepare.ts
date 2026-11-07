@@ -1,8 +1,9 @@
 // Application preparation: resolve the employer form, answer every question (deterministic first, then one
 // grounded LLM pass), and draft a tailored cover letter. The output is a complete, reviewable application pack.
 import { createHash } from "node:crypto";
-import { generateJsonSafe, getModel } from "@/lib/ai";
-import { buildCoverLetterPrompt, getCoverLetterContactDetails, getCoverLetterItems, type CoverLetterItem } from "@/lib/cover-letter";
+import { generateJsonSafe } from "@/lib/ai";
+import { isWellFormedLetter as isWellFormedLetterImpl, runCoverLetterAgent } from "@/lib/cover-letter-service";
+import { crawlJobDescription } from "./jd";
 import type { Profile } from "@/lib/models/User";
 import { buildCandidateSummary, candidateContact } from "./candidate";
 import { resolveJob, type ResolvedJob } from "./discovery";
@@ -32,26 +33,6 @@ type JobInput = {
   applyUrl: string;
   descriptionText: string;
 };
-
-function rankEvidence(items: CoverLetterItem[], jobText: string, limit = 5) {
-  const tokens = new Set(
-    jobText
-      .toLowerCase()
-      .replace(/[^a-z0-9+#]+/g, " ")
-      .split(" ")
-      .filter((token) => token.length > 2),
-  );
-  return items
-    .map((item) => {
-      const haystack = `${item.title} ${item.summary} ${item.description}`.toLowerCase();
-      let overlap = 0;
-      for (const token of tokens) if (haystack.includes(token)) overlap += 1;
-      return { item, overlap };
-    })
-    .sort((left, right) => right.overlap - left.overlap)
-    .slice(0, limit)
-    .map(({ item }, index) => ({ ...item, index }));
-}
 
 export function buildAnswersPrompt(args: {
   candidate: string;
@@ -144,23 +125,27 @@ export async function prepareApplication(args: {
     } else pending.push(question);
   }
 
-  const description = resolved.descriptionText || args.job.descriptionText;
-  const candidate = buildCandidateSummary(args.profile, args.resumeText);
-  const coverItems = rankEvidence(getCoverLetterItems(args.profile), `${args.job.title} ${description}`);
-  const contactDetails = getCoverLetterContactDetails(args.profile);
-
-  const coverLetterPrompt = buildCoverLetterPrompt({
-    candidateName: args.profile?.name || "",
-    company,
-    jobDescription: `${args.job.title} at ${company}\n${description.slice(0, 6000) || args.job.title}`,
-    contactLines: contactDetails.promptLines,
-    prioritizedItems: coverItems,
+  // Search snippets are thin; crawl the employer posting so the letter and the answers rest on the real requirements.
+  const crawled = await crawlJobDescription({
+    description: resolved.descriptionText || args.job.descriptionText,
+    urls: [resolved.applyUrl, args.job.applyUrl, args.job.url],
+    signal: args.signal,
   });
-  const coverLetterTask = generateCoverLetter(coverLetterPrompt, args.signal)
-    .catch((error: unknown) => {
-      warnings.push(`Cover letter generation failed: ${error instanceof Error ? error.message : "unknown error"}.`);
-      return { text: "", model: "" };
-    });
+  const description = crawled.text || resolved.descriptionText || args.job.descriptionText;
+  if (crawled.source === "none") warnings.push("The job description could not be read, so the cover letter relies on the job title.");
+  const candidate = buildCandidateSummary(args.profile, args.resumeText);
+
+  // Many applications ask for a cover letter; they all go through the same agent as the /generate studio.
+  const coverLetterTask = runCoverLetterAgent({
+    profile: args.profile,
+    company,
+    title: args.job.title,
+    jobDescription: description,
+    signal: args.signal,
+  }).catch((error: unknown) => {
+    warnings.push(`Cover letter generation failed: ${error instanceof Error ? error.message : "unknown error"}.`);
+    return { text: "", model: "", mode: "standard" as const, indices: [] as number[], reviewWarning: undefined as string | undefined };
+  });
 
   const answersTask = pending.length
     ? generateJsonSafe("easy", buildAnswersPrompt({ candidate, preferences: args.preferences, job: { ...args.job, company }, description, questions: pending }), 1, args.signal)
@@ -172,6 +157,7 @@ export async function prepareApplication(args: {
     : Promise.resolve({ answers: [] as Array<{ id?: string; value?: unknown; confidence?: unknown }> });
 
   const [coverLetter, generated] = await Promise.all([coverLetterTask, answersTask]);
+  if (coverLetter.reviewWarning) warnings.push(`Cover letter: ${coverLetter.reviewWarning}`);
   const generatedList = (generated.answers || []) as Array<{ id?: string; question?: string; value?: unknown; confidence?: unknown }>;
   const generatedById = new Map(generatedList.filter((entry) => entry.id).map((entry) => [String(entry.id), entry]));
 
@@ -222,31 +208,8 @@ export function echoMatches(echo: string, label: string) {
   return labelSimilarity(firstLine, label) >= 0.6;
 }
 
-const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "deepseek-ai/deepseek-v4.1-flash"];
-
-/** A letter with no commas across 120+ words is a known degenerate output of some NIM models. */
-export function isWellFormedLetter(text: string) {
-  const words = text.split(/\s+/).filter(Boolean).length;
-  if (words < 80) return false;
-  const commas = (text.match(/,/g) || []).length;
-  return commas >= Math.max(2, Math.floor(words / 60));
-}
-
-async function generateCoverLetter(prompt: string, signal?: AbortSignal) {
-  let fallback = { text: "", model: "" };
-  for (const model of COVER_LETTER_MODELS) {
-    try {
-      const result = await getModel("easy").generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], modelOverride: model, signal });
-      const text = result.response.text().replace(/^```\w*\n?|```$/g, "").trim();
-      if (isWellFormedLetter(text)) return { text, model: result.response.model };
-      if (!fallback.text) fallback = { text, model: result.response.model };
-    } catch (error) {
-      if (signal?.aborted) throw error;
-    }
-  }
-  if (fallback.text) return fallback;
-  throw new Error("No model produced a cover letter");
-}
+/** Re-exported for tests; the guard lives with the shared cover letter agent. */
+export const isWellFormedLetter = isWellFormedLetterImpl;
 
 /** Hash of exactly what the user approved; any later edit changes it. */
 export function hashApplicationPayload(args: { answers: Array<{ fieldName: string; value: string }>; coverLetter: string; applyUrl: string }) {

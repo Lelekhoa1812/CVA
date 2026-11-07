@@ -152,7 +152,20 @@ function Detail({ c }: { c: AutoApplyController }) {
       <section aria-label="Cover letter" className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <h4 className="text-foreground text-sm font-semibold">Cover letter</h4>
-          {detail.draft.generatedBy ? <span className="text-muted-foreground text-xs">Drafted from your CV</span> : null}
+          <div className="flex items-center gap-2">
+            {detail.draft.generatedBy ? <span className="text-muted-foreground text-xs">Drafted from your CV</span> : null}
+            {editable ? (
+              <button
+                type="button"
+                className="button-secondary min-h-9 px-3 text-xs"
+                disabled={Boolean(c.busy[`cover:${job._id}`]) || dirty}
+                title="Re-reads the job posting and re-picks your strongest proof, using the same cover letter agent as the Cover Letter studio."
+                onClick={() => void c.act(`cover:${job._id}`, () => autoApplyApi.rewriteCoverLetter(job._id, false), "Cover letter rewritten from the job posting. Check the notes above for anything to verify.")}
+              >
+                {c.busy[`cover:${job._id}`] ? <Spinner /> : null}Rewrite from job posting
+              </button>
+            ) : null}
+          </div>
         </div>
         <textarea value={cover} onChange={(event) => setCover(event.target.value)} readOnly={!editable} rows={12} className="input-premium min-h-60 resize-y font-sans leading-7" aria-label="Cover letter text" />
         {!cover.trim() ? <p className="text-[hsl(var(--warning))] text-xs">The cover letter could not be generated. Use Re-prepare to try again.</p> : null}

@@ -4,7 +4,7 @@
 //
 // Kept as a plain JavaScript string so it is not transpiled with framework helpers and can run on any page.
 
-export const AUTOFILL_VERSION = 5;
+export const AUTOFILL_VERSION = 6;
 
 export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
   var VERSION = ${AUTOFILL_VERSION};
@@ -120,35 +120,49 @@ export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
     var pool = list ? list.querySelectorAll('[role=option]') : document.querySelectorAll('[role=listbox] [role=option], [class*="menu"] [role=option], [class*="Menu"] [role=option]');
     return Array.prototype.slice.call(pool).filter(visible);
   }
+  function mouse(node, type) {
+    node.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0, buttons: type === 'mouseup' || type === 'click' ? 0 : 1 }));
+  }
+  // react-select opens on a mouse press on its control and picks on a mouse press on an option; plain input events and
+  // arrow keys are ignored. This sequence works in Chromium, Firefox and WebKit.
+  function openSelect(el) {
+    var control = el.closest('[class*="control"]') || (el.parentElement && el.parentElement.parentElement) || el;
+    el.focus();
+    try { control.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true })); } catch (e) {}
+    mouse(control, 'mousedown'); mouse(control, 'mouseup'); mouse(control, 'click');
+  }
+  function pickOption(option) {
+    ['mouseover', 'mousemove', 'mousedown', 'mouseup', 'click'].forEach(function (type) { mouse(option, type); });
+  }
   function choose(option) {
-    if (!reactCall(option, 'onClick')) {
-      option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      option.click();
-    }
+    pickOption(option);
+    return true;
   }
   async function fillCombobox(el, value) {
-    el.focus();
-    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    el.click();
-    setValue(el, value, true);
-    var typed = true;
-    for (var i = 0; i < 26; i++) {
-      await sleep(150);
+    openSelect(el);
+    var typed = false;
+    for (var i = 0; i < 50; i++) {
+      await sleep(160);
       var options = optionsFor(el);
-      if (!options.length && i === 2) {
-        // React fallback: open the menu and/or push the typed text through the component's own handlers.
-        reactCall(el, 'onChange', { target: el, currentTarget: el });
-        reactCall(el, 'onKeyDown', { key: 'ArrowDown', keyCode: 40 });
+      if (options.length > 60 && !typed) {
+        // Long lists (countries, cities): narrow them with the typed text, then pick.
+        setValue(el, value, true);
+        typed = true;
+        continue;
       }
-      if (!options.length && i === 8 && typed) {
-        // Static option lists filter on typed text; clear it and open the full list instead.
-        setValue(el, '', true);
+      if (!options.length && i === 3) {
+        // Async lists open only once there is text to search for.
+        setValue(el, value, true);
+        typed = true;
+      }
+      if (!options.length && i === 10) openSelect(el);
+      if (!options.length && i === 12) setValue(el, String(value).split(',')[0], true);
+      if (!options.length && i === 20) {
         reactCall(el, 'onChange', { target: el, currentTarget: el });
         reactCall(el, 'onKeyDown', { key: 'ArrowDown', keyCode: 40 });
-        typed = false;
       }
       var hit = bestOption(options, value, function (n) { return n.textContent; });
-      if (hit) { choose(hit); await sleep(120); return true; }
+      if (hit) { choose(hit); await sleep(150); return true; }
     }
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     return false;
@@ -223,7 +237,7 @@ export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
 
   var filled = results.filter(function (r) { return r.status === 'filled'; }).length;
   var esc = function (v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
-  var choose = results.filter(function (r) { return r.status !== 'filled' && r.status !== 'skipped' && r.value; });
+  var toPick = results.filter(function (r) { return r.status !== 'filled' && r.status !== 'skipped' && r.value; });
   var attach = results.filter(function (r) { return r.type === 'file'; });
   var needAnswer = results.filter(function (r) { return r.status === 'skipped' && r.required && r.type !== 'file' && !r.value; });
   var old = document.getElementById('cva-autofill-panel'); if (old) old.remove();
@@ -233,9 +247,9 @@ export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
   panel.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:380px;max-height:70vh;overflow:auto;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:14px;padding:14px 16px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 20px 50px rgba(0,0,0,.35)';
   var html = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><strong>CV Assistant autofill</strong><button id="cva-close" style="background:none;border:0;color:#94a3b8;font-size:16px;cursor:pointer" aria-label="Close">×</button></div>';
   html += '<div style="margin-top:6px">Filled ' + filled + ' of ' + results.length + ' fields' + (pack.job && pack.job.title ? ' for ' + esc(pack.job.title) : '') + '.</div>';
-  if (choose.length) {
+  if (toPick.length) {
     html += '<div style="margin-top:8px;color:#fbbf24">Pick these dropdowns (highlighted on the page):</div><ul style="margin:4px 0 0 16px;padding:0">';
-    choose.forEach(function (t) { html += '<li><span style="color:#cbd5e1">' + esc(t.label) + '</span><br><strong>' + esc(String(t.value).slice(0, 120)) + '</strong></li>'; });
+    toPick.forEach(function (t) { html += '<li><span style="color:#cbd5e1">' + esc(t.label) + '</span><br><strong>' + esc(String(t.value).slice(0, 120)) + '</strong></li>'; });
     html += '</ul>';
   }
   if (needAnswer.length) {

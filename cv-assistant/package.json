@@ -11,7 +11,8 @@
     "test:search": "node -r tsconfig-paths/register -r sucrase/register/ts tests/search/run-tests.ts",
     "test:ai": "node -r tsconfig-paths/register -r sucrase/register/ts tests/ai/run-tests.ts",
     "verify:career": "npm run lint && npm run test:unit && npm run test:auto-apply",
-    "test:auto-apply": "node -r tsconfig-paths/register -r sucrase/register/ts tests/auto-apply/run-tests.ts"
+    "test:auto-apply": "node -r tsconfig-paths/register -r sucrase/register/ts tests/auto-apply/run-tests.ts",
+    "test:autofill-live": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/autofill-live.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",
