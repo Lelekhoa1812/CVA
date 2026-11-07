@@ -74,6 +74,17 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!findLetterDefects(fixed, "Alex Tester", "Acme", "Engineer").some((d) => d.includes("third person")), fixed);
     },
   },
+  {
+    name: "repair: greeting spacing, 'I where I', em-dash title opening",
+    run: () => {
+      const spaced = repairLetterStructure("Dear Hiring Manager,\nI am applying for the Engineer role at Acme.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Acme", "Engineer");
+      assert.ok(spaced.startsWith("Dear Hiring Manager,\n\nI am applying"), spaced);
+      const where = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. I where I architected a platform.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Acme", "Engineer");
+      assert.ok(where.includes("In that role, I architected a platform."), where);
+      const dash = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Software Engineer, AI Tooling role at Airwallex. Senior Software Engineer, AI Tooling at Airwallex \u2014 led an enterprise platform at Mizco.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling");
+      assert.ok(dash.includes("Airwallex. I led an enterprise platform at Mizco."), dash);
+    },
+  },
 ];
 
 let failed = 0;
