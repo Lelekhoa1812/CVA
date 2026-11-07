@@ -206,7 +206,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
   if (visible.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
-  if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement|\b(?:matching|meeting|fulfilling|addressing|directly addressing|directly aligning with) your (?:needs?|requirements?)\b/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
+  if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement|\b(?:matching|meeting|fulfilling|addressing|directly addressing|directly aligning with) your (?:needs?|requirements?)\b|\b(?:directly )?aligns? with [A-Z][\w&.-]*'s (?:needs?|requirements?)\b/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
   if (title && new RegExp(`${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40} - I `, "i").test(text.replace(/^[^\n]*\n+/, "").slice(0, 600))) defects.push("contains a garbled run-on title opening");
   if (/(^|\n)\s*(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i.test(text)) defects.push("ends with a chat-style line instead of a closing sentence");
   const openingLine = (text.split(/\n{2,}/).find((block, index) => index > 0 && block.trim()) || "").split(/(?<=[.!?])\s/)[0] || "";
@@ -292,6 +292,8 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   }
   // "..., directly aligning with your need for enterprise-grade AI" is the posting talking: cut the clause and keep the experience.
   fixed = fixed.replace(/,\s*(?:directly )?(?:matching|meeting|fulfilling|addressing|aligning with) your (?:needs?|requirements?)\b[^.\n]*(?=\.)/gi, "");
+  // A whole sentence that only says the experience "directly aligns with Airwallex's need for ..." is the posting talking: drop it.
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])\s+)(?:My|The|This) (?:experience|background|work|skills?)(?: \w+){0,2} (?:directly )?(?:aligns?|matches|meets|addresses|fulfils?|fulfills?) (?:with )?(?:[A-Z][\w&.-]*'s|your|the) (?:needs?|requirements?)\b[^.\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
   fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
@@ -444,6 +446,16 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   const lines = fixed.split(/\n+/);
   const tail = lines.slice(-3).join(" ").toLowerCase();
   if (name && !new RegExp(`\\b${name.toLowerCase().split(/\\s+/).slice(-1)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(tail) && !/\b(sincerely|regards|yours)\b/i.test(tail)) fixed = `${fixed}\n\nSincerely,\n${name}`;
+  // The first paragraph must say which role at which company this is for; a letter that opens "I seek to apply my experience ..." does not.
+  if (title && company) {
+    const blocksNow = fixed.split(/\n{2,}/);
+    const firstBody = blocksNow.findIndex((block, index) => index > 0 && block.trim());
+    const companyWord = company.trim().split(/\s+/)[0].toLowerCase();
+    if (firstBody > 0 && !blocksNow[firstBody].toLowerCase().includes(companyWord) && !/^(?:sincerely|regards|kind regards|best regards|yours)\b/i.test(blocksNow[firstBody].trim())) {
+      blocksNow[firstBody] = `I am applying for the ${title} role at ${company}. ${blocksNow[firstBody].trim()}`;
+      fixed = blocksNow.join("\n\n");
+    }
+  }
   return fixed;
 }
 

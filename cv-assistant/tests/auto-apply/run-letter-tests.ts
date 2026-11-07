@@ -16,6 +16,19 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "repairs: requirement-talk sentences are dropped and an opening that never names the role and company gets one",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI seek to apply my experience with Kubernetes. In my role at Axion Solutions, I led the Axis platform. My experience directly aligns with Airwallex's need for reliable internal tooling. I also built ETL pipelines.\n\nI would welcome the opportunity to discuss.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling");
+      assert.ok(fixed.includes("I am applying for the Staff Software Engineer, AI Tooling role at Airwallex. I seek to apply"), fixed);
+      assert.ok(!/directly aligns/.test(fixed) && /I also built ETL pipelines\./.test(fixed), fixed);
+      assert.ok(/Axis platform\. I also built ETL pipelines\./.test(fixed), "the space between sentences is kept: " + fixed);
+      assert.ok(findLetterDefects(letter, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").some((d) => /requirements/.test(d)));
+      const fine = "Dear Hiring Manager,\n\nI am applying for the Staff Software Engineer, AI Tooling role at Airwallex. I built tooling.\n\nSincerely,\nDang Khoa Le";
+      assert.equal((repairLetterStructure(fine, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").match(/I am applying for/g) || []).length, 1);
+    },
+  },
+  {
     name: "repairs: the employer's own title as an opening and a trailing 'aligning with your need' clause",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nAs Decagon's Agent Deployment Engineer, I deliver end-to-end agent builds at Axion Solutions, directly aligning with your need for enterprise-grade AI solutions deployed at scale. I also led a team.\n\nSincerely,\nDang Khoa Le";
