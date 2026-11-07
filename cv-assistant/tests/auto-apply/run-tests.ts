@@ -19,6 +19,7 @@ import {
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
 import { findLetterDefects, findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { cleanTitle } from "../../src/lib/auto-apply/engine";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
@@ -31,6 +32,14 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
   buildQuestion({ id: label, fieldName: label, label, type, required, options: options.map((value) => ({ label: value, value })) });
 
 const tests: TestCase[] = [
+  {
+    name: "cleanTitle strips markdown and repeated slash titles",
+    run: () => {
+      assert.equal(cleanTitle("AI Software Engineer / Senior Engineer AI Software Engineer"), "AI Software Engineer");
+      assert.equal(cleanTitle("*Full Stack LLM Engineer*"), "Full Stack LLM Engineer");
+      assert.equal(cleanTitle("Data Scientist / ML Engineer"), "Data Scientist / ML Engineer");
+    },
+  },
   {
     name: "employer-employment claims, bare trailing link and years are caught",
     run: () => {

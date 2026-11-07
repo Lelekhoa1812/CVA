@@ -59,7 +59,7 @@ export async function isCancelled(sessionId: string) {
  */
 export function startHeartbeat(sessionId: string) {
   const timer = setInterval(() => {
-    void AutoApplySessionModel.updateOne({ _id: sessionId, "run.phase": { $in: ["searching", "scoring", "preparing"] } }, { $set: { "run.updatedAt": new Date() } }).catch(() => {});
+    void AutoApplySessionModel.updateOne({ _id: sessionId, "run.phase": { $in: ["searching", "scoring", "preparing"] } }, { $set: { "run.updatedAt": new Date() } }).catch((error: unknown) => console.warn("auto-apply heartbeat failed", error instanceof Error ? error.message : error));
   }, 20_000);
   return () => clearInterval(timer);
 }
@@ -88,6 +88,19 @@ function dedupeKeyFor(job: { title: string; company: string; location: string })
   const squash = (value: string) => norm(value).replace(/\b(pty|ltd|limited|inc|incorporated|llc|corp|corporation|group|australia|aus|au|anz)\b/g, " ").replace(/\s+/g, "");
   const city = norm(job.location).split(" ").slice(0, 1).join(" ");
   return `${norm(job.title)}::${squash(job.company)}::${city}`;
+}
+
+/** A board row with neither company nor location cannot be verified or applied to sensibly. */
+function placeholderless(result: { company?: string; location?: string }) {
+  return Boolean((result.company || "").trim() || (result.location || "").trim());
+}
+
+/** "AI Software Engineer / Senior Engineer AI Software Engineer": keep the first title when a slash part repeats it. */
+export function cleanTitle(title: string) {
+  const text = title.replace(/[*_`#]+/g, "").replace(/\s+/g, " ").trim();
+  const [first, ...rest] = text.split(/\s+\/\s+/);
+  if (rest.length && rest.some((part) => part.toLowerCase().endsWith(first.toLowerCase()))) return first.trim();
+  return text;
 }
 
 type Candidate = RankableJob & { discoveredVia: string; postedAt: string; snippet: string; applyUrl: string };
@@ -160,6 +173,7 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       const key = dedupeKeyFor(result);
       const placeholder = isPlaceholder(result.company);
       if (merged.has(key) && !placeholder) continue;
+      if (!placeholderless(result)) continue;
       if (result.location && !matchesLocation(result.location, targetLocation, "")) continue;
       const boardKey = placeholder ? `${key}::${result.source}` : key;
       if (merged.has(boardKey)) continue;
@@ -199,7 +213,7 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       else seenApply.add(url);
     }
     for (const entry of ordered) {
-      entry.job.title = entry.job.title.replace(/[*_`#]+/g, "").replace(/\s+/g, " ").trim();
+      entry.job.title = cleanTitle(entry.job.title);
     }
     const eligible = ordered.filter((entry) => entry.job.status !== "skipped");
     const deep = eligible.slice(0, SCORE_TOP_N);

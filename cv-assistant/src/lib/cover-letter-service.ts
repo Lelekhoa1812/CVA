@@ -213,8 +213,8 @@ export async function runCoverLetterAgent(args: {
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company);
-  const defects = findLetterDefects(text, args.profile?.name);
-  if (unsupported.length || defects.length) {
+  for (let round = 0; round < 2 && (unsupported.length || findLetterDefects(text, args.profile?.name).length); round += 1) {
+    const roundDefects = findLetterDefects(text, args.profile?.name);
     try {
       const retryPrompt = buildCoverLetterPrompt({
         candidateName: args.profile?.name || "",
@@ -222,18 +222,18 @@ export async function runCoverLetterAgent(args: {
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `The candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, never state a degree field, years of experience or tools that the evidence does not give.` : ""}${defects.length ? ` The previous draft ${defects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `The candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, never state a degree field, years of experience or tools that the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company).length;
       const retriedDefects = findLetterDefects(retried.text, args.profile?.name).length;
-      if (retriedUnsupported + retriedDefects < unsupported.length + defects.length) text = retried.text;
+      if (retriedUnsupported + retriedDefects < unsupported.length + roundDefects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
-    if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   }
+  if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
