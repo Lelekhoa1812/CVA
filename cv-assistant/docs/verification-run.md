@@ -30,7 +30,7 @@ This page records what was actually run against the live app and the eval suite 
 | Auto Apply: prepare | Not run | The prepare step would overwrite or add to the existing applications on this account, so it was not run. The behaviour is documented from code. |
 | Control Room: overview and lead | Overview, one lead detail opened | Pass for viewing. The specialist workflow was not run. |
 | Control Room: specialist workflow | Run once on one lead (`POST /api/control-room/leads/<id>/orchestrate`, 200 in about 5 s) | Pass with a caveat. The lead ended `scored`, fit 43, recommendation `skip`, `analysisSource: fallback`, `model: heuristic`. The LLM strategist did not produce the result and the response does not record why. The lead is a Talent.com record whose title is "Show more" and whose company is empty, so the result is not meaningful. Each run appends events and an evaluation to the lead. |
-| Promptfoo cover-letter eval | `npm run eval:letters`, 3 cases, live model calls | **Fail: 1 of 3 passed.** See below. |
+| Promptfoo cover-letter eval | `npm run eval:letters`, 3 cases, live model calls, run twice | **Run 1: 1 of 3 passed. Run 2: 3 of 3 passed.** The same inputs gave different outcomes, so the eval is not stable. See below. |
 | Live browser scripts | Not run | They fill real employer forms (Greenhouse, Ashby and Lever) with name and contact details. That needs explicit permission from the user first. Not requested yet. |
 
 ## Job Search findings (live run)
@@ -50,15 +50,17 @@ Export file: stored in the scratchpad of the run, not in the repository. Command
 
 | Case | Result | Failing check | Detail |
 |---|---|---|---|
-| Northwind Labs, AI Engineer | Fail | Defect check: refers to the applicant by name in the body (third person) | 249 words. The check is a regression for a known defect. |
-| Contoso Cloud, Senior Machine Learning | Fail | Defect check: no sign-off with the applicant's name | 241 words. Claim check also listed three warnings, though the unsupported list was empty. |
-| Fabrikam, Software Engineer | Pass | None | 121 words, flagged to the applicant as short because the profile is thin. |
+| Northwind Labs, AI Engineer (run 1) | Fail | Defect check: refers to the applicant by name in the body (third person) | 249 words. The check is a regression for a known defect. |
+| Contoso Cloud, Senior Machine Learning (run 1) | Fail | Defect check: no sign-off with the applicant's name | 241 words. Claim check also listed three warnings, though the unsupported list was empty. |
+| Fabrikam, Software Engineer (run 1) | Pass | None | 121 words, flagged to the applicant as short because the profile is thin. |
 
 The three warnings on the Contoso case quote claims ("architected scalable ETL workflows...", "became the backbone of the support team...", "integrating model inference steps...") that the warning text says the candidate evidence does not state. The unsupported list is empty for that case, so these are warnings only. They are the same kind of internal warning noise listed in `docs/auto-apply-quality-metrics.md`.
 
 The eval asserts 170 to 400 words. The letter prompt asks for 250 to 350 words. The two documents disagree, and this is recorded in the cover-letter feature doc.
 
-**Status:** open. The letter agent is not changed by this documentation work. A fix needs a decision from the user.
+**Rerun:** a second run of the same suite passed all three cases (`Results: 3 passed`, exit 0). The first two defects did not recur on that run. Model output varies between runs, so a single eval result is not a reliable pass or fail signal.
+
+**Status:** the first run's defects are real occurrences of the failure, and the letter agent is not changed by this documentation work. The eval should be run several times before a result is trusted. Any fix needs a decision from the user.
 
 ## Data written by these runs
 
