@@ -157,7 +157,10 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (title && new RegExp(`${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40} - I `, "i").test(text.replace(/^[^\n]*\n+/, "").slice(0, 600))) defects.push("contains a garbled run-on title opening");
   if (/(^|\n)\s*(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i.test(text)) defects.push("ends with a chat-style line instead of a closing sentence");
   const openingLine = (text.split(/\n{2,}/).find((block, index) => index > 0 && block.trim()) || "").split(/(?<=[.!?])\s/)[0] || "";
-  if (/\b(?:Engineer|Developer|Scientist|Architect|Lead)\b[^.]{0,80}\s[–-]\s/.test(openingLine) || /^[A-Z][\w ,/&-]{5,80} at [A-Z][\w&. -]{1,40} [–-] /.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
+  // A proper opening starts "I am ..."; a title followed by a dash and a clause is the run-on, and a hyphen inside the title itself is not.
+  if (!/^I\s/.test(openingLine.trim()) && /\s[–—]\s|\s-\s/.test(openingLine) && /\b(?:Engineer|Developer|Scientist|Architect|Lead)\b/.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
+  // A bare title sentence ("Staff Software Engineer, AI Tooling at Airwallex.") is not a proper opening.
+  if (title && company && new RegExp(`(^|\\n\\n|[.!?]\\s+)\\s*${(title.split(/[,(–-]/)[0].trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40}\\bat ${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "i").test(text)) defects.push("repeats the job title as a bare sentence");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\bcandidate\b/i.test(text)) defects.push("calls the applicant a 'candidate'");

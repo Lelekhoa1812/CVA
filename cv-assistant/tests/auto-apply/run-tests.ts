@@ -33,6 +33,15 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "a hyphenated title is not a run-on; a bare title sentence is flagged",
+    run: () => {
+      const ok = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. I built things for many teams.\n\nDang Khoa Le";
+      assert.ok(!findLetterDefects(ok, "Dang Khoa Le", "Xero", "Senior Engineer - AI Agentic").some((d) => d.includes("run into")));
+      const bare = "Dear Hiring Manager,\n\nStaff Software Engineer, AI Tooling at Airwallex. I built things for many teams.\n\nDang Khoa Le";
+      assert.ok(findLetterDefects(bare, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").some((d) => d.includes("bare sentence")));
+    },
+  },
+  {
     name: "letter defects: run-on title opening, chat-line closing; repair drops chat lines and duplicate closers",
     run: () => {
       const runOn = "Dear Hiring Manager,\n\nSenior Software Engineer, AI Tooling at Airwallex - AI platform architect with production experience who built AI infrastructure.\n\nI would welcome the opportunity to discuss this role.\n\nDang Khoa Le";
