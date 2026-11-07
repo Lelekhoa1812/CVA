@@ -388,7 +388,11 @@ export function answerDeterministically(args: {
       // Filled with the generated cover letter by the preparer.
       return null;
     case "work_rights":
-      if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.95);
+      if (remembered) {
+        const fromMemory = makeAnswer(question, remembered.answer, "memory", 0.95);
+        // A remembered status from another form's wording may not exist in this form's options; then use the saved preference.
+        if (!fromMemory.needsInput || !question.options.length) return fromMemory;
+      }
       {
         // Status lists ("AU citizen / NZ citizen / other visa"): a visa holder takes the visa or "other" option, never a citizenship one.
         const statusList = question.options.length > 0 && !question.options.every((option) => OPTION_YES.test(normalizeQuestionLabel(option.label)) || OPTION_NO.test(normalizeQuestionLabel(option.label)));

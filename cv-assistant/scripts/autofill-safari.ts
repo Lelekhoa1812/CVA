@@ -17,9 +17,9 @@ const pack = { kind: "cva-autofill", version: 1, job: { title: "t", company: "Qu
   { fieldName: "x", label: "Location (City)", type: "text", required: true, value: "Melbourne, VIC", options: [] },
 ] };
 
-const call = async (method: string, path: string, body?: unknown) => {
+const call = async (method: string, path: string, body?: unknown): Promise<any> => { // eslint-disable-line @typescript-eslint/no-explicit-any
   const response = await fetch(`http://localhost:${PORT}${path}`, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const json = (await response.json()) as { value: any };
+  const json = (await response.json()) as { value: { message?: string; sessionId?: string } & Record<string, unknown> };
   if (!response.ok) throw new Error(json.value?.message || `WebDriver ${response.status}`);
   return json.value;
 };

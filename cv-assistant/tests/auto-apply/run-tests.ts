@@ -247,6 +247,17 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "a remembered work-rights answer that does not fit this form's options falls back to the visa preference",
+    run: () => {
+      const prefs = { ...EMPTY_PREFERENCES, workRights: "Working visa (valid work rights)" };
+      const memory = [{ questionPattern: "Please advise what your working rights are?", answer: "3. Other" }];
+      const options = ["Australian citizen", "Australian permanent resident", "Work visa holder"];
+      const answer = answerDeterministically({ question: q("Working Rights", "select", options), profile, preferences: prefs, memory, company: "Xero" });
+      assert.equal(answer?.needsInput, false);
+      assert.equal(answer?.value, "Work visa holder");
+    },
+  },
+  {
     name: "user edits resolve missing answers and mapping failures stay flagged",
     run: () => {
       const missing = answerDeterministically({ question: q("What is your desired salary?"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "X" })!;
