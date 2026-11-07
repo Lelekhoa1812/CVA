@@ -114,6 +114,9 @@ const CLAIM_LEXICON = [
   "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "master of", "doctor of", "master's degree", "masters degree", "postgraduate", "graduate diploma", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
 
+/** Ordinary English that postings and letters share without it being a claim. */
+const GENERIC_WORDS = new Set(["ability", "problems", "problem", "solving", "challenge", "challenges", "challenging", "people", "brings", "bringing", "others", "before", "rather", "background", "mission", "strong", "proven", "career", "opportunity", "opportunities", "principles", "record", "records", "stress", "thinking", "matches", "moving", "quickly", "deeply", "whether", "within", "through", "across", "between", "should", "ensure", "ensuring", "deliver", "delivering", "support", "supporting", "environment", "environments", "practical", "approach", "results", "impact", "comfortable", "curiosity", "judgment", "judgement", "complex", "meaningful", "excellent", "creative", "passion", "passionate", "culture", "values", "growth", "future", "better", "changes", "change", "needs", "needed", "decisions", "decision", "making", "building", "thrive", "ambiguity", "uncertainty"]);
+
 function normalise(value: string) {
   return value.toLowerCase().replace(/[‘’]/g, "'");
 }
@@ -211,9 +214,34 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
       if (inLetter && jd.includes(verb) && !supported.some((word) => facts.includes(word))) dutyClaims.push(`duty only the posting mentions: ${inLetter[0].toLowerCase()}`);
     }
   }
+  // A product or tool name (Jira, Confluence, NetSuite) that the posting and the letter share but the CV never mentions is the posting talking;
+  // so is a sentence made mostly of wording only the posting has ("treating internal stakeholders as customers", "rapid prototyping").
+  const postingNames: string[] = [];
+  const postingWording: string[] = [];
+  if (jobDescription) {
+    const named = normalise(`${title || ""} ${company || ""}`).replace(/[^a-z0-9 ]/g, " ");
+    const factText = facts.replace(/[^a-z0-9+# ]/g, " ");
+    const stem5 = (word: string) => word.slice(0, 5);
+    const factStems = new Set(factText.split(/\s+/).filter(Boolean).map(stem5));
+    const jdStems = new Set(normalise(jobDescription).replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter(Boolean).map(stem5));
+    const ignoreNames = new Set(["dear", "hiring", "manager", "sincerely", "regards", "best", "english", "australia", "australian", "melbourne", "sydney", "brisbane", "perth", "victoria", "vietnam", "vietnamese", "mandarin", "present", "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december", "monday", "friday"]);
+    const seen = new Set<string>();
+    for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+      const inner = sentence.replace(/^\S+\s+/, "");
+      for (const match of inner.matchAll(/\b[A-Z][a-z]{3,}\b/g)) {
+        const word = match[0].toLowerCase();
+        if (seen.has(word) || ignoreNames.has(word) || named.includes(word) || factStems.has(stem5(word))) continue;
+        if (new RegExp(`\\b${match[0]}\\b`).test(jobDescription)) { seen.add(word); postingNames.push(`posting name: ${word}`); }
+      }
+      if (/\b(?:opportunity|discuss|welcome|look forward|grateful|available to)\b/i.test(sentence)) continue;
+      const content = normalise(sentence).replace(/[^a-z0-9+# ]/g, " ").split(/\s+/).filter((word) => word.length >= 6 && !named.includes(word) && !GENERIC_WORDS.has(word));
+      const only = Array.from(new Set(content.filter((word) => jdStems.has(stem5(word)) && !factStems.has(stem5(word)))));
+      if (only.length >= 3) postingWording.push(`posting wording: ${only.slice(0, 4).join(", ")}`);
+    }
+  }
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...relationship, ...echoes, ...postingTerms, ...credentialClaims, ...dutyClaims, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...relationship, ...echoes, ...postingTerms, ...credentialClaims, ...dutyClaims, ...postingNames, ...postingWording, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Turns a guard token ("echo: ...", "posting term: x") into wording an applicant can act on. */
@@ -223,6 +251,8 @@ export function describeClaim(term: string): string {
   if (term.startsWith("degree field: ")) return `a degree in ${term.slice(14)}, which your education record does not show`;
   if (term.startsWith("project as employer: ")) return `${term.slice(21)} is described as an employer, but it is a project in your CV`;
   if (term.startsWith("claims a history with the employer: ")) return `a past connection with the employer ("${term.slice(35)}")`;
+  if (term.startsWith("posting name: ")) return `the name "${term.slice(14)}", which only the job posting mentions`;
+  if (term.startsWith("posting wording: ")) return `wording only the job posting has (${term.slice(17)})`;
   if (term.startsWith("credential: ")) return `the credential "${term.slice(12)}", which your CV does not show`;
   if (term.startsWith("duty only the posting mentions: ")) return `"${term.slice(32)}", a duty that only the job posting mentions`;
   if (term.startsWith("employment at ")) return `work at ${term.slice(14)}, which is not in your CV`;
@@ -295,7 +325,7 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.split(/(?<=[.!?])\s+(?=[A-Z"\u201C])/).map((sentence) => `${sentence} `);
-    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : term.startsWith("duty only the posting mentions: ") ? new RegExp(`\\b${term.slice(32).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(sentence) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
+    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : term.startsWith("posting name: ") ? new RegExp(`\\b${term.slice(14)}\\b`, "i").test(sentence) : term.startsWith("posting wording: ") ? (() => { const words = term.slice(17).split(", "); return words.filter((word) => normalise(sentence).includes(word.slice(0, 5))).length >= Math.min(3, words.length); })() : term.startsWith("duty only the posting mentions: ") ? new RegExp(`\\b${term.slice(32).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(sentence) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
@@ -510,6 +540,8 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   // A sentence that starts "I bringing six years ..." lost its verb ending: use the base form.
   const base: Record<string, string> = { bringing: "bring", having: "have", leading: "lead", owning: "own", delivering: "deliver", building: "build", designing: "design", developing: "develop", driving: "drive", combining: "combine", holding: "hold", architecting: "architect", spearheading: "spearhead", offering: "offer", providing: "provide" };
   fixed = fixed.replace(/(^|[.!?]\s+|\n\n)I (bringing|having|leading|owning|delivering|building|designing|developing|driving|combining|holding|architecting|spearheading|offering|providing)\b/g, (_m, lead, gerund) => `${lead}I ${base[gerund]}`);
+  // A closing line that says the experience "aligns with <Company>'s needs" is requirement talk: keep the invitation, drop the claim.
+  fixed = fixed.replace(/\bdiscuss how [^.\n]{0,90}?\b(?:aligns?|fits?|matches|meets|addresses) (?:with )?(?:the )?(?:[A-Z][\w&.-]*\s?){1,4}'s (?:needs?|requirements?)\b/g, "discuss the role");
   return fixed;
 }
 

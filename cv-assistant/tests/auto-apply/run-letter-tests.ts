@@ -101,6 +101,24 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "tool names and wording that only the posting has are flagged and stripped (Xero production letter)",
+    run: () => {
+      const jd = "Senior Engineer - AI Builder. Integrate systems via APIs and design clean data structures using Jira, Confluence and enterprise data warehouses. Treat internal stakeholders as valued customers and drive rapid prototyping.";
+      const profile = { name: "Dang Khoa Le", experiences: [{ companyName: "Harry the Hirer", description: "Built a multi-agent RAG platform on Azure with context pruning and HNSW indexing. Wrote Python services and exposed REST APIs." }, { companyName: "Axion", description: "Architect a LangChain workflow engine for capital-markets automation." }] };
+      const bad = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Builder role at Xero. At Harry the Hirer I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing, and exposed the services as REST APIs for the business and its planning teams, which kept the platform reliable under changing load.\n\nI integrated systems via APIs and designed clean data structures using Jira, Confluence, and enterprise data warehouses while treating internal stakeholders as valued customers and driving rapid prototyping. At Axion I architect a LangChain workflow engine for capital-markets automation, with version-controlled components and governed AI pipelines that investors rely on every day.\n\nI would welcome the opportunity to discuss how my background fits the role.\n\nDang Khoa Le";
+      const found = findUnsupportedClaims(bad, profile as never, "Xero", jd, "Senior Engineer - AI Builder");
+      assert.ok(found.some((term) => term === "posting name: jira"), `jira: ${found}`);
+      assert.ok(found.some((term) => term === "posting name: confluence"), `confluence: ${found}`);
+      assert.ok(found.some((term) => term.startsWith("posting wording: ")), `wording: ${found}`);
+      const stripped = stripUnsupportedSentences(bad + "\n\nAcross these roles I wrote Python services, exposed REST APIs and kept the work observable, so each platform could be operated by a small team without a dedicated support rota or manual interventions each week.", found, "Xero");
+      assert.ok(stripped && !/Jira|Confluence|rapid prototyping/.test(stripped), String(stripped));
+      assert.ok(/Axion I architect|Harry the Hirer I built/.test(stripped || ""));
+      // A letter built from the CV, with a closing sentence of ordinary words, is left alone.
+      const good = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Builder role at Xero. At Harry the Hirer I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing, and exposed it through REST APIs.\n\nI would welcome the opportunity to discuss how my background and approach to complex problems fit the mission of the team.\n\nDang Khoa Le";
+      assert.deepEqual(findUnsupportedClaims(good, profile as never, "Xero", jd, "Senior Engineer - AI Builder"), []);
+    },
+  },
+  {
     name: "repair removes dashes used as punctuation and fixes a gerund after 'I'",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Accountant role at Kmart. I bringing six years of close experience, from quoting through to sign-off \u2014 and I ran 10\u201312 audits.\n\nI would welcome the opportunity to discuss the role.\n\nPriya Raman";
@@ -108,6 +126,9 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!/[\u2013\u2014]/.test(fixed), fixed);
       assert.ok(/I bring six years/.test(fixed), fixed);
       assert.ok(/sign-off, and I ran 10-12 audits/.test(fixed), fixed);
+      const closer = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing for an enterprise client in events.\n\nI would welcome the opportunity to discuss how this experience aligns with Xero's needs.\n\nDang Khoa Le", "Dang Khoa Le", "Xero", "Senior Engineer");
+      assert.ok(/discuss the role\./.test(closer) && !/needs/.test(closer), closer);
+      assert.ok(!findLetterDefects(closer, "Dang Khoa Le", "Xero", "Senior Engineer").some((defect) => /requirement/.test(defect)));
       assert.ok(/month-end/.test(repairLetterStructure("Dear Hiring Manager,\n\nI own the month\u2011end close. I am applying for the Senior Accountant role at Kmart.\n\nI would welcome the opportunity to discuss the role.\n\nPriya Raman", "Priya Raman", "Kmart", "Senior Accountant").replace("month-end", "month-end")));
     },
   },
