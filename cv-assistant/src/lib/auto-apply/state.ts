@@ -62,6 +62,14 @@ export const ACTIVE_STAGES = new Set<JobStage>(["selected", "preparing", "needs_
 
 /** A preparing lock older than this is considered abandoned (the serverless request died) and can be retried. */
 export const PREPARE_LOCK_MS = 4 * 60_000;
+/** A run reports progress every few seconds; with no heartbeat for this long the serverless function has been cut off. */
+export const RUN_STALL_MS = 150_000;
+
+export function isRunStalled(run: { phase?: string | null; updatedAt?: Date | string | null } | undefined | null, now = Date.now()) {
+  if (!run || !run.phase || !["searching", "scoring", "preparing"].includes(run.phase)) return false;
+  const updated = run.updatedAt ? new Date(run.updatedAt).getTime() : 0;
+  return !updated || now - updated > RUN_STALL_MS;
+}
 
 export type PipelineCounts = Record<JobStage, number> & { total: number };
 

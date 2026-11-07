@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildGroundTruthSnapshot, suggestGroundTruthSelection } from "@/lib/auto-apply/ground-truth";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
-import { countStages, deriveSessionPhase, normalizeStage, withJobDefaults } from "@/lib/auto-apply/state";
+import { countStages, deriveSessionPhase, isRunStalled, normalizeStage, withJobDefaults } from "@/lib/auto-apply/state";
 import { autoApplyFiltersSchema, updateAutoApplySessionSchema } from "@/lib/auto-apply/types";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { AutoApplyApplicationDraftModel } from "@/lib/models/AutoApplyApplicationDraft";
 import { AutoApplyEventModel } from "@/lib/models/AutoApplyEvent";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
+import { AutoApplySessionModel } from "@/lib/models/AutoApplySession";
 import { UserModel, type Profile } from "@/lib/models/User";
 import type { DraftAnswer } from "@/lib/auto-apply/questions";
 
@@ -17,8 +18,18 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   const auth = requireAutoApplyAuth(req);
   if (!isAuthPayload(auth)) return auth;
   const { id } = await context.params;
-  const session = await loadOwnedSession(auth.userId, id);
+  let session = await loadOwnedSession(auth.userId, id);
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
+
+  // A run whose serverless function was cut off never reports again. Recover it so the workspace is not stuck.
+  if (isRunStalled(session.run)) {
+    await AutoApplySessionModel.updateOne(
+      { _id: id, userId: auth.userId, "run.updatedAt": session.run?.updatedAt ?? null },
+      { $set: { "run.phase": "idle", "run.message": "The last run stopped early. Press Prepare to continue where it left off.", "run.updatedAt": new Date(), status: "review" } },
+    );
+    await AutoApplyJobCandidateModel.updateMany({ userId: auth.userId, sessionId: id, status: "preparing" }, { $set: { status: "selected", preparingStartedAt: null } });
+    session = (await loadOwnedSession(auth.userId, id)) || session;
+  }
 
   const [jobs, drafts, events] = await Promise.all([
     AutoApplyJobCandidateModel.find({ userId: auth.userId, sessionId: id })

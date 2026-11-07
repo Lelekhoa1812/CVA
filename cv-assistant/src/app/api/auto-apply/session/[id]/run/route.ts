@@ -1,5 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { claimRun, preparePending, runPipeline } from "@/lib/auto-apply/engine";
+import { claimRun, preparePending, startHeartbeat, runPipeline } from "@/lib/auto-apply/engine";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
 
@@ -30,7 +30,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "Select at least one role first." }, { status: 400 });
     }
     after(async () => {
-      await preparePending({ sessionId: id, userId: auth.userId });
+      const stopHeartbeat = startHeartbeat(id);
+      try {
+        await preparePending({ sessionId: id, userId: auth.userId });
+      } finally {
+        stopHeartbeat();
+      }
     });
   } else {
     after(async () => {

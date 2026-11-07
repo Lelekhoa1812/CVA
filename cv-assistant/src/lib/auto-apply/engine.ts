@@ -17,11 +17,10 @@ import { hashApplicationPayload, prepareApplication } from "./prepare";
 import { logAutoApplyEvent } from "./persistence";
 import { answerDeterministically, countMissing, type ApplicantPreferences, type DraftAnswer, type FormQuestion, type MemoryEntry } from "./questions";
 import { fromSearchResult, rankAutoApplyCandidates, type RankableJob } from "./ranking";
-import { PREPARE_LOCK_MS, normalizeStage } from "./state";
+import { PREPARE_LOCK_MS, RUN_STALL_MS, normalizeStage } from "./state";
 import { autoApplyFiltersSchema, toSearchRequest } from "./types";
 
 export const RUN_BUDGET_MS = 270_000;
-const RUN_LOCK_MS = 6 * 60_000;
 const SCORE_TOP_N = 28;
 const SELECT_MIN_SCORE = 62;
 const BOARD_CRAWL_MS = 70_000;
@@ -54,9 +53,20 @@ export async function isCancelled(sessionId: string) {
   return Boolean(session && (session.run?.phase === "cancelled" || session.status === "stopped"));
 }
 
+/**
+ * Keeps run.updatedAt fresh while a pipeline is alive. If the serverless function is cut off the heartbeat stops,
+ * and the session is recognised as stalled instead of showing "preparing" forever.
+ */
+export function startHeartbeat(sessionId: string) {
+  const timer = setInterval(() => {
+    void AutoApplySessionModel.updateOne({ _id: sessionId, "run.phase": { $in: ["searching", "scoring", "preparing"] } }, { $set: { "run.updatedAt": new Date() } }).catch(() => {});
+  }, 20_000);
+  return () => clearInterval(timer);
+}
+
 /** Claim the run lock. Returns false when another run is active (and not stale). */
 export async function claimRun(sessionId: string, userId: string) {
-  const staleBefore = new Date(Date.now() - RUN_LOCK_MS);
+  const staleBefore = new Date(Date.now() - RUN_STALL_MS);
   const claimed = await AutoApplySessionModel.findOneAndUpdate(
     {
       _id: sessionId,
@@ -93,6 +103,7 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
   const checkpoint = async () => {
     if (await isCancelled(sessionId)) throw new PipelineAbort("Run cancelled.");
   };
+  const stopHeartbeat = startHeartbeat(sessionId);
   try {
     await connectToDatabase();
     const session = await AutoApplySessionModel.findOne({ _id: sessionId, userId });
@@ -291,6 +302,8 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       await logAutoApplyEvent({ userId, sessionId, type: "run_failed", message });
     }
     return { stats, error: message };
+  } finally {
+    stopHeartbeat();
   }
 }
 

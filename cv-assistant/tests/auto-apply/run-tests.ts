@@ -17,7 +17,7 @@ import {
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
-import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults } from "../../src/lib/auto-apply/state";
+import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
@@ -186,6 +186,17 @@ const tests: TestCase[] = [
       const none = await crawlJobDescription({ description: "short", urls: ["ftp://example.com/job", "javascript:alert(1)"] });
       assert.equal(none.source, "none");
       assert.equal(none.text, "");
+    },
+  },
+  {
+    name: "a run with no heartbeat is reported as stalled, an idle or fresh one is not",
+    run: () => {
+      const now = Date.now();
+      assert.equal(isRunStalled({ phase: "preparing", updatedAt: new Date(now - 200_000) }, now), true);
+      assert.equal(isRunStalled({ phase: "preparing", updatedAt: new Date(now - 20_000) }, now), false);
+      assert.equal(isRunStalled({ phase: "idle", updatedAt: new Date(now - 900_000) }, now), false);
+      assert.equal(isRunStalled({ phase: "searching", updatedAt: null }, now), true);
+      assert.equal(isRunStalled(undefined, now), false);
     },
   },
   {
