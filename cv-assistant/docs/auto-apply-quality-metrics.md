@@ -186,3 +186,16 @@ Two guards added: `posting name` (a capitalised name in both the letter and the 
 Live re-run of the AI-engineer set (10 letters, localhost): 9 clean, 1 defect, 48-100 s. The defect was a closing line "discuss how this experience aligns with Xero's needs", now repaired to "discuss the role" with a test. Cross-field set again: six letters, no warning and no defect, 50-131 s (three at 126-131 s on the mismatched postings, so the tail on hard postings is still about 130 s).
 
 Production check of 6e7483d (six jobs, three at a time: Xero AI Builder, Artificial Analysis, Airwallex, Xero ML & AI Systems, Xero AI Platform, NAB): all 200 in 58-88 s, 186-271 words, no review warning, no dashes. The Xero AI Builder letter no longer contains the Jira / Confluence / stakeholders-as-customers sentence. Every employer, tool, figure and team size in the six letters was checked against the CV and found (64-dimensional graph attention embeddings, 210,000+ scans, five-engineer Sall-e team, cognitive CRM, predictive analytics, mentored data engineers); the only wording not in the CV is the posting's own team name in a closing line.
+
+## Second cross-field round: new graduate, marketing manager, secondary teacher (2026-11-08)
+
+Synthetic CVs run directly through `runCoverLetterAgent` (redundancy 3), each against one matching and one mismatched posting (growth marketing needing SQL/Looker/Amplitude, product marketing for a global team, learning-experience design with Articulate and ADDIE). Six letters.
+
+First run: no deterministic defect, but three warnings and these leftovers, found by reading each letter against its CV.
+- Garbled openings in two marketing letters ("I with ten years ...", "I, I managed ...").
+- An orphan paragraph ("This FMCG experience honed my ability ...") left behind after its Fresh Pantry sentence was removed.
+- Soft-skill filler that states things the CV does not: ", demonstrating my capability to own the full customer journey from awareness to conversion", "which required clear communication and patience", "honed my ability to craft compelling narratives", "advanced training in Compass", and outcome clauses ("consistently deliver qualified leads", "increasing engagement through consistent posting"). The model check flagged most of the outcome clauses as warnings; the filler passed.
+
+Changes: one writer rule (report each result in the evidence's own words and figures; no outcome or quality words the evidence does not state); every "proven ..." is stock filler (detected and removed) and so is "demonstrated success/expertise/ability"; repairs for "I with" (to "I bring") and "I, I"; deterministic removal of trailing ", demonstrating my <ability/capability/skills ...>" and ", which required ..." clauses and of "This <...> experience honed/strengthened/taught ..." sentences. Run over all 216 stored letters the repair changes 46, and every change checked removed only filler clauses or turned a "aligns with <Company>'s needs" closer into "discuss the role"; no employer, figure or tool was lost.
+
+Regression after the changes: AI-engineer set 10 of 10 clean (0 defects, 0 unsupported, 48-107 s, 243 words on average); cross-field set one (nurse, accountant, electrician) six letters, no warnings, 28-126 s; cross-field set two six letters, no warnings, 72-126 s. No letter in the 22 carried a review warning.

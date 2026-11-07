@@ -126,6 +126,12 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!/[\u2013\u2014]/.test(fixed), fixed);
       assert.ok(/I bring six years/.test(fixed), fixed);
       assert.ok(/sign-off, and I ran 10-12 audits/.test(fixed), fixed);
+      const fluff = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Marketing Manager role at Xero. I run HubSpot lead scoring and email nurture programs at Northline, demonstrating my capability to own the full customer journey from awareness to conversion. At Fresh Pantry I launched 14 products across grocery chains, which required clear communication and patience.\n\nThis FMCG experience honed my ability to craft compelling narratives for brands.\n\nI, I managed a team of four and a $900,000 annual budget at Northline across several channels.\n\nI would welcome the opportunity to discuss the role.\n\nDaniel Ortiz", "Daniel Ortiz", "Xero", "Marketing Manager");
+      assert.ok(!/demonstrating|which required|honed|I, I/.test(fluff), fluff);
+      assert.ok(/HubSpot lead scoring and email nurture programs at Northline\./.test(fluff) && /launched 14 products across grocery chains\./.test(fluff) && /I managed a team of four/.test(fluff), fluff);
+      assert.ok(!/\n{3,}/.test(fluff), "blank lines collapsed");
+      const lead = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Head of Product Marketing role at Canva. I with ten years leading marketing strategy across consumer brands and B2B software, including proven expertise and demonstrated success in demand generation for the business.\n\nI would welcome the opportunity to discuss the role.\n\nDaniel Ortiz", "Daniel Ortiz", "Canva", "Head of Product Marketing");
+      assert.ok(/I bring ten years/.test(lead) && !/proven|demonstrated success/.test(lead), lead);
       const closer = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I built a multi-agent RAG platform on Azure with context pruning and HNSW indexing for an enterprise client in events.\n\nI would welcome the opportunity to discuss how this experience aligns with Xero's needs.\n\nDang Khoa Le", "Dang Khoa Le", "Xero", "Senior Engineer");
       assert.ok(/discuss the role\./.test(closer) && !/needs/.test(closer), closer);
       assert.ok(!findLetterDefects(closer, "Dang Khoa Le", "Xero", "Senior Engineer").some((defect) => /requirement/.test(defect)));

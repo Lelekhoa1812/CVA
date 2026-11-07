@@ -292,7 +292,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (/\bAs [A-Z][\w&.-]*'s (?:[A-Z][\w/-]*\s?){1,6},\s+I\b/.test(text)) defects.push("opens as the employer's own employee ('As Company's Title, I ...')");
   if (/\bI (?:propose|present|offer|submit) (?:myself as )?(?:an? )?(?:[A-Z][\w/-]*\s){1,4}(?:Engineer|Developer|Scientist|Architect|Analyst)\b/.test(text)) defects.push("talks about the applicant as a role ('I propose an ... Engineer') instead of applying for it");
   // Stock filler says nothing about the applicant and reads as mass-produced.
-  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record|experience|expertise|record|leadership|end-to-end)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
+  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven\b|\bdemonstrated (?:success|expertise|ability|track record)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
   if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
   // "As Senior Software Engineer for AI Tooling, I led..." uses the posting's own title as past experience.
   if (title) {
@@ -359,7 +359,7 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   // "AI Software Engineer at Axion Solutions who architected ..." has no verb of its own: it is the applicant introducing themselves.
   fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)((?:(?:AI|ML|Senior|Staff|Lead|Principal|Junior) )*(?:(?:Software|Machine Learning|Data|AI|Full[- ]Stack|Backend|Frontend) )*(?:Engineer|Developer|Scientist|Architect|Researcher|Analyst)) (at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*){0,3}) (who|with)\b/g, (_m, lead, role, where, link) => `${lead}I am ${/^[AEIOU]/.test(role) ? "an" : "a"} ${role} ${where} ${link}`);
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
-  fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
+  fixed = fixed.replace(/\bproven\s+/gi, "").replace(/\bdemonstrated (?=success|expertise|ability|track record)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
   fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n(?!\n)/i, "$1\n\n");
   // "I where I architected ..." is a garbled "In that role, I architected ...".
@@ -539,9 +539,17 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   fixed = fixed.replace(/(\d)\s*[\u2013\u2014]\s*(\d)/g, "$1-$2").replace(/\s*[\u2013\u2014]\s*/g, ", ").replace(/[\u2011\u2010]/g, "-");
   // A sentence that starts "I bringing six years ..." lost its verb ending: use the base form.
   const base: Record<string, string> = { bringing: "bring", having: "have", leading: "lead", owning: "own", delivering: "deliver", building: "build", designing: "design", developing: "develop", driving: "drive", combining: "combine", holding: "hold", architecting: "architect", spearheading: "spearhead", offering: "offer", providing: "provide" };
+  fixed = fixed.replace(/(^|[.!?]\s+|\n\n)I with\b/g, "$1I bring");
   fixed = fixed.replace(/(^|[.!?]\s+|\n\n)I (bringing|having|leading|owning|delivering|building|designing|developing|driving|combining|holding|architecting|spearheading|offering|providing)\b/g, (_m, lead, gerund) => `${lead}I ${base[gerund]}`);
   // A closing line that says the experience "aligns with <Company>'s needs" is requirement talk: keep the invitation, drop the claim.
   fixed = fixed.replace(/\bdiscuss how [^.\n]{0,90}?\b(?:aligns?|fits?|matches|meets|addresses) (?:with )?(?:the )?(?:[A-Z][\w&.-]*\s?){1,4}'s (?:needs?|requirements?)\b/g, "discuss the role");
+  // Soft-skill filler carries no fact: "..., demonstrating my capability to own the customer journey", ", which required clear communication", "This experience honed my ability to ...".
+  fixed = fixed
+    .replace(/,\s*(?:thereby |further |which is )?(?:demonstrating|showing|showcasing|highlighting|reflecting|illustrating) (?:my |a |the |strong |clear |both )?(?:ability|capability|capabilities|skills?|commitment|expertise|proficiency|capacity|versatility|leadership)\b[^.\n]*(?=\.)/gi, "")
+    .replace(/,\s*which required [^.\n]{0,120}(?=\.)/gi, "")
+    .replace(/(?:(?<=[.!?])[ \t]+|^|(?<=\n\n))(?:This|These|Those|Such)\b[^.\n]{0,40}\b(?:experience|work|role|background|exposure)\b[^.\n]{0,20}\b(?:honed|strengthened|developed|built|sharpened|taught|equipped|gave me|prepared me|shaped)\b[^.\n]*\.(?=\s|$)/gim, "")
+    .replace(/\bI, I\b/g, "I")
+    .replace(/\n{3,}/g, "\n\n");
   return fixed;
 }
 
