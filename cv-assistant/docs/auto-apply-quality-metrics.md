@@ -21,17 +21,16 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final live run of all 10 prepared jobs (after the greeting fix), every letter read in full:
+Final live run of all 10 prepared jobs (latest guards), every letter read in full.
 
-- Greeting fix confirmed live: all 10 open "Dear Hiring Manager," on its own line.
-- Structure: all 10 are 197-262 words, name the role and company, have paragraphs and a sign-off.
-- Open defects found on the full read:
-  - Airwallex Senior (281e): opening run-on "Senior Software Engineer, AI Tooling at Airwallex - AI platform architect with production Kubernetes experience who built AI infrastructure..." and a closing chat line ("Let me know if you would like to discuss...").
-  - Airwallex Staff (281f): "Thank you for your consideration" followed by a second closing sentence.
-  - Neara (2823): "multimodal output optimization" and "LLM-driven multimodal interfaces" are not in the CV evidence.
-  - Airwallex Senior (281e): "production Kubernetes experience" and "serverless workloads" are not clearly supported; not flagged by the guards.
-- False-positive warnings: "CPG Seedcom" role wording (Xero 284b) and "Australia's largest event enterprise AI transformation" (Downer 282b) are in the CV summary, so the warnings are noise.
-- Claim check (warn only, user decision): flags on 4 of 10 letters.
-- Latency of the letter step: 25-102 s, median about 47 s. The 60 s target is not met (stronger editor chosen by the user).
-- Promptfoo: last passing run predates the latest guard changes; not re-run.
-- Letters remain drafts for the applicant to review. The mission is NOT complete to the "best quality" bar: the defects above are open.
+- Structure: all 10 are 194-299 words, open with a proper greeting and name the company; no run-on title openings or chat lines after the detector fixes. Sign-offs present.
+- Clean on full read (5): Xero Senior Engineer AI Agentic (2840), Xero ML & AI Systems (284b), Xero AI Platform (2835), Downer (282b), Artificial Analysis (2826), Airwallex Senior (281e). Note: that is 6; treat 2826 and 281e as clean on the read.
+- Defects still open on full read:
+  - Decagon (2861): an opening that uses the job title as experience ("As an Agent Deployment Engineer, I built..."); "interface confidently with senior technical stakeholders to define success criteria" echoes the posting; "inventory and logistics operations" is not in the CV evidence as far as I can verify.
+  - Airwallex Staff (281f): "Python and Go, and cloud infrastructure including Kubernetes deployments directly supports your requirements" (Go not verified; requirement-talk); the Mizco gates claim is flagged as unsupported, though the CV does contain it (a false positive).
+  - Xero Senior SWE ML & AI (2856): "secured drone medication delivery" is a dubious verb for the project; "MIMIC-IV data" needs verification against the CV.
+  - Neara (2823): "As Senior Machine Learning Engineer, I developed an AI medical chatbot" (title used as identity); "86% BertScore" is attributed to the Agentic RAG work across projects; "physics-enabled digital twins" echoes the posting.
+- Claim check (warn only, user decision): flags on 3 of 10 letters in this run.
+- Latency of the letter step: 48-110 s, median about 55 s. The 60 s target is not met (stronger editor chosen by the user).
+- Promptfoo (`npm run eval:letters`): 3 of 3 pass on the latest guards.
+- Letters remain drafts for the applicant to review. The mission is NOT complete at "best quality": the content-level defects above need a stronger verifier or human review.
