@@ -33,6 +33,17 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "letter defects: run-on title opening, chat-line closing; repair drops chat lines and duplicate closers",
+    run: () => {
+      const runOn = "Dear Hiring Manager,\n\nSenior Software Engineer, AI Tooling at Airwallex - AI platform architect with production experience who built AI infrastructure.\n\nI would welcome the opportunity to discuss this role.\n\nDang Khoa Le";
+      assert.ok(findLetterDefects(runOn, "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling").some((d) => d.includes("job title run into")));
+      const chat = "Dear Hiring Manager,\n\nI built things, and I shipped them to production at scale for many users.\n\nLet me know if you would like to discuss the role.\n\nDang Khoa Le";
+      assert.ok(findLetterDefects(chat, "Dang Khoa Le", "Acme", "Data Engineer").some((d) => d.includes("chat-style")));
+      const fixed = repairLetterStructure("Dear Hiring Manager,\n\nI built things, and I shipped them.\n\nI would welcome the opportunity to discuss this role.\n\nI look forward to discussing it further.\n\nLet me know if you would like to talk.\n\nDang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer");
+      assert.ok(!/Let me know/.test(fixed) && (fixed.match(/welcome|look forward/g) || []).length === 1);
+    },
+  },
+  {
     name: "repair puts a greeting run into the first sentence on its own line",
     run: () => {
       const fixed = repairLetterStructure("Dear Hiring Manager, I am writing to apply for the role at Acme. I built things.\n\nI welcome the opportunity to discuss this.\n\nDang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer");

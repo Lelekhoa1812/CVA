@@ -101,7 +101,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 
 
 const CLAIM_LEXICON = [
-  "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
+  "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
   "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "master of", "doctor of", "master's degree", "masters degree", "postgraduate", "graduate diploma", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
@@ -155,6 +155,9 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (text.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
   if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
   if (title && new RegExp(`${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40} - I `, "i").test(text.replace(/^[^\n]*\n+/, "").slice(0, 600))) defects.push("contains a garbled run-on title opening");
+  if (/(^|\n)\s*(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i.test(text)) defects.push("ends with a chat-style line instead of a closing sentence");
+  const openingLine = (text.split(/\n{2,}/).find((block, index) => index > 0 && block.trim()) || "").split(/(?<=[.!?])\s/)[0] || "";
+  if (/\b(?:Engineer|Developer|Scientist|Architect|Lead)\b[^.]{0,80}\s[–-]\s/.test(openingLine) || /^[A-Z][\w ,/&-]{5,80} at [A-Z][\w&. -]{1,40} [–-] /.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\bcandidate\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
@@ -215,6 +218,16 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   // A name run onto the end of the last sentence ("...further. Dang Khoa Le") becomes a proper sign-off.
   const nm = name_(candidateName);
   if (nm) fixed = fixed.replace(new RegExp(`([.!?])[ \\t]*\\n?[ \\t]*(${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})[ \\t]*$`), "$1\n\nSincerely,\n$2");
+  // Chat-style closers add nothing; a second closing paragraph repeats the first.
+  const chatLine = /^(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i;
+  const blocks0 = fixed.split(/\n{2,}/).filter((block) => !chatLine.test(block.trim()) || WORDS(block) > 40);
+  const isCloser = (block: string) => WORDS(block) < 40 && /\b(welcome|look forward|looking forward|discuss)\b/i.test(block);
+  const kept: string[] = [];
+  for (const block of blocks0) {
+    if (isCloser(block) && kept.length && isCloser(kept[kept.length - 1])) kept[kept.length - 1] = block;
+    else kept.push(block);
+  }
+  fixed = kept.join("\n\n");
   // Contact details belong under the name, not in a body sentence.
   const contact = /(?:\+?\d[\d ()-]{7,}\d|[\w.+-]+@[\w-]+\.[\w.]+)/;
   fixed = fixed.split(/\n{2,}/).map((block, index) => {
@@ -389,6 +402,6 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
-  const modelFinding = modelWarning && !/could not complete the evidence check/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
+  const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
   return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(modelFinding ? [modelFinding] : [])] };
 }
