@@ -497,7 +497,6 @@ export async function runCoverLetterAgent(args: {
   let text = "";
   let model = "";
   let mode: "standard" | "advanced" = "standard";
-  let evidence = selected;
   let fallbackNote: string | undefined;
   let indices = selected.map((item) => item.index);
 
@@ -518,7 +517,6 @@ export async function runCoverLetterAgent(args: {
       model = "advanced-agent";
       mode = "advanced";
       indices = advanced.selectedIndices;
-      evidence = allItems.filter((item) => advanced.selectedIndices.includes(item.index));
     } catch (error) {
       if (args.signal?.aborted) throw error;
       fallbackNote = "The advanced agent ran out of time, so the standard cover letter agent wrote this letter.";
