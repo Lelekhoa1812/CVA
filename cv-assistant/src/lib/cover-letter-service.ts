@@ -190,6 +190,8 @@ const name_ = (value?: string) => (value || "").trim();
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  // A greeting run into the first sentence ("Dear Hiring Manager, I am writing...") gets its own line.
+  fixed = fixed.replace(/^(Dear [^,\n]{2,60},)[ \t]+(?=[A-Z])/, "$1\n\n");
   if (!/^(dear|hello|hi|to the|greetings)\b/i.test(fixed)) fixed = `Dear Hiring Manager,\n\n${fixed}`;
   // The opening must say which role at which company this is for, in the posting's own words.
   // "Senior Engineer at Xero - led development of..." is a title run into the first sentence: turn it into a real opening.

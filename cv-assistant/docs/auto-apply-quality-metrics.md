@@ -21,11 +21,11 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final-state run of all 10 prepared jobs after the last code change (stronger grounding editor):
+Last full live run of all 10 prepared jobs (after the guards commit, before the greeting fix):
 
-- Structure: 10 of 10 are 224-338 words, name the exact role and company in the opening, have paragraphs, no fragments, no contact details in the body, and end with the applicant's name (8 of 10 also end on an explicit closing sentence; the other 2 end on a body paragraph).
-- Grounding: letters are built from real CV entries; no invented degrees, years, tools, employers or project-as-employer claims flagged. Earlier hand reads found small residual wording slips (a typo, generic mentoring phrasing); the final run was checked by the automated rules plus the closing/tail read, not a full re-read of all 10.
-- Claim check: the model-based check flagged 4 of 10 letters (warn only, by user decision).
-- Latency of the letter step: 33-106 s, median about 46 s (target p95 <= 60 s is not met by design: stronger editor chosen by the user). A batch of 10 can need a second "Start".
-- Promptfoo (`npm run eval:letters`): passes, including a hostile job description.
+- Structure: 10 of 10 are 233-317 words, open naming the role and company, have paragraphs and a sign-off. One defect was found on the full read: the Airwallex (281e) greeting ran into the first sentence ("Dear Hiring Manager, I am writing..."). That is now fixed in code and covered by a unit test; it was NOT re-run live.
+- Full read by hand of all 10 in this run: grounded in CV entries; "Black Caviar" and the pedigree work are in the profile. Remaining small issues: a few generic closings ("I welcome the opportunity to discuss this role"), one repeated "mentoring" phrase, and one letter with a long multi-paragraph body (Artificial Analysis, 301 words). None is an invented employer, degree or year.
+- Claim check (warn only, user decision): flags on 4 of 10 letters. Two are generic "could not verify" warnings; two name specific claims (for example the CPG Seedcom 80% figure, which the model could not match to the profile wording). The warning is shown; approval is not blocked.
+- Latency of the letter step: 27-107 s, median about 46 s. The 60 s target is not met (stronger editor chosen by the user).
+- Promptfoo (`npm run eval:letters`): last passing run before the most recent guard changes; not re-run after them.
 - Letters remain drafts for the applicant to review.
