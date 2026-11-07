@@ -78,7 +78,7 @@ export default function Navbar() {
                 href={link.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative inline-flex items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium",
+                  "relative inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium",
                   active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -132,7 +132,7 @@ export default function Navbar() {
 
           <button
             onClick={logout}
-            className="hidden rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-200 md:inline-flex"
+            className="hidden min-h-11 items-center rounded-full border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-600 hover:border-rose-300/40 hover:bg-rose-400/14 dark:text-rose-200 md:inline-flex"
           >
             Logout
           </button>

@@ -21,7 +21,7 @@ async function main() {
       text: result.text,
       words: result.text.split(/\s+/).filter(Boolean).length,
       unsupported: findUnsupportedClaims(result.text, profile, input.company),
-      defects: findLetterDefects(result.text, profile.name),
+      defects: findLetterDefects(result.text, profile.name, input.company, input.title),
     }),
   );
 }

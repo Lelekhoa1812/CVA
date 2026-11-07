@@ -119,12 +119,21 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
-export function findLetterDefects(text: string, candidateName?: string): string[] {
+export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string): string[] {
   const defects: string[] = [];
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   const name = (candidateName || "").trim();
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
   if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
+  const trimmed = text.trim();
+  if (!/^(dear|hello|hi|to the|greetings)\b/i.test(trimmed)) defects.push("does not open with a greeting such as 'Dear Hiring Manager,'");
+  const lastLine = trimmed.split(/\n+/).pop() || "";
+  if (!/^(sincerely|regards|kind regards|best regards|yours|thank you)\b/i.test(lastLine) && lastLine.split(/\s+/).length > 6) defects.push("has no sign-off with the applicant's name");
+  if (company && !trimmed.toLowerCase().includes(company.toLowerCase().replace(/\b(pty|ltd|limited|inc)\b\.?/g, "").trim())) defects.push(`never names ${company}`);
+  if (title) {
+    const key = title.toLowerCase().split(/[\s\-\/,&]+/).filter((word) => word.length > 3 && !["senior", "staff", "lead", "principal"].includes(word)).slice(0, 2);
+    if (key.length && !key.some((word) => trimmed.toLowerCase().includes(word))) defects.push(`never names the ${title} role`);
+  }
   return defects;
 }
 
@@ -215,8 +224,8 @@ export async function runCoverLetterAgent(args: {
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company);
-  for (let round = 0; round < 2 && (unsupported.length || findLetterDefects(text, args.profile?.name).length); round += 1) {
-    const roundDefects = findLetterDefects(text, args.profile?.name);
+  for (let round = 0; round < 3 && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
+    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
     try {
       const retryPrompt = buildCoverLetterPrompt({
         candidateName: args.profile?.name || "",
@@ -228,7 +237,7 @@ export async function runCoverLetterAgent(args: {
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company).length;
-      const retriedDefects = findLetterDefects(retried.text, args.profile?.name).length;
+      const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title).length;
       if (retriedUnsupported + retriedDefects < unsupported.length + roundDefects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
