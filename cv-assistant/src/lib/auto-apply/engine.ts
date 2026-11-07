@@ -439,7 +439,7 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
       memory,
       targetLocation: filters.location || "Australia",
       resolved: cached,
-      signal: AbortSignal.timeout(150_000),
+      signal: AbortSignal.timeout(200_000),
     });
     const missing = countMissing(prepared.answers);
     const stage = missing ? "needs_input" : "prepared";

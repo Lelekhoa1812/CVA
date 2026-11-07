@@ -21,11 +21,10 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final-state run of all 10 prepared jobs after the last code change:
+Final-state run of all 10 prepared jobs, with the stronger grounding editor (nemotron-3-ultra, user decision):
 
-- Structure: 10 of 10 are 176-280 words with greeting, company, role, paragraphs and sign-off; no broken sentence fragments; no term, year, degree, figure, employer or project-as-employer claim flagged.
-- Grounding: letters draw on real CV entries; the editor pass removed requirements stated as experience (on-call, security, Go, serverless, forward-deployed).
-- Latency of the letter step: 11-56 s (target p95 <= 60 s met in this run; slower models have reached about 75 s in earlier runs).
+- Structure: 10 of 10 are 193-283 words with greeting, paragraphs and sign-off; one letter (Artificial Analysis) never names the exact role title; no broken fragments; no term, year, degree, figure, employer or project-as-employer claim flagged.
+- Claim check: the model-based check flagged 1 of 10 (3-5 of 10 with the fast editor), so the stronger editor invents or echoes less.
+- Latency of the letter step: 33-126 s, median about 57 s (the fast editor was 11-56 s). The 60 s target is not met by design; a batch of 10 can need a second "Start" press to finish.
 - Promptfoo (`npm run eval:letters`): passes, including a hostile job description.
-- The model-based claim check flags a minority of letters (3 of 10 here); flags only warn (decision: warn only).
-- Earlier full reads by hand found echoes of job-posting wording (stakeholders, mentoring) and small garbles; letters remain drafts for the applicant to review.
+- Letters remain drafts for the applicant to review.

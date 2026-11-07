@@ -16,6 +16,10 @@ import type { Profile } from "@/lib/models/User";
  */
 const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "deepseek-ai/deepseek-v4.1-flash"];
 
+/** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
+const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
+const GROUNDING_CALL_TIMEOUT_MS = 55_000;
+
 /** A letter with no commas across 80+ words is a known degenerate output of some NIM models. */
 export function isWellFormedLetter(text: string) {
   const words = text.split(/\s+/).filter(Boolean).length;
@@ -31,15 +35,17 @@ const MODEL_CALL_TIMEOUT_MS = 40_000;
 const MAX_EXTRA_ATTEMPTS = 1;
 
 /** Tries each model in turn; returns the first well-formed letter of a proper length, else the best letter seen. */
-export async function generateLetterText(prompt: string, signal?: AbortSignal) {
+export async function generateLetterText(prompt: string, signal?: AbortSignal, options?: { models?: string[]; timeoutMs?: number }) {
+  const models = options?.models || COVER_LETTER_MODELS;
+  const callTimeout = options?.timeoutMs ?? MODEL_CALL_TIMEOUT_MS;
   let best = { text: "", model: "", rank: -1 };
   let attempts = 0;
-  for (const model of COVER_LETTER_MODELS) {
+  for (const model of models) {
     // A usable letter already exists: allow at most one more try for a better one, never the whole chain.
     if (best.rank >= 10_000 && attempts > MAX_EXTRA_ATTEMPTS) break;
     attempts += 1;
     try {
-      const callSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS)]) : AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS);
+      const callSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(callTimeout)]) : AbortSignal.timeout(callTimeout);
       const result = await getModel("easy").generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], modelOverride: model, signal: callSignal });
       const text = result.response.text().replace(/^```\w*\n?|```$/g, "").trim();
       if (!text) continue;
@@ -270,10 +276,10 @@ export async function runCoverLetterAgent(args: {
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
   }
   for (let groundRound = 0; groundRound < 2; groundRound += 1) {
-    if (groundRound > 0 && (!within(45_000) || !(findUnsupportedClaims(text, args.profile, args.company).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length))) break;
+    if (groundRound > 0 && (!within(35_000) || !(findUnsupportedClaims(text, args.profile, args.company).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length))) break;
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
-    if (!within(70_000)) throw new Error("letter time budget spent");
+    if (!within(50_000)) throw new Error("letter time budget spent");
     const facts = allItems.map((item) => `- [${item.type === "project" ? "PROJECT, not an employer" : "EMPLOYMENT"}] ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 420)}`).join("\n").slice(0, 14000);
     const grounded = await generateLetterText(`You are a strict fact-checker and editor of a job application letter. Every statement about the applicant must be directly supported by the CV FACTS below. Items marked PROJECT are personal or academic projects, never employers: never write "At <project name>". Job requirements, tools, responsibilities and phrases from the job posting are NOT facts about the applicant, even if the letter states them as experience.
 
@@ -289,7 +295,7 @@ ${facts}
 LETTER:
 ${text}
 
-Return only the corrected letter text.`, args.signal);
+Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS, timeoutMs: GROUNDING_CALL_TIMEOUT_MS });
     const before = findUnsupportedClaims(text, args.profile, args.company).length + findLetterDefects(text, args.profile?.name, args.company, args.title).length;
     const after = findUnsupportedClaims(grounded.text, args.profile, args.company).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title).length;
     if (isWellFormedLetter(grounded.text) && WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
@@ -300,7 +306,7 @@ Return only the corrected letter text.`, args.signal);
   unsupported = findUnsupportedClaims(text, args.profile, args.company);
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
-  if (WORDS(text) < TARGET_MIN_WORDS && within(90_000)) {
+  if (WORDS(text) < TARGET_MIN_WORDS && within(75_000)) {
     try {
       const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice, the greeting and sign-off, and use three or four paragraphs separated by blank lines. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
       if (isWellFormedLetter(expanded.text) && WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
