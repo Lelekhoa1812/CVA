@@ -33,6 +33,25 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "repair splits a name run onto the last sentence and keeps contact lines under the name",
+    run: () => {
+      const a = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Data Engineer role at Acme, and I built pipelines for many teams, shipping them reliably.\n\nI can discuss this opportunity further with you at your convenience. Dang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer");
+      assert.ok(/convenience\.\n\nSincerely,\nDang Khoa Le$/.test(a));
+      const b = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Data Engineer role at Acme, and I built pipelines for many teams, shipping them reliably each quarter.\n\nDang Khoa Le\n0450445373 | a@b.co", "Dang Khoa Le", "Acme", "Data Engineer");
+      assert.ok(/welcome the opportunity/.test(b) && b.endsWith("a@b.co") && b.indexOf("welcome") < b.indexOf("Dang Khoa Le"));
+    },
+  },
+  {
+    name: "repair removes body contact sentences and adds a closing sentence before the sign-off",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Data Engineer role at Acme, and I built pipelines.\n\nI built things, and shipped them to production for users. I can be reached at 0450445373 or a@b.co to talk.\n\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Acme", "Data Engineer");
+      assert.ok(!/0450445373|a@b\.co/.test(fixed));
+      assert.ok(/welcome the opportunity/.test(fixed));
+      assert.ok(fixed.trim().endsWith("Dang Khoa Le"));
+    },
+  },
+  {
     name: "sentence stripping does not split inside Next.js or version numbers",
     run: () => {
       const text = "I built a Next.js app with Gemini 2.5 and shipped it. I used Kubernetes daily at scale. " + "More supported words follow here, and continue. ".repeat(30);

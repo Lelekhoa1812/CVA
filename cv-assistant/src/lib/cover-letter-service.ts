@@ -18,7 +18,7 @@ const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-o
 
 /** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
 const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
-const GROUNDING_CALL_TIMEOUT_MS = 55_000;
+const GROUNDING_CALL_TIMEOUT_MS = 40_000;
 
 /** A letter with no commas across 80+ words is a known degenerate output of some NIM models. */
 export function isWellFormedLetter(text: string) {
@@ -165,6 +165,8 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
 }
 
+const name_ = (value?: string) => (value || "").trim();
+
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
@@ -172,6 +174,28 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   // The opening must say which role at which company this is for, in the posting's own words.
   if (company && title && (!fixed.toLowerCase().includes(title.toLowerCase()) || !fixed.toLowerCase().includes(company.toLowerCase().replace(/\b(pty|ltd|limited|inc)\b\.?/g, "").trim()))) {
     fixed = fixed.replace(/^(Dear[^\n]*\n+)/i, `$1I am applying for the ${title} role at ${company}. `);
+  }
+  // A name run onto the end of the last sentence ("...further. Dang Khoa Le") becomes a proper sign-off.
+  const nm = name_(candidateName);
+  if (nm) fixed = fixed.replace(new RegExp(`([.!?])[ \\t]*\\n?[ \\t]*(${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})[ \\t]*$`), "$1\n\nSincerely,\n$2");
+  // Contact details belong under the name, not in a body sentence.
+  const contact = /(?:\+?\d[\d ()-]{7,}\d|[\w.+-]+@[\w-]+\.[\w.]+)/;
+  fixed = fixed.split(/\n{2,}/).map((block, index) => {
+    if (index === 0 || !contact.test(block)) return block;
+    if (/^\s*[\d+(]|@/.test(block.trim()) && block.trim().split(/\s+/).length < 12) return block;
+    return block.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => !contact.test(sentence)).join(" ");
+  }).filter((block) => block.trim()).join("\n\n");
+  // A letter should end on a closing sentence before the sign-off.
+  const bodyParagraphs = fixed.split(/\n{2,}/);
+  const bodyOnly = bodyParagraphs.filter((block) => WORDS(block) > 8 && !/^(sincerely|regards)/i.test(block.trim()) && !contact.test(block));
+  const lastBody = bodyOnly[bodyOnly.length - 1] || "";
+  if (lastBody && !/\b(welcome|look forward|discuss|opportunity|speak|talk)\b/i.test(`${bodyOnly[bodyOnly.length - 2] || ""} ${lastBody}`.slice(-420))) {
+    const signIndex = bodyParagraphs.findIndex((block) => /^\s*(sincerely|regards)\b/i.test(block));
+    const closing = `I would welcome the opportunity to discuss how my experience fits the ${title ? `${title} role` : "role"}${company ? ` at ${company}` : ""}.`;
+    const nameBlockIndex = name_(candidateName) ? bodyParagraphs.findIndex((block) => block.trim().toLowerCase().startsWith(name_(candidateName).toLowerCase())) : -1;
+    const at = signIndex >= 0 ? signIndex : nameBlockIndex >= 0 ? nameBlockIndex : bodyParagraphs.length;
+    bodyParagraphs.splice(at, 0, closing);
+    fixed = bodyParagraphs.join("\n\n");
   }
   const name = (candidateName || "").trim();
   const lines = fixed.split(/\n+/);

@@ -21,11 +21,11 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final-state run of all 10 prepared jobs (stronger grounding editor), every letter read in full:
+Final-state run of all 10 prepared jobs after the last code change (stronger grounding editor):
 
-- Structure: 10 of 10 are 196-286 words, open by naming the exact role and company, have paragraphs and a sign-off, and contain no fragments. A duplicated sign-off seen once (contact line before "Sincerely") is fixed in code after that run.
-- Grounding: every letter is built from real CV entries (employers, projects, figures); no invented degrees, years, tools or employers found. Small residual issues seen: one typo ("determinist"), generic coaching/mentoring phrasing in one Xero letter, one letter ending on a contact line instead of a closing sentence.
-- Claim check: the model-based check flagged 1 of 10 letters.
-- Latency of the letter step: 24-120 s, median about 45 s. The 60 s target is not met by design (stronger editor chosen by the user); slow letters can make a batch of 10 need a second "Start".
+- Structure: 10 of 10 are 224-338 words, name the exact role and company in the opening, have paragraphs, no fragments, no contact details in the body, and end with the applicant's name (8 of 10 also end on an explicit closing sentence; the other 2 end on a body paragraph).
+- Grounding: letters are built from real CV entries; no invented degrees, years, tools, employers or project-as-employer claims flagged. Earlier hand reads found small residual wording slips (a typo, generic mentoring phrasing); the final run was checked by the automated rules plus the closing/tail read, not a full re-read of all 10.
+- Claim check: the model-based check flagged 4 of 10 letters (warn only, by user decision).
+- Latency of the letter step: 33-106 s, median about 46 s (target p95 <= 60 s is not met by design: stronger editor chosen by the user). A batch of 10 can need a second "Start".
 - Promptfoo (`npm run eval:letters`): passes, including a hostile job description.
 - Letters remain drafts for the applicant to review.
