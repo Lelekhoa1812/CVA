@@ -21,16 +21,20 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Final live run of all 10 prepared jobs (latest guards), every letter read in full.
+Latest live run: all 10 prepared jobs with the independent verifier pass (commit 18edba0). Every letter was read in full.
 
-- Structure: all 10 are 194-299 words, open with a proper greeting and name the company; no run-on title openings or chat lines after the detector fixes. Sign-offs present.
-- Clean on full read (5): Xero Senior Engineer AI Agentic (2840), Xero ML & AI Systems (284b), Xero AI Platform (2835), Downer (282b), Artificial Analysis (2826), Airwallex Senior (281e). Note: that is 6; treat 2826 and 281e as clean on the read.
-- Defects still open on full read:
-  - Decagon (2861): an opening that uses the job title as experience ("As an Agent Deployment Engineer, I built..."); "interface confidently with senior technical stakeholders to define success criteria" echoes the posting; "inventory and logistics operations" is not in the CV evidence as far as I can verify.
-  - Airwallex Staff (281f): "Python and Go, and cloud infrastructure including Kubernetes deployments directly supports your requirements" (Go not verified; requirement-talk); the Mizco gates claim is flagged as unsupported, though the CV does contain it (a false positive).
-  - Xero Senior SWE ML & AI (2856): "secured drone medication delivery" is a dubious verb for the project; "MIMIC-IV data" needs verification against the CV.
-  - Neara (2823): "As Senior Machine Learning Engineer, I developed an AI medical chatbot" (title used as identity); "86% BertScore" is attributed to the Agentic RAG work across projects; "physics-enabled digital twins" echoes the posting.
-- Claim check (warn only, user decision): flags on 3 of 10 letters in this run.
-- Latency of the letter step: 48-110 s, median about 55 s. The 60 s target is not met (stronger editor chosen by the user).
-- Promptfoo (`npm run eval:letters`): 3 of 3 pass on the latest guards.
-- Letters remain drafts for the applicant to review. The mission is NOT complete at "best quality": the content-level defects above need a stronger verifier or human review.
+- Structure (metric 7): 10 of 10 are 191-288 words, open with a greeting, name the company and role, and end with a sign-off. No guard defects.
+- Content still open on full read (metric 7 is not fully met):
+  - Decagon (2861): generic boilerplate ("I am excited to apply", "What sets me apart", "Looking forward to discussing"), JD-style phrasing ("senior technical stakeholders", "operational needs"), and "integration pipelines connecting AI agents to CRMs and ticketing systems", which is not confirmed by the CV evidence.
+  - Neara (2823): "In the same organization" presents the horse-breeding project as if it were Harry the Hirer work. This is a misattribution risk.
+- Claim-check warnings (warn only, user decision): 3 of 10 letters (2840, 282b, 2826). The warnings list internal notes as claims, for example "Candidate clarification answers are empty..." (282b) and "The candidate claims to have built..." (2826). The warning text needs cleaning before it is shown to the applicant.
+- Latency (metric 8, before the model change): 47-154 s, median about 76 s; eval letters with the stronger first draft took 96-108 s under 4-way concurrency. The p95 target of 60 s is not met. The stronger grounding editor and verifier pass cost this time.
+- Promptfoo (`npm run eval:letters`) after the first-draft model change below: 2 of 3 pass. Northwind (257 words) and Fabrikam (293 words) are clean. Contoso Cloud (a thin-evidence case against a demanding posting) ends at 146 words, flagged "too short", and includes an unverified "owned Python services end to end ... operated ML systems in production" line the claim lexicon does not catch.
+
+Changes made from this run (user chose "Stronger letter writer"):
+- The first draft now tries `nvidia/nemotron-3-ultra-550b-a55b` first (laguna and deepseek remain as fallbacks). Before this, two runs in a row failed on 148-164 word letters.
+- Unsupported sentences are always stripped. An intermediate version kept a sentence to stay above 170 words and let "I hold a Master's degree in Computer Science" through (copied from the posting's "a plus"); that was reverted.
+- If verifier pruning would leave a letter under 170 words, the last claim-clean full-length version is kept.
+- Tried and reverted: a longer expansion window with a looser claim gate. It produced garbled prose ("Alex Tester, who built ... is ready to own security tooling").
+
+Letters remain drafts for the applicant to review. The mission is NOT complete at "best quality" while the content defects above remain open.

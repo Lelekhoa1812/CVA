@@ -14,7 +14,7 @@ import type { Profile } from "@/lib/models/User";
  * The cover letter agent behind both the /generate studio and Auto Apply. One prompt, one model chain, one quality
  * guard and one evidence check, so every letter in the product is written and verified the same way.
  */
-const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "deepseek-ai/deepseek-v4.1-flash"];
+const COVER_LETTER_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "poolside/laguna-xs-2.1", "deepseek-ai/deepseek-v4.1-flash"];
 
 /** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
 const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
@@ -385,7 +385,10 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   }
   }
   unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
+  // Unsupported sentences always go: a fabricated claim is worse than a short letter.
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
+  // Last claim-clean version that met the length gate. Verifier pruning must not leave a short letter when a full one exists.
+  let longEnough: string | undefined = WORDS(text) >= TARGET_MIN_WORDS && isWellFormedLetter(text) ? text : undefined;
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
   if (within(85_000)) {
@@ -410,7 +413,10 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
           .map((paragraph) => paragraph.split(/(?<=[.!?])\s+/).filter((sentence) => !sentences.some((bad) => norm(sentence).includes(norm(bad).slice(0, 60)))).join(" ").trim())
           .filter(Boolean)
           .join("\n\n");
-        if (WORDS(pruned) >= TARGET_MIN_WORDS && isWellFormedLetter(pruned)) text = pruned;
+        if (WORDS(pruned) >= TARGET_MIN_WORDS && isWellFormedLetter(pruned)) {
+          text = pruned;
+          longEnough = pruned;
+        }
       }
     } catch (error) {
       if (args.signal?.aborted) throw error;
@@ -425,6 +431,7 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
       if (args.signal?.aborted) throw error;
     }
   }
+  if (WORDS(text) < TARGET_MIN_WORDS && longEnough) text = longEnough;
   text = repairLetterStructure(text, args.profile?.name, args.company, args.title);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
