@@ -217,3 +217,5 @@ Shipped design:
 - The duty guard no longer reads the role title, company or greeting ("Restaurant Supervisor", "Dear Hiring Manager"), which had flagged "supervisor" and "manager" falsely.
 
 Result: all five thin cases return in under a second; the empty profile is refused with the message above; no letter contains anything beyond the record. AI-engineer set after the thin-profile prompt and gates: 10 of 10 clean, 0 defects, 0 unsupported, 39-101 s. Limitation: these profiles were synthetic and run locally; the one production account is not thin, so the thin path has not been exercised on production.
+
+Production regression of ff297f4 on the real (rich) account, three jobs at once: Neara, Airwallex, Xero ML & AI Systems all 200 in 61-96 s, 229-251 words, no review warning. The thin-profile path and the 422 for an empty profile are covered by the offline tests and the local synthetic runs only; the production account has no thin profile to exercise them.
