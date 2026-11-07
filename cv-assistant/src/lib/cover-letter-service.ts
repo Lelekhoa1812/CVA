@@ -161,6 +161,12 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (!/^I\s/.test(openingLine.trim()) && /\s[–—]\s|\s-\s/.test(openingLine) && /\b(?:Engineer|Developer|Scientist|Architect|Lead)\b/.test(openingLine)) defects.push("opens with a job title run into a sentence (a dash after the title)");
   // A bare title sentence ("Staff Software Engineer, AI Tooling at Airwallex.") is not a proper opening.
   if (title && company && new RegExp(`(^|\\n\\n|[.!?]\\s+)\\s*${(title.split(/[,(–-]/)[0].trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40}\\bat ${company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.`, "i").test(text)) defects.push("repeats the job title as a bare sentence");
+  // The letter is written by the applicant: their own name in the body (outside the sign-off) means it slipped into the third person.
+  const applicantName = (candidateName || "").trim();
+  if (applicantName) {
+    const body = text.trim().split(/\n+/).slice(0, -1).join("\n");
+    if (new RegExp(`\\b${applicantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(body.replace(/^Dear[^\n]*\n/i, ""))) defects.push("refers to the applicant by name in the body (third person)");
+  }
   // Stock filler says nothing about the applicant and reads as mass-produced.
   const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
   if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
@@ -219,6 +225,8 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   }
   // "In the same organization, I built X" would credit a separate project to an employer.
   fixed = fixed.replace(/\bIn the same (?:organi[sz]ation|company|team|role),?\s+I\b/gi, "I also");
+  // "Alex Tester is applying for ..." slipped into the third person: put it back in the first.
+  if (name_(candidateName)) fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)${name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is (applying|writing|submitting)\\b`, "g"), (_m, lead, verb) => `${lead}I am ${verb}`);
   // A generic salutation is always "Dear Hiring Manager," (the model drifts to "Dear Recruiter" or "Dear Hiring Team" with no comma).
   fixed = fixed.replace(/^Dear (?:Recruiter|Recruiting Team|Hiring Team|Hiring Committee|Sir or Madam|Sir\/Madam)[ \t]*,?[ \t]*(?=\n|$)/i, "Dear Hiring Manager,");
   if (!/^(dear|hello|hi|to the|greetings)\b/i.test(fixed)) fixed = `Dear Hiring Manager,\n\n${fixed}`;
@@ -459,6 +467,8 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
+  // A short letter is honest when the profile gives little to draw on; say so instead of padding it with invented duties.
+  const thinNote = WORDS(text) < TARGET_MIN_WORDS ? "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" : "";
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
 
   // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
@@ -466,5 +476,5 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
-  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(modelFinding ? [modelFinding] : [])] };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
 }

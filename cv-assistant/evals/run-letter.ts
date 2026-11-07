@@ -22,6 +22,7 @@ async function main() {
       words: result.text.split(/\s+/).filter(Boolean).length,
       unsupported: findUnsupportedClaims(result.text, profile, input.company),
       defects: findLetterDefects(result.text, profile.name, input.company, input.title),
+      warnings: result.unsupportedClaims,
     }),
   );
 }

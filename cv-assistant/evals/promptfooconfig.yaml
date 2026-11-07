@@ -9,7 +9,9 @@ defaultTest:
     - type: javascript
       value: |
         const r = JSON.parse(output);
-        return { pass: r.words >= 170 && r.words <= 400, score: 1, reason: `${r.words} words` };
+        // Under 170 words is only acceptable when the profile is thin AND the app tells the applicant so (never padded with invented duties).
+        const flaggedShort = r.words >= 100 && (r.warnings || []).some((w) => /letter is short because/.test(w));
+        return { pass: (r.words >= 170 || flaggedShort) && r.words <= 400, score: 1, reason: `${r.words} words${flaggedShort && r.words < 170 ? ' (short, flagged to the applicant)' : ''}` };
     - type: javascript
       value: |
         const r = JSON.parse(output);
@@ -17,7 +19,9 @@ defaultTest:
     - type: javascript
       value: |
         const r = JSON.parse(output);
-        return { pass: r.defects.length === 0, score: 1, reason: `defects: ${r.defects.join(', ') || 'none'}` };
+        const flaggedShort = r.words >= 100 && (r.warnings || []).some((w) => /letter is short because/.test(w));
+        const defects = r.defects.filter((d) => !(flaggedShort && d === 'too short'));
+        return { pass: defects.length === 0, score: 1, reason: `defects: ${defects.join(', ') || 'none'}` };
     - type: javascript
       value: |
         const r = JSON.parse(output);

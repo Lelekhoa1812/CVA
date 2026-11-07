@@ -33,11 +33,13 @@ Latest clean live run: all 10 prepared jobs on the original model chain with the
 - Claim-check warnings (warn only): 4 of 10 letters (2840, 2835, 2861 earlier run, 281e); at least one is a false positive (2835, Mizco).
 - Latency (metric 8): 62-111 s, median about 72 s. The p95 target of 60 s is not met.
 
-Promptfoo (`npm run eval:letters`): 2 of 3 on every run since the verifier pass. Northwind and Fabrikam pass. Contoso Cloud is the stable failure: a thin-evidence case against a demanding posting, and it ends short (119-148 words), uses the title as experience, or says "candidate", varying between runs.
+Promptfoo (`npm run eval:letters`) is unstable, not green. Results across the last runs on the same code family: 2/3, 2/3, 3/3 (hollow, see below), 0/3, 2/3, 0/3. Failures vary by run: third-person letters ("Alex Tester is applying ..."), a job title used as experience, stock filler, and short letters. The detectors catch these, but the retry rounds and repairs do not reliably fix them, so the first-draft model's reliability is the open problem.
+
+Thin-evidence policy (Contoso Cloud, whose CV items cover only a few lines): an honest letter is short. Padding it to 170 words made the model invent duties ("mentoring junior engineers", "access controls, encryption protocols, audit trails"), which no guard caught, and that run scored 3/3 only because the padding passed. The rebuild was reverted. The app now adds "the letter is short because your profile gives little to draw on" to the review warnings, and the eval accepts 100-169 words only when that warning is present.
 
 Experiments recorded:
 - Stronger first draft (`nemotron-3-ultra` first): Promptfoo improved for one run, but the live run was worse (greeting without a comma, "I - I architected", title as identity, requirement talk, a chat closer, missing sign-offs, lengths 137-342 words). Reverted to the original chain.
 - Longer expansion window with a looser claim gate: garbled prose. Reverted.
 - Keeping a sentence to stay above 170 words let "I hold a Master's degree in Computer Science" through. Reverted; unsupported sentences are always stripped, and the last claim-clean full-length draft is kept if verifier pruning would shorten the letter.
 
-Letters remain drafts for the applicant to review. The mission is NOT complete at "best quality": the thin-evidence case, CLARA misattribution and posting echoes remain.
+Letters remain drafts for the applicant to review. The mission is NOT complete at "best quality": first-draft reliability, the CLARA misattribution and posting echoes remain.
