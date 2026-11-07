@@ -32,6 +32,17 @@ State after commit bfb9c90. The gate is a full read of 10 live letters, not Prom
 
 **Guards in place (50 unit tests)**: stock filler, "in the same organization", title-as-experience (flag and repair, tolerant of slash spacing), third person by name, requirement talk, run-on title sentences, unsupported claims and posting echoes (always stripped), short letters (flagged, never padded).
 
+**Scored live runs (same deterministic rubric on all 10 letters)**: a letter is clean when it has no structural defect (ignoring length), no unsupported claim or posting-only term, no orphan sentence after the opening, and at least 150 words. Reading letters by eye was unreliable because single runs vary a lot, so these scores are what decisions were based on.
+
+| Pipeline state | Clean | Unsupported | Defects | Orphans | Under 170 words | Avg words |
+|---|---|---|---|---|---|---|
+| Honesty-first (verifier prunes to 110 words, two drafts on the same chain) | 9/10 | 0 | 0 | 0 | 4 | 189 |
+| plus constrained evidence top-up | 7/10 | 6 | 0 | 0 | 3 | 192 |
+| plus final strip and closer-moving | 5/10 | 2 | 3 | 2 | 4 | 181 |
+| Current (top-up, final strip and closer-moving removed; greeting-spacing, "I where I" and em-dash repairs kept) | 8/10 | 2 | 1 | 0 | 2 | 211 |
+
+Single runs of ten letters are noisy (a difference of one letter is within noise), but the top-up added unsupported claims and the final strip left orphan sentences, so both were removed.
+
 **Promptfoo (`npm run eval:letters`)**: varies run to run, 1/3 to 3/3 on the latest code. Typical failures are a model slip the retry did not fix (duplicate greeting, "I am excited") and padding with plausible invented detail ("improving customer satisfaction"). The small first-draft model still invents detail that no deterministic guard catches, so letters remain drafts that the applicant must review.
 
 **Thin evidence (Contoso Cloud)**: an honest letter is short. Padding to 170 words made the model invent duties (mentoring, encryption, audit trails), which no guard caught. The app now adds "the letter is short because your profile gives little to draw on" to the review warnings, and the eval accepts 100-169 words only when that warning is present.
@@ -40,6 +51,7 @@ State after commit bfb9c90. The gate is a full read of 10 live letters, not Prom
 - Hard stage deadlines (retries limited to one round, grounding stopped at 55 s, verifier capped at 20 s) plus a faster editor model first (`deepseek-v4.1-flash`): measured on the real profile, letters took 78-84 s anyway (the first draft takes 8-17 s on a full profile, and every capped stage ran to its limit), and quality fell: three of five letters came out under 160 words and one was garbled ("In this role, I drove ..."). Reverted. Per-stage timing shows the time is spent in the retry rounds, the grounding editor and the verifier, which are also the passes that make letters clean, so the 60 s p95 target and the quality gate pull against each other.
 - Stronger first draft (`nemotron-3-ultra` first): better on Promptfoo for one run, worse live (greeting without a comma, "I - I architected", title as identity, requirement talk, missing sign-offs).
 - Best-of-3 drafts on rotated model orders: Promptfoo 2/3 then 3/3, but worse live (weaker models first, chosen by guard score not prose quality; garbled sentences, closers after the sign-off, invented duties).
+- Constrained evidence top-up (an extra paragraph from unused CV items), final strip of flagged claims, and moving closers out of body paragraphs: scored worse live (see the table).
 - Longer expansion window with a looser claim gate: garbled prose.
 - Keeping a sentence to stay above 170 words let "I hold a Master's degree in Computer Science" through (copied from the posting's "a plus"). Unsupported sentences are always stripped; the last claim-clean full-length draft is kept if verifier pruning would shorten the letter.
 
