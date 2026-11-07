@@ -25,14 +25,22 @@ export function isWellFormedLetter(text: string) {
 }
 
 const WORDS = (text: string) => text.split(/\s+/).filter(Boolean).length;
-const TARGET_MIN_WORDS = 200;
+const TARGET_MIN_WORDS = 170;
+/** One slow or stalled model must not hold up a whole batch of applications. */
+const MODEL_CALL_TIMEOUT_MS = 40_000;
+const MAX_EXTRA_ATTEMPTS = 1;
 
 /** Tries each model in turn; returns the first well-formed letter of a proper length, else the best letter seen. */
 export async function generateLetterText(prompt: string, signal?: AbortSignal) {
   let best = { text: "", model: "", rank: -1 };
+  let attempts = 0;
   for (const model of COVER_LETTER_MODELS) {
+    // A usable letter already exists: allow at most one more try for a better one, never the whole chain.
+    if (best.rank >= 10_000 && attempts > MAX_EXTRA_ATTEMPTS) break;
+    attempts += 1;
     try {
-      const result = await getModel("easy").generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], modelOverride: model, signal });
+      const callSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS)]) : AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS);
+      const result = await getModel("easy").generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], modelOverride: model, signal: callSignal });
       const text = result.response.text().replace(/^```\w*\n?|```$/g, "").trim();
       if (!text) continue;
       const wellFormed = isWellFormedLetter(text);
@@ -67,7 +75,8 @@ function heuristicRank(items: CoverLetterItem[], jobText: string, limit: number)
 export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: string, signal?: AbortSignal, limit = 5): Promise<CoverLetterItem[]> {
   if (items.length <= limit) return items;
   try {
-    const parsed = (await generateJsonSafe("easy", buildExperienceRankingPrompt(jobText.slice(0, 6000), items), 1, signal)) as { rankings?: Array<{ index?: number }> };
+    const rankSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000);
+    const parsed = (await generateJsonSafe("easy", buildExperienceRankingPrompt(jobText.slice(0, 6000), items), 0, rankSignal)) as { rankings?: Array<{ index?: number }> };
     const seen = new Set<number>();
     const picked: CoverLetterItem[] = [];
     for (const entry of Array.isArray(parsed?.rankings) ? parsed.rankings : []) {
