@@ -110,6 +110,17 @@ function normalise(value: string) {
   return value.toLowerCase().replace(/[‘’]/g, "'");
 }
 
+/** Tool-like terms (TensorFlow, LiDAR, C#, CrewAI, OAuth): camel-case, all-caps, or ending in # or +. Ordinary capitalised words are excluded. */
+const TECH_TERM_STOP = new Set(["ai", "ml", "llm", "llms", "api", "apis", "cv", "ui", "ux", "it", "hr", "qa", "us", "au", "uk", "ceo", "cto", "kpi", "kpis", "saas", "b2b", "b2c", "ci", "cd", "ok"]);
+export function extractTechTerms(text: string): Set<string> {
+  const found = new Set<string>();
+  for (const match of text.matchAll(/\b(?:[A-Za-z]*[a-z][A-Z][A-Za-z]*|[A-Z]{2,}[a-z]{0,3}\d*|[A-Za-z]+(?:#|\+\+))(?![A-Za-z0-9])/g)) {
+    const term = match[0].toLowerCase();
+    if ((term.length >= 3 || /[#+]/.test(term)) && !TECH_TERM_STOP.has(term)) found.add(term);
+  }
+  return found;
+}
+
 /** Technology, credential and certification terms the letter asserts but the candidate's profile never mentions. */
 export function findUnsupportedClaims(text: string, profile?: Partial<Profile> | null, company?: string, jobDescription?: string, title?: string): string[] {
   const facts = normalise(JSON.stringify(profile || {}));
@@ -142,9 +153,18 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
       }
     }
   }
+  // Tools and acronyms that appear in the posting and the letter but nowhere in the CV are the posting talking.
+  const postingTerms: string[] = [];
+  if (jobDescription) {
+    const jdTerms = extractTechTerms(jobDescription);
+    const named = normalise(`${title || ""} ${company || ""}`);
+    for (const term of extractTechTerms(text)) {
+      if (jdTerms.has(term) && !facts.includes(term) && !named.includes(term)) postingTerms.push(`posting term: ${term}`);
+    }
+  }
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...relationship, ...echoes, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...relationship, ...echoes, ...postingTerms, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
@@ -205,7 +225,7 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.split(/(?<=[.!?])\s+(?=[A-Z"\u201C])/).map((sentence) => `${sentence} `);
-    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
+    return sentences.filter((sentence) => !terms.some((term) => term.startsWith("echo: ") ? normalise(sentence).replace(/[^a-z0-9+#' -]/g, " ").replace(/\s+/g, " ").includes(term.slice(6)) : term.startsWith("posting term: ") ? extractTechTerms(sentence).has(term.slice(14)) : term.startsWith("claims a history with the employer: ") ? normalise(sentence).includes(normalise(term.slice(35))) : (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
@@ -410,7 +430,7 @@ export async function runCoverLetterAgent(args: {
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `Remove or avoid these unsupported items: ${unsupported.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `Remove or avoid these unsupported items: ${unsupported.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company, jobText, args.title).length;
