@@ -251,7 +251,11 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   if (title && company) {
     const lead = title.split(/[,(\u2013]|\s-\s/)[0].trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const co = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (lead.length > 4) fixed = fixed.replace(new RegExp(`(\\.\\s+)${lead}[^.\\n]{0,60}\\bat ${co}\\.[ \\t]*(?=\\S)`, "g"), "$1");
+    if (lead.length > 4) {
+      // "Staff Software Engineer, AI Tooling at Airwallex - as AI Software Engineer at Axion, I led ..." keeps the real experience.
+      fixed = fixed.replace(new RegExp(`(\\.\\s+)${lead}[^.\\n]{0,60}\\bat ${co}\\s*[-\\u2013\\u2014]\\s*as\\b`, "g"), "$1As");
+      fixed = fixed.replace(new RegExp(`(\\.\\s+)${lead}[^.\\n]{0,60}\\bat ${co}\\.[ \\t]*(?=\\S)`, "g"), "$1");
+    }
   }
   // A letterhead (name and contact lines) between two greetings is dropped together with the first greeting.
   fixed = fixed.replace(/^Dear [^\n]{2,60},[ \t]*\n+(?:[^\n@|]{2,40}\n(?:[^\n]*[@|][^\n]*\n)?[ \t]*\n+)(?=Dear )/i, "");
@@ -524,6 +528,33 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   // Unsupported sentences always go: a fabricated claim is worse than a short letter.
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
+  // Evidence top-up: a short letter from a CV with unused items gets one extra paragraph about those items only, so real evidence is not wasted.
+  // It runs before the verifier, which still prunes anything the CV does not support.
+  if (WORDS(text) < TARGET_MIN_WORDS && within(55_000)) {
+    try {
+      const lowered = text.toLowerCase();
+      const isUnused = (item: CoverLetterItem) => {
+        const key = item.title.split(/\s+-\s+/)[0].trim().toLowerCase();
+        return key.length > 2 && !lowered.includes(key) && Boolean(item.summary || item.description);
+      };
+      const rankedFirst = [...selected, ...allItems.filter((item) => !selected.some((chosen) => chosen.index === item.index))];
+      const unused = rankedFirst.filter(isUnused).slice(0, 3);
+      if (unused.length >= 1) {
+        const block = unused.map((item) => `- [${item.type === "project" ? "PROJECT, not an employer" : "EMPLOYMENT"}] ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 600)}`).join("\n");
+        const extra = await generateLetterText(`Write ONE paragraph of 55 to 90 words for a job application letter, in the first person ("I"), about the CV items below. Use only facts stated in them: no new tools, numbers, duties, employers or outcomes. Items marked PROJECT are personal or academic projects, never employers, so never write "At <project name>". Do not mention the job posting, do not use the word "candidate", and do not add a greeting or sign-off. Return only the paragraph.\n\nCV ITEMS:\n${block}`, args.signal);
+        const paragraph = extra.text.trim();
+        const paragraphs = text.split(/\n{2,}/);
+        const closingAt = paragraphs.findIndex((block, index) => index > 0 && /\b(welcome|look forward|looking forward|discuss)\b/i.test(block) && WORDS(block) < 60 && !/^(dear|sincerely|regards)/i.test(block.trim()));
+        const at = closingAt > 0 ? closingAt : Math.max(1, paragraphs.length - 1);
+        const candidateText = [...paragraphs.slice(0, at), paragraph, ...paragraphs.slice(at)].join("\n\n");
+        const added = WORDS(paragraph);
+        const claimsNow = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length;
+        if (added >= 40 && added <= 110 && !/\bcandidate\b/i.test(paragraph) && findUnsupportedClaims(candidateText, args.profile, args.company, jobText, args.title).length <= claimsNow && findLetterDefects(candidateText, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short")).length <= findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short")).length) text = candidateText;
+      }
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+    }
+  }
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
   if (within(85_000)) {

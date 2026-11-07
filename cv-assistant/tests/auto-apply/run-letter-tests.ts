@@ -57,6 +57,8 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!fixed.includes("Airwallex. Senior Software Engineer, AI Tooling at Airwallex."), fixed);
       assert.ok(fixed.includes("I am applying for the Senior Software Engineer, AI Tooling role at Airwallex."), fixed);
       assert.ok(!/proven ability|excited to apply/i.test(fixed), fixed);
+      const dash = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Staff Software Engineer, AI Tooling role at Airwallex. Staff Software Engineer, AI Tooling at Airwallex - as AI Software Engineer at Axion, I led a platform.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling");
+      assert.ok(dash.includes("Airwallex. As AI Software Engineer at Axion, I led a platform."), dash);
     },
   },
   {
