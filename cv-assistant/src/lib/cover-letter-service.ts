@@ -107,7 +107,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 
 
 const CLAIM_LEXICON = [
-  "linux", "unix", "terabyte", "terabytes", "petabyte", "petabytes", "bare metal", "ansible", "jenkins", "prometheus", "grafana", "datadog", "splunk", "snowflake", "bigquery", "redshift", "kafka", "spark", "hadoop", "airflow", "dbt", "cloudformation", "helm", "istio", "nginx", "postgresql", "mongodb atlas", "oracle cloud", "sre", "devops", "site reliability",
+  "marketplace", "linux", "unix", "terabyte", "terabytes", "petabyte", "petabytes", "bare metal", "ansible", "jenkins", "prometheus", "grafana", "datadog", "splunk", "snowflake", "bigquery", "redshift", "kafka", "spark", "hadoop", "airflow", "dbt", "cloudformation", "helm", "istio", "nginx", "postgresql", "mongodb atlas", "oracle cloud", "sre", "devops", "site reliability",
   "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
   "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "master of", "doctor of", "master's degree", "masters degree", "postgraduate", "graduate diploma", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
@@ -144,19 +144,19 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
     .map((name) => `project as employer: ${name}`);
   // Prior dealings with the employer's own products or content are never in a CV.
   const relationship = Array.from(text.matchAll(/\b(?:your (?:recent|existing|latest|public|current|flagship)\b[^.,;]{0,60}|co-?developed your\b[^.,;]{0,60}|highlighted in your\b[^.,;]{0,60}|foundation for your\b[^.,;]{0,60}|powering (?:[A-Z]\w+)'s\b[^.,;]{0,40})/gi)).map((match) => `claims a history with the employer: ${match[0].trim().slice(0, 60)}`);
-  // Passages lifted verbatim from the posting (7+ words) are the posting talking, not the applicant.
+  // Passages lifted verbatim from the posting (6+ words) are the posting talking, not the applicant.
   const echoes: string[] = [];
   if (jobDescription) {
     const words = (value: string) => normalise(value).replace(/[^a-z0-9+#' -]/g, " ").split(/\s+/).filter(Boolean);
     const jd = ` ${words(jobDescription).join(" ")} `;
     const mine = words(text);
     const known = ` ${words(JSON.stringify(profile || {})).join(" ")} `;
-    for (let i = 0; i + 7 <= mine.length; i += 1) {
-      const gram = mine.slice(i, i + 7).join(" ");
+    for (let i = 0; i + 6 <= mine.length; i += 1) {
+      const gram = mine.slice(i, i + 6).join(" ");
       const named = ` ${words(`${title || ""} ${company || ""} I am applying for the role at`).join(" ")} `;
       if (jd.includes(` ${gram} `) && !known.includes(` ${gram} `) && !gram.split(" ").every((word) => named.includes(` ${word} `))) {
         echoes.push(`echo: ${gram}`);
-        i += 6;
+        i += 5;
       }
     }
   }
