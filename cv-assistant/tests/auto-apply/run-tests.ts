@@ -33,6 +33,31 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "repair turns a title run-on into an opening and does not duplicate an existing one",
+    run: () => {
+      const a = repairLetterStructure("Dear Hiring Manager,\n\nSenior Engineer - ML & AI Systems at Xero, I architect production systems for many teams, shipping reliably.\n\nI would welcome the opportunity to discuss this.\n\nDang Khoa Le", "Dang Khoa Le", "Xero", "Senior Engineer - ML & AI Systems");
+      assert.ok(a.includes("I am applying for the Senior Engineer - ML & AI Systems role at Xero. I architect production systems"));
+      const b = repairLetterStructure("Dear Hiring Manager,\n\nI am writing to apply for the Senior Machine Learning Engineer role at Neara. I led teams, and shipped systems.\n\nI would welcome the opportunity to discuss this.\n\nDang Khoa Le", "Dang Khoa Le", "Neara", "Senior Machine Learning Engineer - Australia");
+      assert.equal((b.match(/appl(y|ying)/g) || []).length, 1);
+      const c = repairLetterStructure("Dear Hiring Manager,\n\nSenior Software Engineer, AI Tooling at Airwallex - led development of AI infrastructure at Mizco, shipping systems.\n\nDang Khoa Le", "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling");
+      assert.ok(c.includes("role at Airwallex. I led development of AI infrastructure"));
+    },
+  },
+  {
+    name: "letters claiming history with the employer, 180-minute figures or copying the posting are flagged",
+    run: () => {
+      const cv = { projects: [{ name: "Chatbot", summary: "Python bot" }] } as never;
+      const invented = "I co-developed your existing outage prediction framework and read your recent technical blog. My models gave 180-minute lookahead.";
+      const found = findUnsupportedClaims(invented, cv, "Neara", "");
+      assert.ok(found.some((t) => t.startsWith("claims a history with the employer")) && found.includes("180-minute"));
+      const jd = "You communicate clearly by bringing people along with an idea rather than shipping code quietly in the background";
+      const copied = "I communicate clearly by bringing people along with an idea rather than shipping code quietly in the background today.";
+      assert.ok(findUnsupportedClaims(copied, cv, "Acme", jd).some((t) => t.startsWith("echo: ")));
+      const stripped = stripUnsupportedSentences(copied + " " + "Supported words here, and more. ".repeat(40), findUnsupportedClaims(copied, cv, "Acme", jd), "Acme");
+      assert.ok(stripped && !/shipping code quietly/.test(stripped));
+    },
+  },
+  {
     name: "repair splits a name run onto the last sentence and keeps contact lines under the name",
     run: () => {
       const a = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Data Engineer role at Acme, and I built pipelines for many teams, shipping them reliably.\n\nI can discuss this opportunity further with you at your convenience. Dang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer");
