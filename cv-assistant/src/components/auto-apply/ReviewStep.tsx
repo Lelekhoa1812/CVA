@@ -37,7 +37,7 @@ function AnswerField({ answer, value, onChange, remember, onRemember }: { answer
         <Chip tone={answer.source === "ai" ? "info" : missing ? "warning" : "neutral"}>{missing ? "Needs you" : edited ? "Edited" : SOURCE_LABEL[answer.source] || answer.source}</Chip>
       </div>
       <div className="mt-2">{control}</div>
-      {answer.note && missing ? <p className="text-muted-foreground mt-1.5 text-xs leading-5">{answer.note}</p> : null}
+      {answer.note && (missing || answer.needsInput) ? <p className="text-muted-foreground mt-1.5 text-xs leading-5">{answer.note}</p> : null}
       {answer.source === "ai" && answer.confidence > 0 && answer.confidence < 0.6 ? <p className="text-[hsl(var(--warning))] mt-1.5 text-xs">Low confidence. Please check this answer.</p> : null}
       {edited && value.trim() && !CONTACT.has(answer.category) ? (
         <label className="text-muted-foreground mt-2 flex min-h-8 cursor-pointer items-center gap-2 text-xs">
@@ -90,6 +90,7 @@ function Detail({ c }: { c: AutoApplyController }) {
 
   const job = detail.job;
   const editable = !["approved", "applied"].includes(job.status);
+  const flaggedLetter = answers.find((answer) => answer.category === "cover_letter" && answer.type !== "file" && answer.needsInput && answer.note && cover.trim());
   const ordered = [...answers].filter((answer) => answer.type !== "file" && answer.category !== "cover_letter");
   const needs = ordered.filter((answer) => answer.needsInput && !(values[answer.questionId] ?? "").trim());
   const rest = ordered.filter((answer) => !needs.includes(answer));
@@ -180,6 +181,17 @@ function Detail({ c }: { c: AutoApplyController }) {
         </div>
         <textarea value={cover} onChange={(event) => setCover(event.target.value)} readOnly={!editable} rows={12} className="input-premium min-h-60 resize-y font-sans leading-7" aria-label="Cover letter text" />
         {!cover.trim() ? <p className="text-[hsl(var(--warning))] text-xs">The cover letter could not be generated. Use Re-prepare to try again.</p> : null}
+        {flaggedLetter ? (
+          <div role="alert" className="surface-subtle space-y-2 rounded-2xl border border-[hsl(var(--warning))]/40 p-3">
+            <p className="text-[hsl(var(--warning))] text-xs font-semibold">Needs your check</p>
+            <p className="text-muted-foreground text-xs leading-5">{flaggedLetter.note}</p>
+            {editable ? (
+              <button type="button" className="button-secondary min-h-11 px-3 text-xs" disabled={Boolean(c.busy[`confirm:${job._id}`]) || dirty} onClick={() => void c.act(`confirm:${job._id}`, () => autoApplyApi.saveAnswers(job._id, { confirmCoverLetter: true }), "Cover letter confirmed.")}>
+                I have checked the letter
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {questions.length ? (

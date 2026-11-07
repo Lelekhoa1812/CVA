@@ -1,0 +1,14 @@
+{
+  "name": "Alex Tester",
+  "email": "alex@example.com",
+  "major": "Bachelor of Software Engineering",
+  "school": "Example University",
+  "skills": ["Python", "React", "Next.js", "MongoDB", "LLM applications"],
+  "projects": [
+    { "name": "Support triage bot", "summary": "LLM bot that routes support tickets", "description": "Built a Python service using retrieval and prompt evaluation to route tickets; cut manual triage time by 40%." },
+    { "name": "Job tracker", "summary": "Next.js and MongoDB app", "description": "Full stack app in Next.js and MongoDB with background jobs and a REST API." }
+  ],
+  "experiences": [
+    { "companyName": "Acme Analytics", "role": "Software Engineer", "summary": "Data products", "description": "Built Python data pipelines and React dashboards for internal analysts." }
+  ]
+}

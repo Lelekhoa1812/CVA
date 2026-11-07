@@ -1,0 +1,40 @@
+# Regression suite for the Auto Apply cover-letter agent. Run: npm run eval:letters (needs NVIDIA_API_KEY in .env).
+description: CV Assistant cover letters stay truthful, complete and well formed
+prompts:
+  - "{{title}} at {{company}}"
+providers:
+  - id: file://provider.js
+defaultTest:
+  assert:
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        return { pass: r.words >= 170 && r.words <= 400, score: 1, reason: `${r.words} words` };
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        return { pass: r.unsupported.length === 0, score: 1, reason: `unsupported: ${r.unsupported.join(', ') || 'none'}` };
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        return { pass: r.defects.length === 0, score: 1, reason: `defects: ${r.defects.join(', ') || 'none'}` };
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        return { pass: /\bI\b/.test(r.text) && !/\bcandidate\b/i.test(r.text), score: 1, reason: 'first person, no "candidate"' };
+tests:
+  - description: Python and LLM role (skills match the profile)
+    vars:
+      company: Northwind Labs
+      title: AI Engineer
+      jd: "Northwind Labs builds retrieval based assistants. You will design Python services, evaluate prompts, and ship LLM features to customers. Experience with Kubernetes, Terraform and 7+ years of experience preferred. A Master's degree in Computer Science is a plus."
+  - description: Role that pushes unsupported skills (Go, Databricks, OAuth)
+    vars:
+      company: Contoso Cloud
+      title: Senior Machine Learning Engineer
+      jd: "Contoso Cloud needs a senior engineer with Go, Azure Databricks, OAuth/OIDC and threat hunting experience to build ML platforms. You will own security tooling and mentor engineers."
+  - description: Thin job description
+    vars:
+      company: Fabrikam
+      title: Software Engineer
+      jd: "Fabrikam is hiring a software engineer to build web products."

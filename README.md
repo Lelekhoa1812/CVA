@@ -482,3 +482,7 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 *Transform your professional presence with AI-powered resume building and cover letter generation that stands out to employers.*
 
 **Built with ❤️ using Next.js, TypeScript, and NVIDIA NIM**
+
+### Cover-letter regression suite (Promptfoo)
+
+`npm run eval:letters` (in `cv-assistant/`) runs the real cover-letter agent with real NVIDIA NIM calls (needs `NVIDIA_API_KEY` in `.env`) on a synthetic profile. It asserts each letter is 170-400 words, first person, free of claims the profile does not support (degrees, years, tools, employers, figures) and free of structural defects. Cases live in `cv-assistant/evals/promptfooconfig.yaml`; `npx promptfoo view` shows results. Run it after changing prompts, models or the claim guards.

@@ -111,9 +111,11 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
   const employmentPattern = (name: string) => new RegExp(`\\b(?:at|with|for|joined)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},?\\s+I\\s+(?:\\w+\\s+){0,2}(?:developed|built|led|delivered|designed|shipped|managed|worked|created|implemented)`, "i");
   const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
+  // Specific figures and magnitudes are the applicant's own facts: flag any that the profile never states.
+  const figures = Array.from(letter.matchAll(/\b\d[\d,.]*\s*(?:%|k\b|x\b|million|billion)|\b(?:sub-second|millions?|billions?|thousands)\b(?:\s+of)?/g)).map((match) => match[0].trim()).filter((term) => !facts.includes(term));
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
@@ -233,12 +235,24 @@ export async function runCoverLetterAgent(args: {
     }
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
   }
+  // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
+  if (WORDS(text) < TARGET_MIN_WORDS) {
+    try {
+      const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice and the greeting and sign-off. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
+      if (WORDS(expanded.text) > WORDS(text) && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+    }
+  }
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
 
-  const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
+  const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
-  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: remaining };
+  // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
+  const modelFinding = modelWarning && !/could not complete the evidence check/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
+  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...(modelFinding ? [modelFinding] : [])] };
 }

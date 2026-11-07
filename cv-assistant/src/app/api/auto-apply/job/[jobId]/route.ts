@@ -49,6 +49,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
 const stageActionSchema = z.object({
   stage: z.enum(["selected", "skipped", "shortlisted", "discovered"]).optional(),
   coverLetterText: z.string().max(8000).optional(),
+  confirmCoverLetter: z.boolean().optional(),
   answers: z.array(z.object({ questionId: z.string().min(1), value: z.string().max(4000), remember: z.boolean().optional() })).max(80).optional(),
 });
 
@@ -60,7 +61,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ jobId
   if (!job) return NextResponse.json({ error: "Application not found." }, { status: 404 });
   const parsed = stageActionSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid update." }, { status: 400 });
-  const { stage, coverLetterText, answers } = parsed.data;
+  const { stage, coverLetterText, answers, confirmCoverLetter } = parsed.data;
   const current = normalizeStage(job.status);
 
   try {
@@ -68,7 +69,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ jobId
       assertTransition(current, stage as JobStage);
       await AutoApplyJobCandidateModel.updateOne({ _id: job._id }, { $set: { status: stage }, $push: { stageHistory: { stage, at: new Date(), note: "Changed by you" } } });
     }
-    if (answers || typeof coverLetterText === "string") {
+    if (answers || confirmCoverLetter || typeof coverLetterText === "string") {
       if (current === "applied" || current === "preparing") {
         return NextResponse.json({ error: "This application can no longer be edited." }, { status: 409 });
       }
@@ -76,11 +77,14 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ jobId
       if (!draft) return NextResponse.json({ error: "Prepare this application before editing it." }, { status: 409 });
       const existing = (draft.answers || []) as unknown as DraftAnswer[];
       const edits = new Map((answers || []).map((entry) => [entry.questionId, entry]));
+      const cover = typeof coverLetterText === "string" ? coverLetterText : draft.coverLetterText;
       const next = existing.map((answer) => {
         const edit = edits.get(answer.questionId);
-        return edit ? applyUserAnswer(answer, edit.value) : answer;
+        if (edit) return applyUserAnswer(answer, edit.value);
+        // Editing or confirming the letter is the applicant's review of anything flagged in it.
+        if (answer.category === "cover_letter" && answer.type !== "file" && (confirmCoverLetter || typeof coverLetterText === "string")) return { ...answer, value: cover, needsInput: false, note: undefined };
+        return answer;
       });
-      const cover = typeof coverLetterText === "string" ? coverLetterText : draft.coverLetterText;
       const missing = countMissing(next);
       await draft.updateOne({
         $set: {

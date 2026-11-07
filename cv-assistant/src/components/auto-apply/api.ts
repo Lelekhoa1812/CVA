@@ -57,7 +57,7 @@ export const autoApplyApi = {
   getJob: (id: string) => call<JobDetail>(`/api/auto-apply/job/${id}`),
   setStage: (id: string, stage: "selected" | "skipped" | "shortlisted" | "discovered") =>
     call<{ ok: boolean }>(`/api/auto-apply/job/${id}`, { method: "PATCH", body: JSON.stringify({ stage }) }),
-  saveAnswers: (id: string, body: { answers?: Array<{ questionId: string; value: string; remember?: boolean }>; coverLetterText?: string }) =>
+  saveAnswers: (id: string, body: { answers?: Array<{ questionId: string; value: string; remember?: boolean }>; coverLetterText?: string; confirmCoverLetter?: boolean }) =>
     call<{ ok: boolean }>(`/api/auto-apply/job/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   rewriteCoverLetter: (id: string, advanced: boolean) => call<{ coverLetter: string; mode: string; reviewWarning?: string; fallbackNote?: string }>(`/api/auto-apply/job/${id}/cover-letter`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ advanced }) }),
   prepare: (id: string) => call<{ outcome: string }>(`/api/auto-apply/job/${id}/prepare`, { method: "POST" }),
