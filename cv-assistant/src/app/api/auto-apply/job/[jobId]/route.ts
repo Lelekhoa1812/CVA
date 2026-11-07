@@ -88,7 +88,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ jobId
       });
       const reviewed = Boolean(confirmCoverLetter) || typeof coverLetterText === "string";
       const letterClaims = reviewed ? [] : ((draft.letterClaims || []) as string[]);
-      const missing = countMissing(next) + (letterClaims.length ? 1 : 0);
+      const missing = countMissing(next);
       await draft.updateOne({
         $set: {
           answers: next,

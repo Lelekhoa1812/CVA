@@ -206,8 +206,8 @@ export async function prepareApplication(args: {
     answers.set(question.id, {
       ...answer,
       source: "ai",
-      needsInput: (question.required && !coverLetter.text) || flagged,
-      note: flagged ? `Check before approving: the letter mentions ${(coverLetter.unsupportedClaims || []).join(", ")}, which is not in your profile. Edit or confirm it.` : answer.note,
+      needsInput: question.required && !coverLetter.text,
+      note: flagged ? `Worth a look before sending: the letter mentions ${(coverLetter.unsupportedClaims || []).join(", ")}, which is not in your profile. Edit or confirm it.` : answer.note,
     });
   }
 

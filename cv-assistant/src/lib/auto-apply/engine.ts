@@ -441,7 +441,7 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
       resolved: cached,
       signal: AbortSignal.timeout(150_000),
     });
-    const missing = countMissing(prepared.answers) + (prepared.letterClaims.length ? 1 : 0);
+    const missing = countMissing(prepared.answers);
     const stage = missing ? "needs_input" : "prepared";
     const applyUrl = prepared.resolved.applyUrl || job.applyUrl;
     const payloadHash = hashApplicationPayload({ answers: prepared.answers, coverLetter: prepared.coverLetter, applyUrl });

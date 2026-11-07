@@ -49,10 +49,6 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       continue;
     }
     const answers = (draft.answers || []) as unknown as DraftAnswer[];
-    if ((draft.letterClaims || []).length) {
-      skipped.push({ id: job._id.toString(), reason: "Check the cover letter first" });
-      continue;
-    }
     if (countMissing(answers)) {
       skipped.push({ id: job._id.toString(), reason: "Some answers are still missing" });
       continue;

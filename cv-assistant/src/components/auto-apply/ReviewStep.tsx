@@ -91,7 +91,7 @@ function Detail({ c }: { c: AutoApplyController }) {
   const job = detail.job;
   const editable = !["approved", "applied"].includes(job.status);
   const letterClaims = detail.draft.letterClaims || [];
-  const flaggedLetter = letterClaims.length ? { note: `The letter needs checking: ${letterClaims.map((item) => item.replace(/^the letter /i, "")).join("; ")}. Edit it, or confirm it is accurate, before approving.` } : undefined;
+  const flaggedLetter = letterClaims.length ? { note: `The letter needs checking: ${letterClaims.map((item) => item.replace(/^the letter /i, "")).join("; ")}. Edit it if anything is not accurate; approval is not blocked.` } : undefined;
   const ordered = [...answers].filter((answer) => answer.type !== "file" && answer.category !== "cover_letter");
   const needs = ordered.filter((answer) => answer.needsInput && !(values[answer.questionId] ?? "").trim());
   const rest = ordered.filter((answer) => !needs.includes(answer));
@@ -184,11 +184,11 @@ function Detail({ c }: { c: AutoApplyController }) {
         {!cover.trim() ? <p className="text-[hsl(var(--warning))] text-xs">The cover letter could not be generated. Use Re-prepare to try again.</p> : null}
         {flaggedLetter ? (
           <div role="alert" className="surface-subtle space-y-2 rounded-2xl border border-[hsl(var(--warning))]/40 p-3">
-            <p className="text-[hsl(var(--warning))] text-xs font-semibold">Needs your check</p>
+            <p className="text-[hsl(var(--warning))] text-xs font-semibold">Worth a check</p>
             <p className="text-muted-foreground text-xs leading-5">{flaggedLetter.note}</p>
             {editable ? (
               <button type="button" className="button-secondary min-h-11 px-3 text-xs" disabled={Boolean(c.busy[`confirm:${job._id}`]) || dirty} onClick={() => void c.act(`confirm:${job._id}`, () => autoApplyApi.saveAnswers(job._id, { confirmCoverLetter: true }), "Cover letter confirmed.")}>
-                I have checked the letter
+                Mark as checked
               </button>
             ) : null}
           </div>

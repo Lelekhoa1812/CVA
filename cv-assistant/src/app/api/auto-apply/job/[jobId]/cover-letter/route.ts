@@ -53,9 +53,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     if (!result.text) return NextResponse.json({ error: "The cover letter agent returned nothing. Try again." }, { status: 502 });
 
     const answers = ((draft.toObject().answers || []) as unknown as DraftAnswer[]).map((answer) =>
-      answer.category === "cover_letter" && answer.type !== "file" ? { ...answer, value: result.text, needsInput: Boolean(result.unsupportedClaims?.length), note: result.unsupportedClaims?.length ? `Check before approving: the letter mentions ${result.unsupportedClaims.join(", ")}, which is not in your profile. Edit or confirm it.` : undefined } : answer,
+      answer.category === "cover_letter" && answer.type !== "file" ? { ...answer, value: result.text, needsInput: false, note: undefined } : answer,
     );
-    const missing = countMissing(answers) + (result.unsupportedClaims?.length ? 1 : 0);
+    const missing = countMissing(answers);
     await draft.updateOne({
       $set: {
         answers,
