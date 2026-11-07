@@ -153,3 +153,5 @@ Twelve prepared jobs from the test account (Neara, AustralianSuper, Airwallex, N
 - Prezzee carried "No clarification answers provided to verify accuracy of job application draft claims", a remark about the inputs rather than a claim. Reading the letter against the CV found every figure, employer, tool and role supported (checked .NET/C#, Qwen2.5-VL, Pydantic, Jetson Nano, AI Team Lead, the 400,000+ case figure and the partner names). `isMissingInputRemark` now drops such issues before a warning is built; a test covers it and an invented claim still warns.
 
 Against the earlier two-pipeline production checks: no letter above 102 s (previously some at 130-133 s), no defect found by reading.
+
+Production re-check of 4b3363d (six jobs including Prezzee, three at a time): all 200 in 74-100 s, 210-267 words, no review warning on any letter. Eighteen production letters at the three-pipeline setting in total across the two samples: 18 of 18 returned 200, none over 102 s.
