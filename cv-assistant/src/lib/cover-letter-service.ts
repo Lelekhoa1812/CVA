@@ -562,6 +562,12 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   // Unsupported sentences always go: a fabricated claim is worse than a short letter.
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
+  // The model evidence check takes seconds and only reads the finished letter. When the verifier below leaves the letter as it is
+  // (the usual case) its result is reused, so the check overlaps the verifier instead of following it.
+  const finalise = (value: string) => repairLetterStructure(value, args.profile?.name, args.company, args.title).replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
+  const speculativeText = finalise(text);
+  const runClaimCheck = (draft: string) => checkDraftClaims({ draft, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  const speculativeCheck = within(85_000) ? runClaimCheck(speculativeText) : undefined;
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
   if (within(85_000)) {
@@ -611,7 +617,7 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.map(describeClaim).join("; ")}.` : undefined;
 
   // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
-  const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
+  const { reviewWarning: modelWarning } = await (speculativeCheck && text === speculativeText ? speculativeCheck : runClaimCheck(text));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
