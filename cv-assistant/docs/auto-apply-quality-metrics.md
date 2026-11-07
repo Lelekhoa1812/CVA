@@ -141,3 +141,5 @@ Limit: a single 10-letter sample. The route's cost per letter rises by up to one
 ### Production check of 40c4f2b (three pipelines), 2026-11-08
 
 Downer letter on production: 200 in 106 s, 262 words, no deterministic defect. The model evidence check raised three issues, all of which restate CV facts (the 5-person Swinburne team, the VietDan Water Meter OCR result, the VHandicap scorecard scanner). They survived the false-alarm filter because the issues begin "Candidate's claim to have ..." and the unquoted-issue pattern did not accept the possessive or the trailing "is not supported". The pattern now accepts both; a test covers a CV-quoting possessive issue (dropped) and an invented "40-person team at Google" (kept). The two other jobs tried on that session returned 409 "Prepare this application first", which is the intended guard for unprepared jobs.
+
+Re-check on production after 56fa720: the same Downer job returned 200 in 91 s, 178 words, no review warning.
