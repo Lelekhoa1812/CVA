@@ -1,7 +1,7 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
-import { extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -11,7 +11,42 @@ const profile = {
 const posting = "Neara needs a Senior Machine Learning Engineer with PyTorch and TensorFlow experience, LiDAR and imagery data, and C# for tooling.";
 const letter = "I am applying for the Senior Machine Learning Engineer role at Neara. At Mizco I built a platform with PyTorch and FastAPI. I also have deep TensorFlow experience across LiDAR and imagery data. I enjoy working in C# as well.";
 
+const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honours)", school: "Swinburne University of Technology" };
+
 const tests: Array<{ name: string; run: () => void }> = [
+  {
+    name: "guard tokens are shown to the applicant in plain language",
+    run: () => {
+      assert.equal(describeClaim("posting term: tensorflow"), 'the tool or term "tensorflow", which only the job posting mentions');
+      assert.match(describeClaim("echo: the development of ai tools"), /copied from the job posting/);
+      assert.match(describeClaim("degree field: Biomedical Informatics"), /education record does not show/);
+      assert.equal(describeClaim("five years"), "five years");
+    },
+  },
+  {
+    name: "a sign-off with the name that sits above the closing sentence is moved to the end",
+    run: () => {
+      const body = "I am applying for the Senior Engineer role at Xero. At Mizco I built a platform with FastAPI and OpenTelemetry. ".repeat(8).trim();
+      const letter = `Dear Hiring Manager,\n\n${body}\n\nBest regards,\nDang Khoa Le\n\nI would welcome the opportunity to discuss how my experience fits the role.`;
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Xero", "Senior Engineer");
+      assert.ok(fixed.endsWith("Best regards,\nDang Khoa Le"), fixed.slice(-120));
+      assert.ok(fixed.indexOf("I would welcome") < fixed.indexOf("Best regards"));
+      assert.equal(repairLetterStructure(fixed, "Dang Khoa Le", "Xero", "Senior Engineer"), fixed);
+    },
+  },
+  {
+    name: "a degree field the education record does not give is flagged and its sentence stripped; the real degree is not",
+    run: () => {
+      const bad = "I am applying for the AI Engineer role at Xero. I hold a degree in Biomedical Informatics from Swinburne University where I led a team. At Mizco I built a platform with FastAPI and OpenTelemetry that routed enterprise documents through several services, which kept the pipeline observable and the support load low for the whole team. " + "I also wrote the Python tooling that checked each release against a set of regression cases before it reached customers, and I mentored two newer engineers on the team through their first production changes over the following year. " + "Over the same period I also reviewed pull requests, wrote the documentation for the service, and ran the weekly planning sessions that kept the work moving. " + "I would welcome the chance to bring the same habits to Xero and to talk through how they apply to the role.";
+      const claims = findUnsupportedClaims(bad, degreeProfile, "Xero", undefined, "AI Engineer");
+      assert.ok(claims.includes("degree field: Biomedical Informatics"), claims.join("; "));
+      const stripped = stripUnsupportedSentences(bad, claims, "Xero") || "";
+      assert.ok(!/Biomedical/.test(stripped) && /Mizco/.test(stripped), stripped);
+      for (const good of ["I hold a Bachelor of Software Engineering (Honours) from Swinburne University.", "I have a Software Engineering degree from Swinburne.", "I hold an honours degree from Swinburne University."]) {
+        assert.deepEqual(findUnsupportedClaims(good, degreeProfile, "Xero", undefined, "AI Engineer").filter((claim) => claim.startsWith("degree field:")), [], good);
+      }
+    },
+  },
   {
     name: "tech terms: tools and acronyms are extracted, ordinary words and stop terms are not",
     run: () => {

@@ -207,7 +207,7 @@ export async function prepareApplication(args: {
       ...answer,
       source: "ai",
       needsInput: question.required && !coverLetter.text,
-      note: flagged ? `Worth a look before sending: the letter mentions ${(coverLetter.unsupportedClaims || []).join(", ")}, which is not in your profile. Edit or confirm it.` : answer.note,
+      note: flagged ? `Worth a look before sending: ${(coverLetter.unsupportedClaims || []).join("; ")}. Edit the letter or confirm it is accurate.` : answer.note,
     });
   }
 

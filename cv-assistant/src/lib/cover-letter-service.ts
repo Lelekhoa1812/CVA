@@ -164,9 +164,35 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
       if (jdTerms.has(term) && !facts.includes(term) && !named.includes(term)) postingTerms.push(`posting term: ${term}`);
     }
   }
+  // A degree field the education record does not give ("degree in Biomedical Informatics" for a Software Engineering major) is invented.
+  const degreeClaims: string[] = [];
+  {
+    const education = normalise(`${profile?.major || ""} ${profile?.school || ""}`).replace(/[^a-z0-9 ]/g, " ");
+    const educationWords = education.split(/\s+/).filter(Boolean);
+    const fieldPattern = /\b(?:degree|bachelor|bachelors|master|masters|phd|diploma|doctorate)(?:'s)?(?:\s+degree)?\s+(?:of|in)\s+((?:[A-Z][A-Za-z&]+)(?:\s+(?:and\s+)?[A-Z][A-Za-z&]+){0,3})/g;
+    const reversePattern = /\b((?:[A-Z][A-Za-z&]+)(?:\s+[A-Z][A-Za-z&]+){0,2})\s+degree\b/g;
+    const fields = [...Array.from(text.matchAll(fieldPattern)).map((m) => m[1]), ...Array.from(text.matchAll(reversePattern)).map((m) => m[1])];
+    for (const field of fields) {
+      if ((CLAIM_LEXICON as readonly string[]).includes(normalise(field).trim())) continue;
+      const words = normalise(field).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((word) => word.length > 3 && !["bachelor", "master", "masters", "science", "degree", "honours", "honors", "and", "with"].includes(word));
+      const stem = (word: string) => word.slice(0, Math.min(word.length, 6));
+      if (words.some((word) => !educationWords.some((known) => known.startsWith(stem(word)) || word.startsWith(stem(known))))) degreeClaims.push(`degree field: ${field.trim()}`);
+    }
+  }
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...relationship, ...echoes, ...postingTerms, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...relationship, ...echoes, ...postingTerms, ...degreeClaims, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+}
+
+/** Turns a guard token ("echo: ...", "posting term: x") into wording an applicant can act on. */
+export function describeClaim(term: string): string {
+  if (term.startsWith("echo: ")) return `wording copied from the job posting ("${term.slice(6)}")`;
+  if (term.startsWith("posting term: ")) return `the tool or term "${term.slice(14)}", which only the job posting mentions`;
+  if (term.startsWith("degree field: ")) return `a degree in ${term.slice(14)}, which your education record does not show`;
+  if (term.startsWith("project as employer: ")) return `${term.slice(21)} is described as an employer, but it is a project in your CV`;
+  if (term.startsWith("claims a history with the employer: ")) return `a past connection with the employer ("${term.slice(35)}")`;
+  if (term.startsWith("employment at ")) return `work at ${term.slice(14)}, which is not in your CV`;
+  return term;
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
@@ -311,7 +337,10 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
     // A name block (name and contact lines) above the closing sentence belongs at the very end, with any sign-off word that precedes it.
     const blocks = fixed.split(/\n{2,}/);
     const at = blocks.findIndex((block, index) => index > 0 && index < blocks.length - 1 && block.trim().split("\n")[0].trim().toLowerCase() === name_(candidateName).toLowerCase());
-    if (at > 0) {
+    // The same block with the sign-off word and name together ("Best regards,\nName") sitting above the closing sentence.
+    const signed = at > 0 || !name_(candidateName) ? -1 : blocks.findIndex((block, index) => index > 0 && index < blocks.length - 1 && new RegExp(`^(?:sincerely|regards|kind regards|best regards|yours(?: sincerely| faithfully)?|warm regards)[,.]?\\s*\\n\\s*${name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*(?:\\n[^\\n]*)*$`, "i").test(block.trim()));
+    if (signed > 0) fixed = [...blocks.filter((_, index) => index !== signed), blocks[signed]].join("\n\n");
+    else if (at > 0) {
       const moving = /^(sincerely|regards|kind regards|best regards|yours)\b/i.test(blocks[at - 1].trim()) ? blocks.splice(at - 1, 2) : blocks.splice(at, 1);
       fixed = [...blocks, ...moving].join("\n\n");
     }
@@ -491,7 +520,7 @@ export async function runCoverLetterAgent(args: {
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `Remove or avoid these unsupported items: ${unsupported.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `Remove or avoid these unsupported items: ${unsupported.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company, jobText, args.title).length;
@@ -579,12 +608,12 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
   // A short letter is honest when the profile gives little to draw on; say so instead of padding it with invented duties.
   const thinNote = WORDS(text) < TARGET_MIN_WORDS ? "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" : "";
-  const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
+  const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.map(describeClaim).join("; ")}.` : undefined;
 
   // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
   const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence: allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
-  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining, ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
 }
