@@ -536,7 +536,7 @@ export async function runCoverLetterAgent(args: {
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  for (let round = 0; round < 2 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
+  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
     const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
     try {
       const retryPrompt = buildCoverLetterPrompt({
