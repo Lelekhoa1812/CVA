@@ -318,7 +318,8 @@ export function useAutoApply() {
     return {
       matches: has(c?.total),
       review: has((c?.prepared || 0) + (c?.needs_input || 0) + (c?.approved || 0) + (c?.applied || 0)),
-      apply: has((c?.approved || 0) + (c?.applied || 0)),
+      // Reachable once anything is ready, so "Nothing approved yet" guides people to Review instead of a dead button.
+      apply: has((c?.prepared || 0) + (c?.needs_input || 0) + (c?.approved || 0) + (c?.applied || 0)),
     };
   }, [counts]);
 
