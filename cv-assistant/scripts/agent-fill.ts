@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import { chromium, firefox, webkit, type Page } from "playwright";
 import { AUTOFILL_FUNCTION } from "../src/lib/auto-apply/autofill-script";
+import { isSubmitRequest, SUBMIT_GUARD_INIT_SCRIPT } from "../src/lib/auto-apply/submit-guard";
 
 type Field = { fieldName: string; label: string; type: string; required: boolean; value: string; options: string[] };
 type Pack = { job: { title: string; company: string; applyUrl: string; provider: string }; fields: Field[]; coverLetter: string };
@@ -21,8 +22,6 @@ const arg = (name: string) => {
   return index >= 0 ? process.argv[index + 1] : undefined;
 };
 const flag = (name: string) => process.argv.includes(`--${name}`);
-
-const SUBMIT_URL = /(\/applications?(\/|\?|$)|submit|\/apply(\/|\?|$)|createApplication|submitApplication)/i;
 
 async function typeIntoCombobox(page: Page, field: Field) {
   const target = page.getByRole("combobox", { name: new RegExp(field.label.slice(0, 40).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }).first();
@@ -51,12 +50,14 @@ async function main() {
   let blocked = 0;
   await context.route("**/*", (route) => {
     const request = route.request();
-    if (request.method() !== "GET" && request.method() !== "OPTIONS" && (SUBMIT_URL.test(request.url()) || SUBMIT_URL.test(request.postData() || ""))) {
+    if (isSubmitRequest(request.method(), request.url(), request.postData())) {
       blocked += 1;
+      console.log(`  blocked ${request.method()} ${request.url().slice(0, 110)}`);
       return route.abort();
     }
     return route.continue();
   });
+  await context.addInitScript(SUBMIT_GUARD_INIT_SCRIPT);
   const page = await context.newPage();
   await page.goto(pack.job.applyUrl, { waitUntil: "networkidle", timeout: 60_000 }).catch(() => {});
   await page.waitForTimeout(2500);
@@ -82,6 +83,15 @@ async function main() {
     }
   }
 
+  // Verify the upload really landed on the input, then refresh the on-page panel so it matches the final state.
+  // Some uploaders (Greenhouse) consume the file and clear the input, so also look for the filename on the page.
+  await page.waitForTimeout(1500);
+  const baseName = resume ? resume.split("/").pop() || "" : "";
+  const attached = (await page.evaluate(`(function(){var n=${JSON.stringify(baseName)};var held=[].slice.call(document.querySelectorAll('input[type=file]')).map(function(i){return i.files&&i.files[0]?i.files[0].name:''}).filter(Boolean).join(', ');if(held)return held;return n&&document.body.innerText.indexOf(n)>=0?n+' (shown on page)':''})()`)) as string;
+  if (resume) console.log(attached ? `  verified: resume present: ${attached}` : "  warning: could not confirm the resume on the page");
+  const stillOpen = open.filter((entry) => !pack.fields.some((field) => field.label === entry.label && field.value && field.type !== "file")).length;
+  const summary = `Agent mode finished: ${report.total - Math.max(0, open.length - (open.length - stillOpen))}/${report.total} fields filled${attached ? `, resume attached (${attached})` : ""}. Review every field, then press Submit yourself.`;
+  await page.evaluate(`(function(){var p=document.getElementById('cva-autofill-panel');if(p){p.innerHTML='<strong>CV Assistant agent mode</strong><br>'+${JSON.stringify(summary)}}})()`);
   console.log(`Blocked ${blocked} submission request(s). Nothing was submitted.`);
   if (flag("headless")) {
     await page.screenshot({ path: arg("screenshot") || "agent-fill.png" });

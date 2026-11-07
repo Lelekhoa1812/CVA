@@ -17,6 +17,7 @@ import {
   standardQuestionSet,
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
+import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
@@ -255,6 +256,17 @@ const tests: TestCase[] = [
       const answer = answerDeterministically({ question: q("Working Rights", "select", options), profile, preferences: prefs, memory, company: "Xero" });
       assert.equal(answer?.needsInput, false);
       assert.equal(answer?.value, "Work visa holder");
+    },
+  },
+  {
+    name: "the agent-fill guard blocks submissions but lets uploads and page loads through",
+    run: () => {
+      assert.equal(isSubmitRequest("POST", "https://job-boards.greenhouse.io/acme/jobs/1/applications", ""), true);
+      assert.equal(isSubmitRequest("POST", "https://jobs.lever.co/acme/abc/apply", ""), true);
+      assert.equal(isSubmitRequest("POST", "https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiSubmitApplication", '{"operationName":"ApiSubmitApplication"}'), true);
+      assert.equal(isSubmitRequest("POST", "https://grnhse-prod.s3.ap-southeast-4.amazonaws.com/", "Content-Type: application/pdf"), false);
+      assert.equal(isSubmitRequest("GET", "https://jobs.lever.co/acme/abc/apply", ""), false);
+      assert.equal(isSubmitRequest("POST", "https://www.google-analytics.com/collect", "t=event"), false);
     },
   },
   {
