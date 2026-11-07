@@ -146,9 +146,12 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
     }
     for (const result of boardResults) {
       const key = dedupeKeyFor(result);
-      if (merged.has(key) && !isPlaceholder(result.company)) continue;
+      const placeholder = isPlaceholder(result.company);
+      if (merged.has(key) && !placeholder) continue;
       if (result.location && !matchesLocation(result.location, targetLocation, "")) continue;
-      merged.set(key + `::${result.source}`, {
+      const boardKey = placeholder ? `${key}::${result.source}` : key;
+      if (merged.has(boardKey)) continue;
+      merged.set(boardKey, {
         ...fromSearchResult(result),
         discoveredVia: "job_board",
         postedAt: result.postedText || "",

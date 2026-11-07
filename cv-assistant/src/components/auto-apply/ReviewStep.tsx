@@ -178,7 +178,7 @@ function Detail({ c }: { c: AutoApplyController }) {
         </details>
       ) : null}
 
-      <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-[hsl(var(--surface-1)/0.96)] p-3 shadow-elevated backdrop-blur">
+      <div className="sticky bottom-3 z-10 mt-6 flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-[hsl(var(--surface-1)/0.96)] p-3 shadow-elevated backdrop-blur">
         {editable ? (
           <>
             <button type="button" className="button-secondary min-h-11" disabled={!dirty || Boolean(c.busy[`save:${job._id}`])} onClick={() => void save()}>
