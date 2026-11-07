@@ -124,6 +124,8 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
+  if (/\b(?:a|the)?\s*[\w -]*\bcandidate\s+(?:at|for|to)\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
+  if (/^\s*Dear[^\n]*\n+\s*In this role\b/i.test(text)) defects.push("opens with 'In this role' instead of naming the role and company");
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
   if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
   const trimmed = text.trim();
@@ -244,6 +246,30 @@ export async function runCoverLetterAgent(args: {
       if (args.signal?.aborted) throw error;
     }
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
+  }
+  // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
+  try {
+    const facts = allItems.map((item) => `- ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 420)}`).join("\n").slice(0, 14000);
+    const grounded = await generateLetterText(`You are a strict fact-checker and editor of a job application letter. Every statement about the applicant must be directly supported by the CV FACTS below. Job requirements, tools, responsibilities and phrases from the job posting are NOT facts about the applicant, even if the letter states them as experience.
+
+Rewrite the letter so that:
+1. Any claim not supported by the CV FACTS is deleted or reworded to what the CV actually shows (for example, remove on-call, incident response, mentoring, security, serverless, Go or other tools or duties the CV does not state).
+2. Text that merely repeats the job posting's wording as the applicant's experience is replaced with a real example from the CV.
+3. It opens "Dear Hiring Manager," then states the role (${args.title}) and company (${args.company}) in the first sentence, in the first person ("I"), never calling the applicant a candidate.
+4. It is 220 to 320 words, ends with a short sign-off and the applicant's name only, and adds no new facts.
+
+CV FACTS:
+${facts}
+
+LETTER:
+${text}
+
+Return only the corrected letter text.`, args.signal);
+    const before = findUnsupportedClaims(text, args.profile, args.company).length + findLetterDefects(text, args.profile?.name, args.company, args.title).length;
+    const after = findUnsupportedClaims(grounded.text, args.profile, args.company).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title).length;
+    if (WORDS(grounded.text) >= 150 && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
+  } catch (error) {
+    if (args.signal?.aborted) throw error;
   }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (WORDS(text) < TARGET_MIN_WORDS) {
