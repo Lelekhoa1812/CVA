@@ -16,6 +16,7 @@ import {
   chooseApplicationUrl,
   cleanText,
   computeSearchQueryMatch,
+  decodeHtmlEntities,
   detectBlockedPage,
   extractApplyLink,
   stripHtmlTags,
@@ -424,33 +425,63 @@ function extractSeekContextDetails(context: string, title: string) {
   return { companyHint, postedHint };
 }
 
+// Root Cause vs Logic:
+// Root cause: Job boards put page controls inside listing links, so the link text can be "Show more" rather than a job title.
+// Logic: Treat control labels as having no title. A later link to the same listing can still supply the real title, and
+// crawlLandingPage skips a listing only when neither the link nor its detail page gives one.
+const UI_CONTROL_LABELS = new Set([
+  "apply",
+  "apply now",
+  "details",
+  "learn more",
+  "load more",
+  "more",
+  "read more",
+  "see all",
+  "see more",
+  "show less",
+  "show more",
+  "view",
+  "view all",
+  "view details",
+  "view job",
+  "view more",
+]);
+
+function isUiControlLabel(value: string): boolean {
+  return UI_CONTROL_LABELS.has(value.toLowerCase().replace(/[^a-z]+/g, " ").trim());
+}
+
 function parseSourceSearchLinks(
   source: GenericSource,
   html: string,
   baseUrl: string,
 ): GenericSearchLink[] {
   const $ = load(html);
-  const links: GenericSearchLink[] = [];
-  const seen = new Set<string>();
+  const linksByListing = new Map<string, GenericSearchLink>();
   const sourceConfig = GENERIC_SOURCE_CONFIGS[source];
 
   $("a[href]").each((_, element) => {
     const href = absoluteUrl($(element).attr("href") || "", baseUrl);
-    const title = cleanText($(element).text()) || cleanText($(element).attr("title"));
-    if (!title || !href) return;
+    const label = cleanText($(element).text()) || cleanText($(element).attr("title"));
+    if (!label || !href) return;
     if (!sourceConfig.matchesListingUrl(href)) return;
 
+    const title = isUiControlLabel(label) ? "" : label;
     const canonical = canonicalizeUrl(href);
-    if (seen.has(canonical)) return;
-    seen.add(canonical);
+    const existing = linksByListing.get(canonical);
+    if (existing) {
+      if (!existing.title && title) existing.title = title;
+      return;
+    }
 
-    const context = cleanText($(element).closest("article, li, div").text()) || title;
+    const context = cleanText($(element).closest("article, li, div").text()) || label;
     const { companyHint, postedHint } =
-      source === "seek" ? extractSeekContextDetails(context, title) : { companyHint: "", postedHint: "" };
-    links.push({ title, listingUrl: canonical, context, companyHint, postedHint });
+      source === "seek" ? extractSeekContextDetails(context, label) : { companyHint: "", postedHint: "" };
+    linksByListing.set(canonical, { title, listingUrl: canonical, context, companyHint, postedHint });
   });
 
-  return links;
+  return [...linksByListing.values()];
 }
 
 function findJobPostingPayload(payload: unknown): Record<string, unknown> | null {

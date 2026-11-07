@@ -52,9 +52,48 @@ export function cleanText(value: string | null | undefined): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const NAMED_HTML_ENTITIES = new Map<string, string>([
+  ["amp", "&"],
+  ["lt", "<"],
+  ["gt", ">"],
+  ["quot", '"'],
+  ["apos", "'"],
+  ["nbsp", " "],
+  ["ndash", "–"],
+  ["mdash", "—"],
+  ["lsquo", "‘"],
+  ["rsquo", "’"],
+  ["ldquo", "“"],
+  ["rdquo", "”"],
+  ["hellip", "…"],
+  ["bull", "•"],
+  ["copy", "©"],
+  ["reg", "®"],
+  ["trade", "™"],
+]);
+
+// Root Cause vs Logic:
+// Root cause: JSON-LD text is HTML-escaped, so tag stripping alone leaves entities such as "&amp;" visible on cards.
+// Logic: Decode common named and numeric entities in a single pass. Unknown names are left exactly as written.
+export function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]*);/gi, (match, entity: string) => {
+    if (entity.startsWith("#")) {
+      const isHex = entity[1] === "x" || entity[1] === "X";
+      const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      const isValid =
+        Number.isInteger(codePoint) &&
+        codePoint > 0 &&
+        codePoint <= 0x10ffff &&
+        !(codePoint >= 0xd800 && codePoint <= 0xdfff);
+      return isValid ? String.fromCodePoint(codePoint) : match;
+    }
+    return NAMED_HTML_ENTITIES.get(entity.toLowerCase()) ?? match;
+  });
+}
+
 export function stripHtmlTags(value: string | null | undefined): string {
   if (!value) return "";
-  return cleanText(value.replace(/<[^>]+>/g, " "));
+  return cleanText(decodeHtmlEntities(value.replace(/<[^>]+>/g, " ")));
 }
 
 export function truncateText(value: string, limit = 240): string {
