@@ -265,6 +265,27 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
     const companyWord = company.split(/\s+/)[0];
     fixed = fixed.replace(/\b[A-Za-z]{5,}\b/g, (word) => (word.toLowerCase().startsWith(stem) && word.toLowerCase() !== companyWord.toLowerCase() && !company.toLowerCase().includes(word.toLowerCase()) && Math.abs(word.length - companyWord.length) <= 4 ? companyWord : word));
   }
+  // "Alex Tester designed and built X" slipped into the third person: a plain past-tense (or simple present) verb after the name becomes first person.
+  if (name_(candidateName)) {
+    const escName = name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const present: Record<string, string> = { is: "am", has: "have", brings: "bring", builds: "build", leads: "lead", designs: "design", delivers: "deliver", develops: "develop", owns: "own", drives: "drive", architects: "architect", ships: "ship", creates: "create", implements: "implement", engineers: "engineer" };
+    const irregular = new Set(["built", "led", "ran", "wrote", "made", "drove", "shipped", "spearheaded", "owned", "was", "had"]);
+    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)${escName}\\s+([a-z]+)\\b`, "g"), (match, lead, verb) => {
+      if (/^(?:applying|writing|submitting)$/.test(verb)) return match;
+      if (verb === "was") return `${lead}I was`;
+      if (verb === "had") return `${lead}I had`;
+      if (/ed$/.test(verb) || irregular.has(verb)) return `${lead}I ${verb}`;
+      if (present[verb]) return `${lead}I ${present[verb]}`;
+      return match;
+    });
+    // A name block (name and contact lines) above the closing sentence belongs at the very end, with any sign-off word that precedes it.
+    const blocks = fixed.split(/\n{2,}/);
+    const at = blocks.findIndex((block, index) => index > 0 && index < blocks.length - 1 && block.trim().split("\n")[0].trim().toLowerCase() === name_(candidateName).toLowerCase());
+    if (at > 0) {
+      const moving = /^(sincerely|regards|kind regards|best regards|yours)\b/i.test(blocks[at - 1].trim()) ? blocks.splice(at - 1, 2) : blocks.splice(at, 1);
+      fixed = [...blocks, ...moving].join("\n\n");
+    }
+  }
   // "Alex Tester is applying for ..." slipped into the third person: put it back in the first.
   if (name_(candidateName)) fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)${name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} is (applying|writing|submitting)\\b`, "g"), (_m, lead, verb) => `${lead}I am ${verb}`);
   // A generic salutation is always "Dear Hiring Manager," (the model drifts to "Dear Recruiter" or "Dear Hiring Team" with no comma).
