@@ -21,6 +21,8 @@ const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deep
 const GROUNDING_CALL_TIMEOUT_MS = 40_000;
 /** The verifier only prunes; a call slower than this is dropped so a slow model cannot push the letter past its time budget. */
 const VERIFIER_TIMEOUT_MS = 35_000;
+/** A letter the guards still object to gets one more draft, but only when this much of the time budget is left. */
+const FINAL_REDRAW_START_MS = 110_000;
 
 /** A letter with no commas across 80+ words is a known degenerate output of some NIM models. */
 export function isWellFormedLetter(text: string) {
@@ -294,7 +296,7 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   // "..., directly aligning with your need for enterprise-grade AI" is the posting talking: cut the clause and keep the experience.
   fixed = fixed.replace(/,\s*(?:directly )?(?:matching|meeting|fulfilling|addressing|aligning with) your (?:needs?|requirements?)\b[^.\n]*(?=\.)/gi, "");
   // A whole sentence that only says the experience "directly aligns with Airwallex's need for ..." is the posting talking: drop it.
-  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])\s+)(?:My|The|This) (?:experience|background|work|skills?)(?: \w+){0,2} (?:directly )?(?:aligns?|matches|meets|addresses|fulfils?|fulfills?) (?:with )?(?:[A-Z][\w&.-]*'s|your|the) (?:needs?|requirements?)\b[^.\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])\s+)(?:My|The|This) (?:experience|background|work|skills?)[^.\n]{0,160}? (?:directly )?(?:aligns?|matches|meets|addresses|fulfils?|fulfills?) (?:with )?(?:[A-Z][\w&.-]*'s|your|the) (?:needs?|requirements?)\b[^.\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
   fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
@@ -547,19 +549,21 @@ export async function runCoverLetterAgent(args: {
     model = generated.model;
   }
 
-  // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
-  let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
-    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
-    try {
-      const retryPrompt = buildCoverLetterPrompt({
+  // The prompt for a redraw that must avoid what the guards found in the previous draft.
+  const buildRetryPrompt = (unsupportedTerms: string[], defectList: string[]) => buildCoverLetterPrompt({
         candidateName: args.profile?.name || "",
         company: args.company,
         jobDescription: jobText,
         contactLines: contact.promptLines,
         prioritizedItems: selected,
-        clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `Remove or avoid these unsupported items: ${unsupported.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${roundDefects.length ? ` The previous draft ${roundDefects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
-      });
+        clarificationContext: `${args.clarificationContext || ""}\n${unsupportedTerms.length ? `Remove or avoid these unsupported items: ${unsupportedTerms.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : term).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${defectList.length ? ` The previous draft ${defectList.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
+  });
+  // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
+  let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
+  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
+    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
+    try {
+      const retryPrompt = buildRetryPrompt(unsupported, roundDefects);
       const retried = await generateLetterText(retryPrompt, args.signal);
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company, jobText, args.title).length;
       const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title).length;
@@ -648,6 +652,29 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   }
   text = repairLetterStructure(text, args.profile?.name, args.company, args.title);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
+  // Last chance for a letter the guards still object to: one more draft that is told exactly what to avoid, kept only if it scores better.
+  if (!args.advanced && within(FINAL_REDRAW_START_MS)) {
+    const leftover = (value: string) => ({
+      unsupported: findUnsupportedClaims(value, args.profile, args.company, jobText, args.title),
+      defects: findLetterDefects(value, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short")),
+    });
+    const current = leftover(text);
+    if (current.unsupported.length + current.defects.length > 0) {
+      try {
+        const redraw = await generateLetterText(buildRetryPrompt(current.unsupported, current.defects), args.signal);
+        let candidate = finalise(redraw.text);
+        const candidateUnsupported = findUnsupportedClaims(candidate, args.profile, args.company, jobText, args.title);
+        if (candidateUnsupported.length) candidate = finalise(stripUnsupportedSentences(candidate, candidateUnsupported, args.company) ?? candidate);
+        const next = leftover(candidate);
+        if (next.unsupported.length + next.defects.length < current.unsupported.length + current.defects.length && isWellFormedLetter(candidate) && WORDS(candidate) >= MIN_HONEST_WORDS) {
+          text = candidate;
+          model = redraw.model || model;
+        }
+      } catch (error) {
+        if (args.signal?.aborted) throw error;
+      }
+    }
+  }
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));
   // A short letter is honest when the profile gives little to draw on; say so instead of padding it with invented duties.

@@ -32,6 +32,8 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(fixed.includes("I am applying for the Staff Software Engineer, AI Tooling role at Airwallex. I seek to apply"), fixed);
       assert.ok(!/directly aligns/.test(fixed) && /I also built ETL pipelines\./.test(fixed), fixed);
       assert.ok(/Axis platform\. I also built ETL pipelines\./.test(fixed), "the space between sentences is kept: " + fixed);
+      const long = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Agent Deployment Engineer role at Decagon. I led the Axis platform. My work reducing operational overhead through a controllable platform that meets strict SLAs directly aligns with Decagon's need for reliable, scalable AI agent deployment. I also built ETL pipelines.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Decagon", "Agent Deployment Engineer");
+      assert.ok(!/aligns with/.test(long) && /Axis platform\. I also built ETL pipelines\./.test(long), long);
       assert.ok(findLetterDefects(letter, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").some((d) => /requirements/.test(d)));
       const fine = "Dear Hiring Manager,\n\nI am applying for the Staff Software Engineer, AI Tooling role at Airwallex. I built tooling.\n\nSincerely,\nDang Khoa Le";
       assert.equal((repairLetterStructure(fine, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").match(/I am applying for/g) || []).length, 1);
