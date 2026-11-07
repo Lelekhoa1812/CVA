@@ -21,11 +21,17 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-Last full live run of all 10 prepared jobs (after the guards commit, before the greeting fix):
+Final live run of all 10 prepared jobs (after the greeting fix), every letter read in full:
 
-- Structure: 10 of 10 are 233-317 words, open naming the role and company, have paragraphs and a sign-off. One defect was found on the full read: the Airwallex (281e) greeting ran into the first sentence ("Dear Hiring Manager, I am writing..."). That is now fixed in code and covered by a unit test; it was NOT re-run live.
-- Full read by hand of all 10 in this run: grounded in CV entries; "Black Caviar" and the pedigree work are in the profile. Remaining small issues: a few generic closings ("I welcome the opportunity to discuss this role"), one repeated "mentoring" phrase, and one letter with a long multi-paragraph body (Artificial Analysis, 301 words). None is an invented employer, degree or year.
-- Claim check (warn only, user decision): flags on 4 of 10 letters. Two are generic "could not verify" warnings; two name specific claims (for example the CPG Seedcom 80% figure, which the model could not match to the profile wording). The warning is shown; approval is not blocked.
-- Latency of the letter step: 27-107 s, median about 46 s. The 60 s target is not met (stronger editor chosen by the user).
-- Promptfoo (`npm run eval:letters`): last passing run before the most recent guard changes; not re-run after them.
-- Letters remain drafts for the applicant to review.
+- Greeting fix confirmed live: all 10 open "Dear Hiring Manager," on its own line.
+- Structure: 10 of 10 are 197-262 words... (see counts in the run), name the role and company, have paragraphs and a sign-off.
+- Open defects found on the full read:
+  - Airwallex Senior (281e): opening run-on "Senior Software Engineer, AI Tooling at Airwallex - AI platform architect with production Kubernetes experience who built AI infrastructure..." and a closing chat line ("Let me know if you would like to discuss...").
+  - Airwallex Staff (281f): "Thank you for your consideration" followed by a second closing sentence.
+  - Neara (2823): "multimodal output optimization" and "LLM-driven multimodal interfaces" are not in the CV evidence.
+  - Airwallex Senior (281e): "production Kubernetes experience" and "serverless workloads" are not clearly supported; not flagged by the guards.
+- False-positive warnings: "CPG Seedcom" role wording (Xero 284b) and "Australia's largest event enterprise AI transformation" (Downer 282b) are in the CV summary, so the warnings are noise.
+- Claim check (warn only, user decision): flags on 4 of 10 letters.
+- Latency of the letter step: 25-102 s, median about 47 s. The 60 s target is not met (stronger editor chosen by the user).
+- Promptfoo: last passing run predates the latest guard changes; not re-run.
+- Letters remain drafts for the applicant to review. The mission is NOT complete to the "best quality" bar: the defects above are open.
