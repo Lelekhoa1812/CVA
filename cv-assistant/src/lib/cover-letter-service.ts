@@ -224,8 +224,11 @@ export function findLetterDefects(text: string, candidateName?: string, company?
     const first = (candidateName || "").trim().split(/\s+/)[0];
     if (first && first.length > 2 && new RegExp(`(^|\\n|[.!?]\\s+|,\\s+)${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+[a-z]`).test(visible.replace(/^Dear[^\n]*\n/i, "")) && !defects.some((d) => d.includes("third person"))) defects.push("refers to the applicant by name in the body (third person)");
   }
+  // "As Decagon's Agent Deployment Engineer, I ..." gives the applicant the employer's own job; "I propose an AI Software Engineer ..." talks about the applicant as a product.
+  if (/\bAs [A-Z][\w&.-]*'s (?:[A-Z][\w/-]*\s?){1,6},\s+I\b/.test(text)) defects.push("opens as the employer's own employee ('As Company's Title, I ...')");
+  if (/\bI (?:propose|present|offer|submit) (?:myself as )?(?:an? )?(?:[A-Z][\w/-]*\s){1,4}(?:Engineer|Developer|Scientist|Architect|Analyst)\b/.test(text)) defects.push("talks about the applicant as a role ('I propose an ... Engineer') instead of applying for it");
   // Stock filler says nothing about the applicant and reads as mass-produced.
-  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record|experience)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
+  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record|experience|expertise|record|leadership|end-to-end)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
   if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
   // "As Senior Software Engineer for AI Tooling, I led..." uses the posting's own title as past experience.
   if (title) {
@@ -281,7 +284,7 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
 function repairLetterStructureOnce(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
-  fixed = fixed.replace(/\bproven (?=experience|ability|track record)/gi, "");
+  fixed = fixed.replace(/\bproven (?=experience|ability|track record|expertise|record|leadership|end-to-end)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
   fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n(?!\n)/i, "$1\n\n");
   // "I where I architected ..." is a garbled "In that role, I architected ...".

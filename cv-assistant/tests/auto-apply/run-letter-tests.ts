@@ -16,6 +16,17 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "garbled openings that give the applicant the employer's job or call them a proposal are flagged; normal ones are not",
+    run: () => {
+      const wrap = (opening: string) => `Dear Hiring Manager,\n\n${opening}\n\nSincerely,\nDang Khoa Le`;
+      const check = (opening: string) => findLetterDefects(wrap(opening), "Dang Khoa Le", "Decagon", "Agent Deployment Engineer");
+      assert.ok(check("As Decagon's Agent Deployment Engineer, I propose an AI Software Engineer with proven end-to-end leadership.").length >= 2);
+      assert.ok(!check("I am applying for the Agent Deployment Engineer role at Decagon. As an AI Software Engineer at Axion Solutions, I led the Axis platform.").some((d) => /employer's own|talks about the applicant/.test(d)));
+      const fixed = repairLetterStructure(wrap("I am applying for the Agent Deployment Engineer role at Decagon with proven end-to-end delivery."), "Dang Khoa Le", "Decagon", "Agent Deployment Engineer");
+      assert.ok(/with end-to-end delivery/.test(fixed), fixed);
+    },
+  },
+  {
     name: "'proven experience' is flagged as stock filler",
     run: () => {
       const stock = "Dear Hiring Manager,\n\nAs an AI Software Engineer with proven experience building agents, I am applying for the Agent Deployment Engineer role at Decagon.\n\nSincerely,\nDang Khoa Le";
