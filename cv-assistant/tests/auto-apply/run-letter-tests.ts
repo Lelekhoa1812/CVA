@@ -1,6 +1,6 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
-import { extractTechTerms, findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -46,6 +46,30 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(stripped, "enough of the letter remains");
       assert.ok(!/TensorFlow|LiDAR|C#/.test(stripped as string), stripped as string);
       assert.ok(/PyTorch and FastAPI/.test(stripped as string));
+    },
+  },
+  {
+    name: "repair: garbled 'I as an <title> at X I led' and a bare title sentence are fixed, stock filler is trimmed",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Software Engineer, AI Tooling role at Airwallex. Senior Software Engineer, AI Tooling at Airwallex. I as an AI Software Engineer at Axion Solutions I led a platform with proven ability to ship. I am excited to apply for this work.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling");
+      assert.ok(fixed.includes("As an AI Software Engineer at Axion Solutions, I led"), fixed);
+      assert.ok(!fixed.includes("Airwallex. Senior Software Engineer, AI Tooling at Airwallex."), fixed);
+      assert.ok(fixed.includes("I am applying for the Senior Software Engineer, AI Tooling role at Airwallex."), fixed);
+      assert.ok(!/proven ability|excited to apply/i.test(fixed), fixed);
+    },
+  },
+  {
+    name: "repair: letterhead between two greetings is dropped; first-name third person becomes first person",
+    run: () => {
+      const header = repairLetterStructure("Dear Hiring Manager,\n\nAlex Tester\nalex@example.com\n\nDear Hiring Manager,\n\nI am applying for the Engineer role at Acme.\n\nSincerely,\nAlex Tester", "Alex Tester", "Acme", "Engineer");
+      assert.equal((header.match(/Dear Hiring Manager,/g) || []).length, 1, header);
+      assert.ok(header.startsWith("Dear Hiring Manager,\n\nI am applying"), header);
+      const third = "Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. Alex built a Python bot.\n\nAt Acme, Alex created dashboards. Alex is ready to discuss.\n\nAlex Tester";
+      assert.ok(findLetterDefects(third, "Alex Tester", "Acme", "Engineer").some((d) => d.includes("third person")));
+      const fixed = repairLetterStructure(third, "Alex Tester", "Acme", "Engineer");
+      assert.ok(fixed.includes("I built a Python bot.") && fixed.includes("I created dashboards.") && fixed.includes("I am ready to discuss."), fixed);
+      assert.ok(!findLetterDefects(fixed, "Alex Tester", "Acme", "Engineer").some((d) => d.includes("third person")), fixed);
     },
   },
 ];

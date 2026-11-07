@@ -30,6 +30,8 @@ export function isWellFormedLetter(text: string) {
 
 const WORDS = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const TARGET_MIN_WORDS = 170;
+/** Below this a letter is not a letter. Between this and TARGET_MIN_WORDS a short letter is honest when the CV gives little to draw on, and is flagged. */
+const MIN_HONEST_WORDS = 110;
 /** One slow or stalled model must not hold up a whole batch of applications. */
 const MODEL_CALL_TIMEOUT_MS = 40_000;
 const MAX_EXTRA_ATTEMPTS = 1;
@@ -191,6 +193,11 @@ export function findLetterDefects(text: string, candidateName?: string, company?
     const body = text.trim().split(/\n+/).filter((line) => line.trim() !== applicantName && !/@|\||^\+?\d[\d\s-]{6,}$|^(?:sincerely|regards|kind regards|best regards|yours)/i.test(line.trim())).join("\n");
     if (new RegExp(`\\b${applicantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(body.replace(/^Dear[^\n]*\n/i, ""))) defects.push("refers to the applicant by name in the body (third person)");
   }
+  // "Alex built ..." (first name as a sentence subject) is also the third person.
+  {
+    const first = (candidateName || "").trim().split(/\s+/)[0];
+    if (first && first.length > 2 && new RegExp(`(^|\\n|[.!?]\\s+|,\\s+)${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+[a-z]`).test(visible.replace(/^Dear[^\n]*\n/i, "")) && !defects.some((d) => d.includes("third person"))) defects.push("refers to the applicant by name in the body (third person)");
+  }
   // Stock filler says nothing about the applicant and reads as mass-produced.
   const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
   if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
@@ -236,6 +243,18 @@ const name_ = (value?: string) => (value || "").trim();
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  // "I as an AI Engineer at Axion I led ..." is a garbled "As an AI Engineer at Axion, I led ...".
+  fixed = fixed.replace(/\bI as (an? [^,.\n]{3,60}?) I (?=[a-z]+(?:ed|t)\b)/g, "As $1, I ");
+  // Stock filler that can be dropped without changing the facts.
+  fixed = fixed.replace(/\bI am (?:so |very )?(?:excited|thrilled|delighted) to apply\b/gi, "I am applying").replace(/\b(proven|deep|extensive) (ability|track record|expertise)\b/gi, "$2").replace(/\bcutting-edge /gi, "");
+  // A bare title sentence ("Senior Software Engineer, AI Tooling at Airwallex.") adds nothing after the opening sentence.
+  if (title && company) {
+    const lead = title.split(/[,(\u2013]|\s-\s/)[0].trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const co = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (lead.length > 4) fixed = fixed.replace(new RegExp(`(\\.\\s+)${lead}[^.\\n]{0,60}\\bat ${co}\\.[ \\t]*(?=\\S)`, "g"), "$1");
+  }
+  // A letterhead (name and contact lines) between two greetings is dropped together with the first greeting.
+  fixed = fixed.replace(/^Dear [^\n]{2,60},[ \t]*\n+(?:[^\n@|]{2,40}\n(?:[^\n]*[@|][^\n]*\n)?[ \t]*\n+)(?=Dear )/i, "");
   // Email-style "Subject:" lines and a repeated greeting are not part of the letter.
   fixed = fixed.replace(/^[ \t]*Subject:[^\n]*\n+/gim, "");
   fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n+(?:Dear [^\n]{2,60},[ \t]*\n+)+/i, "$1\n\n");
@@ -267,10 +286,12 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   }
   // "Alex Tester designed and built X" slipped into the third person: a plain past-tense (or simple present) verb after the name becomes first person.
   if (name_(candidateName)) {
-    const escName = name_(candidateName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const esc1 = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const firstName = name_(candidateName).split(/\s+/)[0];
+    const escName = firstName && firstName.length > 2 && firstName !== name_(candidateName) ? `(?:${esc1(name_(candidateName))}|${esc1(firstName)})` : esc1(name_(candidateName));
     const present: Record<string, string> = { is: "am", has: "have", brings: "bring", builds: "build", leads: "lead", designs: "design", delivers: "deliver", develops: "develop", owns: "own", drives: "drive", architects: "architect", ships: "ship", creates: "create", implements: "implement", engineers: "engineer" };
     const irregular = new Set(["built", "led", "ran", "wrote", "made", "drove", "shipped", "spearheaded", "owned", "was", "had"]);
-    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)${escName}\\s+([a-z]+)\\b`, "g"), (match, lead, verb) => {
+    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+|,\\s+)${escName}\\s+([a-z]+)\\b`, "g"), (match, lead, verb) => {
       if (/^(?:applying|writing|submitting)$/.test(verb)) return match;
       if (verb === "was") return `${lead}I was`;
       if (verb === "had") return `${lead}I had`;
@@ -435,7 +456,17 @@ export async function runCoverLetterAgent(args: {
       prioritizedItems: selected,
       clarificationContext: args.clarificationContext,
     });
-    const generated = await generateLetterText(prompt, args.signal);
+    // Two drafts on the same primary chain run side by side (the draft step takes seconds, so no wall time is added);
+    // the draft with the fewest unsupported claims and structural defects is kept, the nearer to 230 words on a tie.
+    const settled = await Promise.allSettled([generateLetterText(prompt, args.signal), generateLetterText(prompt, args.signal)]);
+    if (args.signal?.aborted) throw new Error("Cover letter generation was cancelled.");
+    const drafts = settled.flatMap((result) => (result.status === "fulfilled" && result.value.text ? [result.value] : []));
+    if (!drafts.length) {
+      const failure = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      throw failure?.reason instanceof Error ? failure.reason : new Error("No model returned a cover letter.");
+    }
+    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(repairLetterStructure(draft.text, args.profile?.name, args.company, args.title), args.profile?.name, args.company, args.title).length;
+    const generated = drafts.reduce((best, draft) => (score(draft) < score(best) || (score(draft) === score(best) && Math.abs(WORDS(draft.text) - 230) < Math.abs(WORDS(best.text) - 230)) ? draft : best));
     text = generated.text;
     model = generated.model;
   }
@@ -493,8 +524,6 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   // Unsupported sentences always go: a fabricated claim is worse than a short letter.
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
-  // Last claim-clean version that met the length gate. Verifier pruning must not leave a short letter when a full one exists.
-  let longEnough: string | undefined = WORDS(text) >= TARGET_MIN_WORDS && isWellFormedLetter(text) ? text : undefined;
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
   if (within(85_000)) {
@@ -519,17 +548,15 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
           .map((paragraph) => paragraph.split(/(?<=[.!?])\s+/).filter((sentence) => !sentences.some((bad) => norm(sentence).includes(norm(bad).slice(0, 60)))).join(" ").trim())
           .filter(Boolean)
           .join("\n\n");
-        if (WORDS(pruned) >= TARGET_MIN_WORDS && isWellFormedLetter(pruned)) {
-          text = pruned;
-          longEnough = pruned;
-        }
+        // Invented detail is worse than a short letter: prune down to the honest minimum, and the short letter is flagged to the applicant.
+        if (WORDS(pruned) >= MIN_HONEST_WORDS && isWellFormedLetter(pruned)) text = pruned;
       }
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
   }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
-  if (WORDS(text) < TARGET_MIN_WORDS && within(100_000)) {
+  if (WORDS(text) < MIN_HONEST_WORDS && within(100_000)) {
     try {
       const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice, the greeting and sign-off, and use three or four paragraphs separated by blank lines. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
       if (isWellFormedLetter(expanded.text) && WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company, jobText, args.title).length === 0) text = expanded.text;
@@ -537,7 +564,6 @@ ${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
       if (args.signal?.aborted) throw error;
     }
   }
-  if (WORDS(text) < TARGET_MIN_WORDS && longEnough) text = longEnough;
   text = repairLetterStructure(text, args.profile?.name, args.company, args.title);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
