@@ -123,7 +123,7 @@ const tests: Array<{ name: string; run: () => void }> = [
     run: () => {
       const sparse = { name: "Omar Haddad", major: "Diploma of Hospitality", school: "William Angliss Institute", skills: "Barista skills, food safety.", experiences: [{ companyName: "Corner Cafe", role: "Barista", description: "Made coffee and served customers on weekends." }], projects: [] };
       assert.ok(isThinProfile(sparse as never));
-      assert.ok(!isThinProfile({ name: "X", experiences: [{ companyName: "A", description: Array.from({ length: 130 }, (_, i) => `word${i}`).join(" ") }] } as never));
+      assert.ok(!isThinProfile({ name: "X", experiences: [{ companyName: "A", description: Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ") }] } as never));
       const jd = "Barista to prepare espresso drinks and serve customers.";
       const honest = "Dear Hiring Manager,\n\nI am applying for the Barista role at Industry Beans. At Corner Cafe I made coffee and served customers on weekends, and I hold a Diploma of Hospitality from William Angliss Institute.\n\nI would welcome the opportunity to discuss the role.\n\nOmar Haddad";
       assert.deepEqual(findUnsupportedClaims(honest, sparse as never, "Industry Beans", jd, "Barista"), []);
@@ -178,6 +178,8 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(/sign-off, and I ran 10-12 audits/.test(fixed), fixed);
       const fluff = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Marketing Manager role at Xero. I run HubSpot lead scoring and email nurture programs at Northline, demonstrating my capability to own the full customer journey from awareness to conversion. At Fresh Pantry I launched 14 products across grocery chains, which required clear communication and patience.\n\nThis FMCG experience honed my ability to craft compelling narratives for brands.\n\nI, I managed a team of four and a $900,000 annual budget at Northline across several channels.\n\nI would welcome the opportunity to discuss the role.\n\nDaniel Ortiz", "Daniel Ortiz", "Xero", "Marketing Manager");
       assert.ok(!/demonstrating|which required|honed|I, I/.test(fluff), fluff);
+      const proj = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Analyst role at Atlassian. In my internship at Bloom Skincare I scheduled and posted daily content and grew the following from 2,100 to 2,900 over five months.\n\nThis project gave me end-to-end experience in campaign planning and stakeholder presentation.\n\nI would welcome the opportunity to discuss the role.\n\nMia Thompson", "Mia Thompson", "Atlassian", "Analyst");
+      assert.ok(!/This project gave me/.test(proj) && /grew the following from 2,100 to 2,900/.test(proj), proj);
       assert.ok(/HubSpot lead scoring and email nurture programs at Northline\./.test(fluff) && /launched 14 products across grocery chains\./.test(fluff) && /I managed a team of four/.test(fluff), fluff);
       assert.ok(!/\n{3,}/.test(fluff), "blank lines collapsed");
       const lead = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Head of Product Marketing role at Canva. I with ten years leading marketing strategy across consumer brands and B2B software, including proven expertise and demonstrated success in demand generation for the business.\n\nI would welcome the opportunity to discuss the role.\n\nDaniel Ortiz", "Daniel Ortiz", "Canva", "Head of Product Marketing");

@@ -37,8 +37,8 @@ const WORDS = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const TARGET_MIN_WORDS = 170;
 /** Below this a letter is not a letter. Between this and TARGET_MIN_WORDS a short letter is honest when the CV gives little to draw on, and is flagged. */
 const MIN_HONEST_WORDS = 110;
-/** A thin CV (a student, a first job): below this many words across all experiences and projects the letter stays short and close to the record. */
-const THIN_EVIDENCE_WORDS = 120;
+/** A thin CV (a student, one casual job): below this many words across all experiences and projects there is nothing to write a letter from, and a model only embellishes. Modest CVs of two jobs with a few bullets each stay on the normal path. */
+const THIN_EVIDENCE_WORDS = 45;
 const THIN_MIN_WORDS = 60;
 
 /** True when the experiences and projects together hold too little to write a full letter from. */
@@ -628,7 +628,7 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   fixed = fixed
     .replace(/,\s*(?:thereby |further |which is )?(?:demonstrating|showing|showcasing|highlighting|reflecting|illustrating) (?:my |a |the |strong |clear |both )?(?:ability|capability|capabilities|skills?|commitment|expertise|proficiency|capacity|versatility|leadership)\b[^.\n]*(?=\.)/gi, "")
     .replace(/,\s*which required [^.\n]{0,120}(?=\.)/gi, "")
-    .replace(/(?:(?<=[.!?])[ \t]+|^|(?<=\n\n))(?:This|These|Those|Such)\b[^.\n]{0,40}\b(?:experience|work|role|background|exposure)\b[^.\n]{0,20}\b(?:honed|strengthened|developed|built|sharpened|taught|equipped|gave me|prepared me|shaped)\b[^.\n]*\.(?=\s|$)/gim, "")
+    .replace(/(?:(?<=[.!?])[ \t]+|^|(?<=\n\n))(?:This|These|Those|Such)\b[^.\n]{0,40}\b(?:experience|work|role|background|exposure|project|internship|placement|position)\b[^.\n]{0,20}\b(?:honed|strengthened|developed|built|sharpened|taught|equipped|gave me|prepared me|shaped)\b[^.\n]*\.(?=\s|$)/gim, "")
     .replace(/\bI, I\b/g, "I")
     .replace(/\n{3,}/g, "\n\n");
   return fixed;
@@ -646,6 +646,8 @@ export type CoverLetterAgentResult = {
   fallbackNote?: string;
   /** The CV held too little for a full letter: the letter is short and close to the record. */
   thin?: boolean;
+  /** The length this letter was held to: shorter for a short record, up to TARGET_MIN_WORDS for a rich one. */
+  minWords?: number;
 };
 
 /** Writes and evidence-checks a cover letter for one job. `advanced` runs the multi-step agent used by the /generate studio. */
@@ -661,6 +663,7 @@ async function runCoverLetterPipeline(args: {
   signal?: AbortSignal;
 }): Promise<CoverLetterAgentResult> {
   const startedAt = Date.now();
+  const trace = (stage: string) => { if (process.env.LETTER_TRACE) console.error(`[letter ${args.title.slice(0, 18)}] ${stage} +${Math.round((Date.now() - startedAt) / 1000)}s`); };
   // Every refinement step is skipped once the time budget is spent, so a letter is always returned inside the caller's limit.
   const within = (ms: number) => Date.now() - startedAt < ms;
   const allItems = getCoverLetterItems(args.profile);
@@ -668,9 +671,12 @@ async function runCoverLetterPipeline(args: {
   const jobText = `${args.title} at ${args.company}\n${args.jobDescription.slice(0, 6000) || args.title}`;
   const qualifications = buildQualificationsBlock(args.profile as Parameters<typeof buildQualificationsBlock>[0]);
   if (!allItems.length && !qualifications) throw new NoEvidenceError();
+  trace("evidence selected");
   const selected = await selectEvidenceForJob(allItems, jobText, args.signal);
   const thin = isThinProfile(args.profile);
-  const minWords = thin ? THIN_MIN_WORDS : TARGET_MIN_WORDS;
+  // A letter cannot honestly be longer than its evidence: hold it to 110 words for a short record, rising to the usual 170 for a rich one.
+  const evidenceWords = selected.reduce((sum, item) => sum + `${item.summary} ${item.description}`.split(/\s+/).filter(Boolean).length, 0);
+  const minWords = thin ? THIN_MIN_WORDS : Math.max(MIN_HONEST_WORDS, Math.min(TARGET_MIN_WORDS, Math.round(evidenceWords * 0.8) + 40));
   const honestWords = thin ? 40 : MIN_HONEST_WORDS;
   // A thin CV gives a model nothing to say but embellishment, so the letter is built from the CV's own text.
   if (thin) {
@@ -752,6 +758,7 @@ async function runCoverLetterPipeline(args: {
         thin,
         clarificationContext: `${args.clarificationContext || ""}\n${unsupportedTerms.length ? `Remove or avoid these unsupported items: ${unsupportedTerms.map((term) => term.startsWith("echo: ") ? `wording copied from the job posting ("${term.slice(6)}")` : term.startsWith("degree field: ") ? `the degree field "${term.slice(14)}", which the education record does not give (state only the degree the CV names)` : term.startsWith("posting term: ") ? `the tool or acronym "${term.slice(14)}", which is only in the job posting and never in the applicant's CV` : describeClaim(term)).join("; ")}. Never copy sentences from the job posting, never claim knowledge of or work on the employer's own products, blog or systems, and never state a degree field, years of experience, durations or tools the evidence does not give.` : ""}${defectList.length ? ` The previous draft ${defectList.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
   });
+  trace("drafts done");
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length); round += 1) {
@@ -769,6 +776,7 @@ async function runCoverLetterPipeline(args: {
   }
   for (let groundRound = 0; groundRound < 2; groundRound += 1) {
     if (groundRound > 0 && (!within(35_000) || !(findUnsupportedClaims(text, args.profile, args.company, jobText, args.title).length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length))) break;
+  trace("guard retry done");
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
     if (!within(50_000)) throw new Error("letter time budget spent");
@@ -804,6 +812,7 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   const speculativeText = finalise(text);
   const runClaimCheck = (draft: string) => checkDraftClaims({ draft, candidateName: args.profile?.name, evidence: qualifications ? [...allItems, { index: allItems.length, type: "experience" as const, title: "Qualifications on record", summary: "", description: qualifications }] : allItems, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const speculativeCheck = within(85_000) ? runClaimCheck(speculativeText) : undefined;
+  trace("grounding done");
   // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
   // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
   if (within(85_000)) {
@@ -835,6 +844,7 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
       if (args.signal?.aborted) throw error;
     }
   }
+  trace("verifier done");
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (!thin && WORDS(text) < MIN_HONEST_WORDS && within(100_000)) {
     try {
@@ -847,6 +857,7 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   text = repairLetterStructure(text, args.profile?.name, args.company, args.title);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   // Last chance for a letter the guards still object to: one more draft that is told exactly what to avoid, kept only if it scores better.
+  trace("before final redraw");
   if (!args.advanced && within(FINAL_REDRAW_START_MS)) {
     const leftover = (value: string) => ({
       unsupported: findUnsupportedClaims(value, args.profile, args.company, jobText, args.title),
@@ -881,15 +892,16 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   const remaining = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).filter((defect) => !defect.startsWith("too short"));
   // A short letter is honest when the profile gives little to draw on; say so instead of padding it with invented duties.
-  const thinNote = WORDS(text) < TARGET_MIN_WORDS ? "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" : "";
+  const thinNote = WORDS(text) < minWords ? "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" : "";
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.map(describeClaim).join("; ")}.` : undefined;
 
   // The model check sees the whole profile, not only the picked items, so a claim backed by any CV entry is not flagged.
+  trace("before claim check");
   const { reviewWarning: modelWarning } = await (speculativeCheck && text === speculativeText ? speculativeCheck : runClaimCheck(text));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
-  return { text, model, mode, indices, reviewWarning, fallbackNote, thin, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, thin, minWords, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
 }
 
 type CoverLetterPipelineArgs = Parameters<typeof runCoverLetterPipeline>[0];
@@ -905,7 +917,7 @@ export async function runCoverLetterAgent(args: CoverLetterPipelineArgs & { redu
   const controllers = Array.from({ length: copies }, () => new AbortController());
   const cancelAll = () => controllers.forEach((controller) => controller.abort());
   args.signal?.addEventListener("abort", cancelAll, { once: true });
-  const isClean = (result: CoverLetterAgentResult) => (result.unsupportedClaims || []).filter((claim) => !claim.startsWith("the letter is short because")).length === 0 && !result.reviewWarning && WORDS(result.text) >= (result.thin ? THIN_MIN_WORDS : TARGET_MIN_WORDS);
+  const isClean = (result: CoverLetterAgentResult) => (result.unsupportedClaims || []).filter((claim) => !claim.startsWith("the letter is short because")).length === 0 && !result.reviewWarning && WORDS(result.text) >= (result.minWords ?? (result.thin ? THIN_MIN_WORDS : TARGET_MIN_WORDS));
   const better = (results: CoverLetterAgentResult[]) => [...results].sort((a, b) => (a.unsupportedClaims || []).length - (b.unsupportedClaims || []).length || Math.abs(WORDS(a.text) - 230) - Math.abs(WORDS(b.text) - 230))[0];
 
   return new Promise<CoverLetterAgentResult>((resolve, reject) => {
