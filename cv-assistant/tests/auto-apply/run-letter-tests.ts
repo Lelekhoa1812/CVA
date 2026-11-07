@@ -1,6 +1,7 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
+import { issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
@@ -14,6 +15,15 @@ const letter = "I am applying for the Senior Machine Learning Engineer role at N
 const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honours)", school: "Swinburne University of Technology" };
 
 const tests: Array<{ name: string; run: () => void }> = [
+  {
+    name: "model-check issues that quote the CV almost word for word are dropped; invented claims are kept",
+    run: () => {
+      const evidence = JSON.stringify([{ title: "CPG Seedcom", description: "Led a 6-person team delivering a Vietnamese-language AI assistant that converts business questions into executable SQL, reducing manual effort by 80%." }]);
+      assert.ok(issueQuotesEvidence("Claimed 'leading a six-person team delivering a Vietnamese-language AI assistant' is not verified", evidence));
+      assert.ok(!issueQuotesEvidence("The draft says 'managed a 40-engineer platform organisation at Google' which is not in the evidence", evidence));
+      assert.ok(!issueQuotesEvidence("The letter claims strong leadership skills", evidence));
+    },
+  },
   {
     name: "guard tokens are shown to the applicant in plain language",
     run: () => {
