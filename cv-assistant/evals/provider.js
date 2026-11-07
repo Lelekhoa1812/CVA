@@ -14,7 +14,7 @@ module.exports = class LetterProvider {
       execFile(
         "node",
         ["-r", "tsconfig-paths/register", "-r", "sucrase/register/ts", path.join(__dirname, "run-letter.ts"), JSON.stringify({ company: vars.company, title: vars.title, jd: vars.jd })],
-        { cwd: root, timeout: 150000, maxBuffer: 4 * 1024 * 1024 },
+        { cwd: root, timeout: 200000, maxBuffer: 4 * 1024 * 1024 },
         (error, stdout) => {
           if (error) return resolve({ error: String(error.message).slice(0, 500) });
           const line = stdout.trim().split("\n").pop();

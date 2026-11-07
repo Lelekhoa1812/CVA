@@ -175,6 +175,9 @@ export async function runCoverLetterAgent(args: {
   clarificationContext?: string;
   signal?: AbortSignal;
 }): Promise<CoverLetterAgentResult> {
+  const startedAt = Date.now();
+  // Every refinement step is skipped once the time budget is spent, so a letter is always returned inside the caller's limit.
+  const within = (ms: number) => Date.now() - startedAt < ms;
   const allItems = getCoverLetterItems(args.profile);
   const contact = getCoverLetterContactDetails(args.profile);
   const jobText = `${args.title} at ${args.company}\n${args.jobDescription.slice(0, 6000) || args.title}`;
@@ -227,7 +230,7 @@ export async function runCoverLetterAgent(args: {
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company);
-  for (let round = 0; round < 3 && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
+  for (let round = 0; round < 2 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title).length); round += 1) {
     const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title);
     try {
       const retryPrompt = buildCoverLetterPrompt({
@@ -249,6 +252,7 @@ export async function runCoverLetterAgent(args: {
   }
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
+    if (!within(70_000)) throw new Error("letter time budget spent");
     const facts = allItems.map((item) => `- ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 420)}`).join("\n").slice(0, 14000);
     const grounded = await generateLetterText(`You are a strict fact-checker and editor of a job application letter. Every statement about the applicant must be directly supported by the CV FACTS below. Job requirements, tools, responsibilities and phrases from the job posting are NOT facts about the applicant, even if the letter states them as experience.
 
@@ -267,12 +271,12 @@ ${text}
 Return only the corrected letter text.`, args.signal);
     const before = findUnsupportedClaims(text, args.profile, args.company).length + findLetterDefects(text, args.profile?.name, args.company, args.title).length;
     const after = findUnsupportedClaims(grounded.text, args.profile, args.company).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title).length;
-    if (WORDS(grounded.text) >= 150 && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
+    if (WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
   } catch (error) {
     if (args.signal?.aborted) throw error;
   }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
-  if (WORDS(text) < TARGET_MIN_WORDS) {
+  if (WORDS(text) < TARGET_MIN_WORDS && within(90_000)) {
     try {
       const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice and the greeting and sign-off. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
       if (WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
