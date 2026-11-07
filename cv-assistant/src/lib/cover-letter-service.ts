@@ -97,7 +97,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 const CLAIM_LEXICON = [
   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
-  "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
+  "on-call", "incident response", "threat response", "security operations", "pagerduty", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
 
 function normalise(value: string) {
@@ -122,6 +122,7 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
 export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string): string[] {
   const defects: string[] = [];
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
+  if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
   if (/\b(?:a|the)?\s*[\w -]*\bcandidate\s+(?:at|for|to)\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
@@ -250,6 +251,8 @@ export async function runCoverLetterAgent(args: {
     }
     unsupported = findUnsupportedClaims(text, args.profile, args.company);
   }
+  for (let groundRound = 0; groundRound < 2; groundRound += 1) {
+    if (groundRound > 0 && !(findUnsupportedClaims(text, args.profile, args.company).length || findLetterDefects(text, args.profile?.name, args.company, args.title).length)) break;
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
     if (!within(70_000)) throw new Error("letter time budget spent");
@@ -274,6 +277,7 @@ Return only the corrected letter text.`, args.signal);
     if (WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
   } catch (error) {
     if (args.signal?.aborted) throw error;
+  }
   }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (WORDS(text) < TARGET_MIN_WORDS && within(90_000)) {

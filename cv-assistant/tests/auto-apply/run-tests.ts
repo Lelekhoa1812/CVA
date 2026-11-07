@@ -35,11 +35,11 @@ const tests: TestCase[] = [
   {
     name: "letter defects: fragment opening, missing company and role, missing sign-off",
     run: () => {
-      const body = "I have built many things and enjoy shipping software. ".repeat(25);
+      const body = "I have built many things and enjoy shipping software. ".repeat(14);
       const bad = `Senior AI Engineer Dang Khoa Le, with proven experience. ${body}\nThanks for reading this long closing sentence that never ends well.`;
       const defects = findLetterDefects(bad, "Dang Khoa Le", "Airwallex", "Senior AI Engineer");
       assert.ok(defects.some((d) => d.includes("greeting")) && defects.some((d) => d.includes("Airwallex")) && defects.some((d) => d.includes("sign-off")));
-      const good = `Dear Hiring Manager,\n\nI am applying to the Senior AI Engineer role at Airwallex. ${body}\nSincerely,\nDang Khoa Le`;
+      const good = `Dear Hiring Manager,\n\nI am applying to the Senior AI Engineer role at Airwallex. ${body}\n\n${body}\nSincerely,\nDang Khoa Le`;
       assert.deepEqual(findLetterDefects(good, "Dang Khoa Le", "Airwallex", "Senior AI Engineer"), []);
     },
   },
