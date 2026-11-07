@@ -4,7 +4,7 @@ import { parseLeverApplicationForm, htmlToText } from "../../src/lib/auto-apply/
 import { buildRoleMatcher, extractListingDetails, matchesLocation, matchesRole, mapWithConcurrency } from "../../src/lib/auto-apply/discovery";
 import { buildFitPrompt, verdictFor } from "../../src/lib/auto-apply/fit";
 import { buildAutofillPack, packToText } from "../../src/lib/auto-apply/pack";
-import { echoMatches, hashApplicationPayload, isWellFormedLetter } from "../../src/lib/auto-apply/prepare";
+import { echoMatches, hashApplicationPayload, isNonQuestionField, isWellFormedLetter } from "../../src/lib/auto-apply/prepare";
 import {
   EMPTY_PREFERENCES,
   answerDeterministically,
@@ -210,6 +210,17 @@ const tests: TestCase[] = [
       assert.equal(preferred?.value, "Freelance");
       const unknown = answerDeterministically({ question: q("Current company"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "Blinq" });
       assert.equal(unknown?.needsInput, true);
+    },
+  },
+  {
+    name: "optional URL slots and short unlabeled inputs are not drafted by the AI",
+    run: () => {
+      const urlSlot = buildQuestion({ id: "x", fieldName: "urls[Other]", label: "Blinq", type: "text", required: false, options: [] });
+      assert.equal(isNonQuestionField(urlSlot), true);
+      const real = buildQuestion({ id: "y", fieldName: "question_1", label: "What excites you about working with our customers?", type: "textarea", required: false, options: [] });
+      assert.equal(isNonQuestionField(real), false);
+      const required = buildQuestion({ id: "z", fieldName: "q2", label: "Pronouns", type: "text", required: true, options: [] });
+      assert.equal(isNonQuestionField(required), false);
     },
   },
   {

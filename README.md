@@ -244,7 +244,11 @@ The application uses MongoDB with the following main collections:
 3. **Review** – per-job answers and a tailored cover letter. Tick "Remember" to reuse an answer. Approve one job or "Approve all ready".
 4. **Apply** – "Open form & copy pack" opens the employer form; the bookmarklet autofills it and never submits. Confirm "I submitted it" to track progress.
 
-Pipeline runs after the response (`after()`, `maxDuration = 300`) and the UI polls the session. Tests: `npm run test:auto-apply`.
+Pipeline runs after the response (`after()`, `maxDuration = 300`) and the UI polls the session. A heartbeat keeps healthy runs fresh; a run cut off by the serverless limit is detected after 150 s and the workspace recovers.
+
+Cover letters come from one shared agent (`src/lib/cover-letter-service.ts`, the same prompt, claim check and model guard as `/generate`). The job description is crawled from the employer ATS API or listing page when the search snippet is thin (`src/lib/auto-apply/jd.ts`). "Rewrite from job posting" in Review re-runs it; `POST /api/auto-apply/job/[jobId]/cover-letter` also accepts `{ "advanced": true }` for the multi-step studio agent.
+
+Tests: `npm run test:auto-apply` (unit) and `npm run test:autofill-live` (real Greenhouse, Ashby and Lever forms in Chromium, Firefox and WebKit; needs network and `npx playwright install firefox webkit`).
 The legacy Playwright live preview is dev-only: set `AUTO_APPLY_DEV_BROWSER=true` (never active in production).
 
 ## 🎯 Usage Guide

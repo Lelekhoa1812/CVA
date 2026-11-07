@@ -34,6 +34,14 @@ type JobInput = {
   descriptionText: string;
 };
 
+/** Optional, short-labelled inputs and URL slots are not questions an AI should draft prose for. */
+export function isNonQuestionField(question: FormQuestion) {
+  if (question.category !== "other" || question.required || question.type === "file") return false;
+  if (/^urls?\[/i.test(question.fieldName) || question.type === "url") return true;
+  const words = question.label.trim().split(/\s+/).filter(Boolean);
+  return words.length <= 2 && !question.label.includes("?");
+}
+
 export function buildAnswersPrompt(args: {
   candidate: string;
   preferences: ApplicantPreferences;
@@ -122,6 +130,9 @@ export async function prepareApplication(args: {
       // Sensitive facts (work rights, salary, relocation...) are never guessed. They come from the saved
       // application preferences, which the candidate sets once and every application reuses.
       answers.set(question.id, finalizeGeneratedAnswer(question, "", 0, "Set this once in Application preferences and it fills automatically."));
+    } else if (isNonQuestionField(question)) {
+      // Optional fields that are not real questions (an "Other website" URL box labelled with the company name) stay blank.
+      answers.set(question.id, finalizeGeneratedAnswer(question, "", 0));
     } else pending.push(question);
   }
 

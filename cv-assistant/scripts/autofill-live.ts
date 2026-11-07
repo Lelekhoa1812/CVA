@@ -16,7 +16,15 @@ const ashbyPack = { kind: "cva-autofill", version: 1, job: { title: "t", company
   { fieldName: "x2", label: "Phone Number", type: "phone", required: true, value: "0400000000", options: [] },
   { fieldName: "x3", label: "Salary expectations", type: "text", required: true, value: "$130,000 - $150,000 + super", options: [] },
 ] };
-async function run(name: string, type: typeof chromium, pack: typeof ghPack | typeof ashbyPack = ghPack) {
+const leverPack = { kind: "cva-autofill", version: 1, job: { title: "t", company: "Blinq", applyUrl: "https://jobs.lever.co/blinq/a5494249-da2c-4890-bc20-c964532192ea/apply", provider: "lever" }, coverLetter: "", createdAt: "", fields: [
+  { fieldName: "name", label: "Full name", type: "text", required: true, value: "Dang Khoa Le", options: [] },
+  { fieldName: "email", label: "Email", type: "email", required: true, value: "test@example.com", options: [] },
+  { fieldName: "phone", label: "Phone", type: "text", required: true, value: "0400000000", options: [] },
+  { fieldName: "location", label: "Current location", type: "text", required: true, value: "Melbourne, VIC", options: [] },
+  { fieldName: "org", label: "Current company", type: "text", required: true, value: "Axion Solutions", options: [] },
+  { fieldName: "urls[LinkedIn]", label: "LinkedIn URL", type: "text", required: true, value: "https://www.linkedin.com/in/example", options: [] },
+] };
+async function run(name: string, type: typeof chromium, pack: typeof ghPack | typeof ashbyPack | typeof leverPack = ghPack) {
   const URL = pack.job.applyUrl;
   const b = await type.launch(name === "chromium" ? { channel: "chrome" } : {});
   const p = await b.newPage({ viewport: { width: 1280, height: 900 } });
@@ -37,6 +45,7 @@ async function run(name: string, type: typeof chromium, pack: typeof ghPack | ty
   for (const [name, type] of [["chromium", chromium], ["firefox", firefox], ["webkit", webkit]] as const) {
     await run(name, type, ghPack);
     await run(name, type, ashbyPack);
+    await run(name, type, leverPack);
   }
   console.log("autofill-live: all engines passed");
 })().catch((error) => { console.error(error); process.exit(1); });
