@@ -1542,7 +1542,7 @@ Approval paths:
 - Cancellation: `POST session/[id]/cancel` sets `run.phase` to `cancelled` and `run.message` to `Stopping`. It does not change the status. `isCancelled()` is true when the phase is `cancelled` or the status is `stopped`. Pipelines check it at their checkpoints, and `preparePending()` checks it before each job. A cancelled run ends with phase `idle`, message `Stopped`, status `stopped`, `stoppedAt` set and a `run_cancelled` event.
 - Known race: `claimRun()` accepts a session whose phase is `cancelled`, and it overwrites the status with `searching`. A pipeline that is still running and has not reached its next checkpoint then sees neither marker and continues. Two pipelines can then write to the same session. Section 19.2 records this.
 - Stall recovery: `GET session/[id]` checks `isRunStalled()`. When the run is stalled, it:
-  - sets the phase to `idle` and the status to `review`, with the message "The last run stopped early. Press Prepare to continue where it left off.". The update matches the `run.updatedAt` value it read, so a heartbeat that lands in between prevents the reset;
+  - sets the phase to `idle` and the status to `review`, with the message from `stalledRunMessage(phase)` (`state.ts`): "The last run stopped early. Open Matches and press Prepare to continue where it left off." for a stalled `preparing` phase, otherwise "The last search stopped early. Press Search again to continue.". The update matches the `run.updatedAt` value it read, so a heartbeat that lands in between prevents the reset;
   - sets every candidate with status `preparing` back to `selected` and clears `preparingStartedAt`.
 - `PATCH session/[id]` returns `409` while the phase is `searching`, `scoring` or `preparing`.
 

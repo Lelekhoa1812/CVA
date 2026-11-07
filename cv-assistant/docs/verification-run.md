@@ -31,7 +31,9 @@ This page records what was actually run against the live app and the eval suite 
 | Control Room: overview and lead | Overview, one lead detail opened | Pass for viewing. The specialist workflow was not run. |
 | Control Room: specialist workflow | Run once on one lead (`POST /api/control-room/leads/<id>/orchestrate`, 200 in about 5 s) | Pass with a caveat. The lead ended `scored`, fit 43, recommendation `skip`, `analysisSource: fallback`, `model: heuristic`. The LLM strategist did not produce the result and the response does not record why. The lead is a Talent.com record whose title is "Show more" and whose company is empty, so the result is not meaningful. Each run appends events and an evaluation to the lead. |
 | Promptfoo cover-letter eval | `npm run eval:letters`, 3 cases, live model calls, run twice | **Run 1: 1 of 3 passed. Run 2: 3 of 3 passed.** The same inputs gave different outcomes, so the eval is not stable. See below. |
-| Live browser scripts | Not run | They fill real employer forms (Greenhouse, Ashby and Lever) with name and contact details. That needs explicit permission from the user first. Not requested yet. |
+| Live autofill matrix (`scripts/autofill-live.ts` logic) | Run per form and per engine, after the user approved it. The forms were the public Greenhouse, Ashby and Lever test pages used by the script, with placeholder applicant details. Nothing was submitted. | **7 of 9 passed.** Ashby and Lever passed on Chromium, Firefox and WebKit. Greenhouse passed on WebKit (5 of 5, city shown as "Melbourne, Victoria, Australia") and failed on Chromium and Firefox with 4 of 5: the "Location (City)" field ended as `partial`. The in-page filler cannot finish that async city search in those two engines. `scripts/agent-fill.ts` handles it with real keyboard input. |
+| `agent:fill` | Not run | It needs a real prepared pack. The only packs available belong to real employers, and the approval covered placeholder test pages only. |
+| Safari autofill script | Not run | `safaridriver` could not be set up in this environment. |
 
 Evidence screenshots from these two attempts:
 
@@ -49,7 +51,7 @@ Evidence screenshots from these two attempts:
 - The panel reported "The search could not complete." in one of the two runs.
 - Many CareerOne cards are not AI Engineer roles. Examples on the first page were Retail Manager, Beauty Therapist, Baker / Pastrycook and Handyperson. The title query was not enforced for that board.
 - Cards from that board show "Company TBD" and "Location TBD" and "Posted time unavailable" when the board does not supply those fields.
-- One card description shows an undecoded HTML entity (`&amp;`).
+- One card description showed an undecoded HTML entity (`&amp;`). Fixed afterwards; see "Defects investigated and fixed".
 - Reloading the page clears the results. The campaign and leads remain in the Control Room.
 
 ## Cover-letter eval failures (Promptfoo, 2026-11-07)
@@ -81,10 +83,21 @@ These runs used the real account, so they wrote records to the database:
 
 These records were not removed. Remove them if they are not wanted.
 
+## Defects investigated and fixed (committed as 51bd429)
+
+| Defect seen in the run | Finding | Change | Re-run live? |
+|---|---|---|---|
+| Auto Apply "stopped early" message named a Prepare button that does not exist after a stalled search | The message was one fixed string. The stall itself came from the process ending while the dev server restarted, which is not an app defect | `stalledRunMessage(phase)` in `state.ts`: Matches and Prepare for a stalled preparation, "Press Search again" for a stalled search. Test added (`test:auto-apply` 55 of 55) | No. Unit test only |
+| Advanced Mode returned 504 with no letter | The advanced run used the whole 240 s request limit, leaving nothing for a fallback. The route also had no `maxDuration` | Advanced Mode has its own 150 s budget, then the standard writer runs and the letter carries a warning. `maxDuration = 300` is exported | No. Not re-run live. Advanced latency itself is unchanged |
+| `&amp;` in Job Search card text, and a lead titled "Show more" | HTML entities were not decoded in JSON-LD text, and a UI control label was accepted as a title | Decode once, skip listings with no real title. 3 tests added (`test:search` 15 of 15) | No. Offline tests only |
+| Cover-letter eval passed 1 of 3, then 3 of 3 | Model output varies between runs. A separate session added deterministic repairs for third-person sentences and misplaced name blocks (commits 9c8efe5 and 2504a11) and tests for them | Not part of this documentation change | Not re-run after those commits |
+
+Still open, and needing a product decision: Job Search relevance for boards that ignore the keyword (default the Match filter to strong, improve the matcher, or pause CareerOne), and Advanced Mode latency (a faster model preset or fewer steps).
+
 ## Not verified
 
-- Auto Apply prepare and the apply handoff.
-- The Control Room specialist workflow.
-- Cover-letter Advanced Mode.
-- The live browser autofill scripts.
+- Auto Apply prepare and the apply handoff (the run never completed, and the fix was only unit tested).
+- Cover-letter Advanced Mode producing its own letter, and the new fallback path live.
+- `agent:fill` and the Safari autofill script.
+- The eval's stability after the letter-guard commits.
 - Job Search results from the blocked platforms.

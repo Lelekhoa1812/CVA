@@ -375,7 +375,7 @@ The employer answer follows the same steps, using `POST /api/generate/clarificat
 
 Retries: each JSON step makes two attempts. A JSON step that still fails returns its fallback value without throwing. For the reviewer, the fallback is approved, score 85, no issues. Each text step (writer and revision) makes up to three attempts: the preset, the same preset again after 500 ms, then `easy`. On the longest path (both retrieval rounds and a revision), the module makes at most 21 model attempts: up to 14 JSON attempts across seven JSON steps (planner, two retrieval rounds, two audits, synthesis and reviewer), up to 6 text attempts (writer and revision), and one claim check. Each attempt can also move through the preset's model list and keys (section 6.2).
 
-Failure: the advanced run fails only when the writer or the revision fails on every attempt, or on another unexpected error. The route then logs the error and runs the standard writer. The response has `advancedFallback: true` and no trace or indices. If the 240-second limit is reached, the route returns 504 and does not fall back.
+Failure: the advanced run gets its own 150-second budget (`ADVANCED_BUDGET_MS`, inside the 240-second request limit). It fails when the writer or the revision fails on every attempt, when the budget runs out, or on another unexpected error. The route then logs the error and runs the standard writer. The response has `advancedFallback: true`, no trace or indices, and a `reviewWarning` that begins "Advanced Mode did not finish, so the standard writer wrote this letter." Only when the whole 240-second limit is reached, or the client disconnects, does the route return 504 or stop. Before this change, Advanced Mode could use the whole 240 seconds and the verification run saw a 504 with no letter.
 
 ### 3.6 Employer answer
 
@@ -401,7 +401,8 @@ Failure: the advanced run fails only when the writer or the revision fails on ev
 | User presses Skip | "Generating without optional questions." | The decision request is aborted, and the letter starts with no answers |
 | Standard writer fails on every attempt | "Cover letter generation temporarily unavailable. Please try again." | 502 |
 | Writer or revision fails on every attempt in Advanced Mode | A standard letter with no trace | `advancedFallback: true`. The page does not show it. |
-| Advanced run reaches 240 seconds | "Generation timed out. Please try again." | 504. No fallback. |
+| Advanced run passes its 150-second budget | A standard letter, with the warning "Advanced Mode did not finish, so the standard writer wrote this letter." | `advancedFallback: true`. Added after the verification run saw a 504. |
+| Whole request reaches 240 seconds | "Generation timed out. Please try again." | 504. No fallback. |
 | Claim check fails or times out | "We could not complete the evidence check. Please review all personal claims before submitting." | The letter is still returned |
 | Inputs change during generation | The letter, with "Your inputs changed while this draft was being generated; it uses the earlier inputs." | The response is applied to the page |
 | A stored evidence index no longer exists | "Invalid evidence selection" | 400 |
@@ -557,7 +558,8 @@ The returned `unsupportedClaims` list holds the remaining terms, the leftover de
 | Reviewer (advanced) | Error | The fallback score of 85 causes a revision with no findings |
 | Advanced writer or revision | Fails on every attempt | Standard letter; `advancedFallback: true` |
 | Advanced JSON step | Error or malformed reply | The step uses its fallback value, and the run continues |
-| Advanced agent | Reaches 240 seconds | 504; no fallback |
+| Advanced agent | Passes its 150-second budget | Standard writer runs; the letter carries a warning |
+| Advanced agent | Whole request reaches 240 seconds | 504; no fallback |
 | Standard writer | Every attempt fails | 502 |
 | Auto Apply guards | A model step fails | Earlier text is kept; errors are swallowed unless the caller cancelled |
 
@@ -682,7 +684,7 @@ The standard writer sends every selected evidence item in full, with its summary
 | Streaming | Nothing is streamed to the browser. Model output is requested as a stream upstream (`stream: true`) and assembled in `src/lib/ai.ts` before the route answers. The page shows a loading state until the full response arrives. |
 | Client disconnect | Routes use `req.signal`. When the client disconnects, the route rethrows the abort reason, so the framework's default error response goes to a client that has already gone. |
 | Runtime | Default Node.js runtime. No route exports `runtime`. |
-| `maxDuration` | No route in `src/app/api/generate` or `src/app/generate` exports `maxDuration`. Three Auto Apply routes export `maxDuration = 300`: the cover-letter, prepare and session run routes. `vercel.json` has no `functions` block. The limits in force are the in-route timeouts below and the model deadlines in section 6.2. |
+| `maxDuration` | `src/app/api/generate/cover-letter/route.ts` exports `maxDuration = 300`. No other route in `src/app/api/generate` or `src/app/generate` does. Three Auto Apply routes also export `maxDuration = 300`: the cover-letter, prepare and session run routes. `vercel.json` has no `functions` block. The limits in force are the in-route timeouts below and the model deadlines in section 6.2. |
 | In-route timeouts | Select: none. Decisions: 50 seconds. Letter and answer: 240 seconds. PDF: none. |
 | Logging | Most failures are written to the server log with `console.error`. The select route does not log. |
 
@@ -807,7 +809,7 @@ Checks, in order:
 4. Profile load failure: `504` "Generation timed out. Please try again." when the 240-second signal has fired, otherwise `503` "Unable to load your profile. Please try again.".
 5. An index at or beyond the number of profile items: `400` "Invalid evidence selection".
 
-Processing: a combined 240-second signal (`req.signal` plus a timeout). The advanced branch runs when `advancedMode` is true. If it fails for any reason other than the time limit or a disconnect, the standard branch runs.
+Processing: a combined 240-second signal (`req.signal` plus a timeout). The advanced branch runs when `advancedMode` is true, with an additional 150-second budget. If it fails for any reason other than the overall time limit or a disconnect (including its own budget), the standard branch runs.
 
 Responses:
 

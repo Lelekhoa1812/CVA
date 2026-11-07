@@ -89,13 +89,14 @@ Validation messages come from two sources. Zod routes return the first Zod issue
 
 - `runtime = "nodejs"` and `dynamic = "force-dynamic"` are set on every Auto Apply route, every control room route, every search route, and `POST /api/ocr`.
 - The remaining routes (auth, profile, enhance, generate, generate-resume, resume, and test) set neither export. They use the Next.js defaults. They read cookies or the request body, so they are dynamic in practice.
-- `maxDuration = 300` is set on three routes only: `auto-apply/session/[id]/run`, `auto-apply/job/[jobId]/prepare` and `auto-apply/job/[jobId]/cover-letter`.
+- `maxDuration = 300` is set on four routes only: `auto-apply/session/[id]/run`, `auto-apply/job/[jobId]/prepare`, `auto-apply/job/[jobId]/cover-letter` and `generate/cover-letter`.
 - `vercel.json` sets build, dev and install commands only. It has no `functions` block, so other routes use the platform default.
 - Internal timeouts in the code:
 
 | Operation | Timeout |
 |---|---|
 | Generate cover letter and employer answer (overall) | 240 s |
+| Advanced Mode inside the cover-letter route | 150 s (`ADVANCED_BUDGET_MS`), then the standard writer takes over |
 | Generate clarifications | 50 s |
 | Auto Apply cover letter rewrite | 250 s |
 | Auto Apply pipeline run budget (`RUN_BUDGET_MS`) | 270 s |
@@ -642,7 +643,7 @@ curl -s -b cookies.txt -X POST http://localhost:3000/api/generate/clarifications
 **Behaviour**
 
 - Standard path: builds a prompt from the selected evidence, the company, the job description and the clarification answers. `generateWithFallback` tries the `hard` tier, waits 500 ms and tries `hard` again, then falls back to `easy`.
-- Advanced path: `generateAdvancedCoverLetter` runs the multi-agent pipeline. If it fails, the route falls back to the standard path and sets `advancedFallback: true`.
+- Advanced path: `generateAdvancedCoverLetter` runs the multi-agent pipeline with its own 150-second budget (`ADVANCED_BUDGET_MS`). If it fails or the budget runs out, the route falls back to the standard path, sets `advancedFallback: true` and adds "Advanced Mode did not finish, so the standard writer wrote this letter." to `reviewWarning`.
 - Both paths then run the claim check (`checkDraftClaims`, `easy` tier, no retries, 18-second timeout). The check never throws by itself. When it finds something to review, it returns `reviewWarning`.
 - The overall time limit is 240 seconds.
 
@@ -1643,7 +1644,7 @@ curl -s -b cookies.txt -X POST http://localhost:3000/api/auto-apply/session \
 
 This is the workspace read used by the UI, and it polls during a run.
 
-**Behaviour:** if the run has stalled, meaning the last update is more than 150 seconds old during an active phase, the route first repairs it. It sets the run phase to `idle`, sets the session status to `review`, sets a message asking the user to press Prepare, and resets any `preparing` jobs to `selected`. This makes a GET write to the database.
+**Behaviour:** if the run has stalled, meaning the last update is more than 150 seconds old during an active phase, the route first repairs it. It sets the run phase to `idle`, sets the session status to `review`, sets a message from `stalledRunMessage()` (it points to Matches and Prepare for a stalled preparation and to Search for a stalled search), and resets any `preparing` jobs to `selected`. This makes a GET write to the database.
 
 **Success: `200`**
 

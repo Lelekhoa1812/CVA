@@ -233,7 +233,7 @@ Server `error` messages appear in the red error panel (`role="alert"`). Section 
 *The live panel after the run. CareerOne and Adzuna completed, SEEK and Indeed were blocked, and the run ended as incomplete. The results header reads 98 results.*
 
 ![Result cards](../../../imgsrc/search/result-cards.png)
-*CareerOne cards from the same run. Listings show "Company TBD" and "Location TBD" when the board does not supply them, and some descriptions show undecoded HTML entities.*
+*CareerOne cards from the same run. Listings show "Company TBD" and "Location TBD" when the board does not supply them. This capture was taken before the fix that decodes HTML entities in parsed listing text, which had left `&amp;` visible in some descriptions.*
 
 
 ## 3. Search pipeline
@@ -339,6 +339,13 @@ This path applies to SEEK, Indeed, CareerOne, Adzuna and Talent.com. A landing p
 | Talent.com | `https://au.talent.com/jobs?k=<title>&l=<location>` | `p=N` | 20 | `/view?id=` |
 
 Slugs are lowercased, runs of non-alphanumeric characters become hyphens, and an empty slug becomes `australia`. None of these URLs carries the Posted, Workplace or Type filters.
+
+Changes made after the verification run (2026-11-07):
+
+- **HTML entities.** Title, company and location read from JSON-LD, and text read from detail pages, are decoded once (`decodeHtmlEntities`), so `&amp;` no longer shows in cards.
+- **Control labels are not titles.** A listing whose title is empty after the detail page and the link text are tried is skipped. UI labels such as "Show more" are not accepted as titles. The earlier Talent.com lead titled "Show more" came from this gap.
+- **Relevance is not enforced.** CareerOne returned unrelated roles (Retail Manager, Baker, Handyperson) for "AI Engineer", because the keyword slug in its URL is not honoured. The Match filter can hide them, but the default does not. This is an open product decision, not a fixed defect.
+- **Tests.** `npm run test:search` now runs 15 offline tests (3 added for the points above).
 
 The crawl runs in these steps:
 
