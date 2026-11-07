@@ -69,7 +69,7 @@ export const defaultAutoApplyFilters: AutoApplyFilters = {
 
 export const createAutoApplySessionSchema = z.object({
   mode: autoApplyModeSchema.default("ai_coaching"),
-  prompt: z.string().trim().min(1, "Prompt is required."),
+  prompt: z.string().trim().min(1, "Prompt is required.").max(4000, "Prompt is too long."),
   filters: autoApplyFiltersSchema.default(defaultAutoApplyFilters),
   selectedGroundTruthIds: z.array(z.string()).default([]),
   allowFullResumeContext: z.boolean().default(false),

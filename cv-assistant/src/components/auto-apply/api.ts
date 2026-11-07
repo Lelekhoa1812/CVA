@@ -52,7 +52,7 @@ export const autoApplyApi = {
   run: (id: string, mode?: "prepare") => call<{ started: boolean }>(`/api/auto-apply/session/${id}/run`, { method: "POST", body: JSON.stringify({ mode }) }),
   cancel: (id: string) => call<{ cancelled: boolean }>(`/api/auto-apply/session/${id}/cancel`, { method: "POST" }),
   approve: (id: string, jobIds?: string[], undo?: boolean) =>
-    call<{ approved: string[]; skipped: Array<{ id: string; reason: string }> }>(`/api/auto-apply/session/${id}/approve`, { method: "POST", body: JSON.stringify({ jobIds, undo }) }),
+    call<{ approved: string[]; skipped: Array<{ id: string; reason: string }> }>(`/api/auto-apply/session/${id}/approve`, { method: "POST", body: JSON.stringify({ jobIds, all: !jobIds, undo }) }),
   refreshAnswers: (id: string) => call<{ updated: number }>(`/api/auto-apply/session/${id}/refresh-answers`, { method: "POST" }),
   getJob: (id: string) => call<JobDetail>(`/api/auto-apply/job/${id}`),
   setStage: (id: string, stage: "selected" | "skipped" | "shortlisted" | "discovered") =>

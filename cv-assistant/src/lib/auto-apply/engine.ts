@@ -357,6 +357,11 @@ export async function preparePending(args: { sessionId: string; userId: string; 
     stats.failed = (stats.failed || 0) + (result === "failed" ? 1 : 0);
     await setRun(args.sessionId, "preparing", `Prepared ${done} of ${pending.length}`, stats, "preparing");
   });
+  if (await isCancelled(args.sessionId)) {
+    await AutoApplySessionModel.updateOne({ _id: args.sessionId }, { $set: { "run.phase": "idle", "run.message": "Stopped", "run.updatedAt": new Date(), status: "stopped", stoppedAt: new Date() } });
+    await logAutoApplyEvent({ userId: args.userId, sessionId: args.sessionId, type: "run_cancelled", message: "Run stopped." });
+    return;
+  }
   const remaining = await AutoApplyJobCandidateModel.countDocuments({ sessionId: args.sessionId, status: "selected" });
   const message = remaining
     ? `${remaining} applications still queued; run again to continue`

@@ -1,3 +1,4 @@
+import { isValidObjectId } from "mongoose";
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuthFromCookies, type AuthTokenPayload } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
@@ -12,16 +13,19 @@ export function requireAutoApplyAuth(req: NextRequest): AuthTokenPayload | NextR
 }
 
 export async function loadOwnedSession(userId: string, sessionId: string) {
+  if (!isValidObjectId(sessionId)) return null;
   await connectToDatabase();
   return AutoApplySessionModel.findOne({ _id: sessionId, userId });
 }
 
 export async function loadOwnedJob(userId: string, jobId: string) {
+  if (!isValidObjectId(jobId)) return null;
   await connectToDatabase();
   return AutoApplyJobCandidateModel.findOne({ _id: jobId, userId });
 }
 
 export async function loadOwnedDraft(userId: string, applicationId: string) {
+  if (!isValidObjectId(applicationId)) return null;
   await connectToDatabase();
   return AutoApplyApplicationDraftModel.findOne({ _id: applicationId, userId });
 }
