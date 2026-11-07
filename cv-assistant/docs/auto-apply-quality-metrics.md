@@ -155,3 +155,7 @@ Twelve prepared jobs from the test account (Neara, AustralianSuper, Airwallex, N
 Against the earlier two-pipeline production checks: no letter above 102 s (previously some at 130-133 s), no defect found by reading.
 
 Production re-check of 4b3363d (six jobs including Prezzee, three at a time): all 200 in 74-100 s, 210-267 words, no review warning on any letter. Eighteen production letters at the three-pipeline setting in total across the two samples: 18 of 18 returned 200, none over 102 s.
+
+### Production check on the lowest-fit prepared jobs (4b3363d), 2026-11-08
+
+Four of the weakest-fit prepared jobs (Airwallex AI Tooling / Information Security, Xero AI Builder, Xero ML & AI Systems, Artificial Analysis), run together (12 pipelines at once). All 200 in 79-122 s, 204-271 words. Reading the letters against the CV found no unsupported employer, figure or tool. Two letters carried a model-check warning that was not a claim: "Claims about leadership roles lack verification" (no specific claim) and, on Airwallex, "the draft mentions the role ... no evidence the candidate applied" plus "implies relevance to Information Security". `isNonClaimRemark` now drops those three shapes (role-name/applied remarks, "implies relevance", and a vague "Claims about ..." line with no figure or proper noun); tests keep "Claims about a 35% cost reduction lack verification", an invented employer, and a 40-person team claim as warnings.

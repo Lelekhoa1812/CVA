@@ -1,7 +1,7 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
-import { isMissingInputRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
+import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
@@ -115,6 +115,13 @@ const tests: Array<{ name: string; run: () => void }> = [
       // A remark about missing clarification answers is not a claim.
       assert.ok(isMissingInputRemark("No clarification answers provided to verify accuracy of job application draft claims"));
       assert.ok(!isMissingInputRemark("Candidate's claim to have led a 40-person team at Google is not supported"));
+      // Role name from the posting, "implied relevance" and vague lines are not claims; a specific claim still is.
+      assert.ok(isNonClaimRemark("The draft mentions the role 'Senior Software Engineer, AI Tooling, Information Security' at Airwallex, but there is no candidate evidence or clarification that confirms the candidate applied for or"));
+      assert.ok(isNonClaimRemark("The draft implies relevance to 'Information Security' through terms like 'Trust-First AI model'"));
+      assert.ok(isNonClaimRemark("Claims about leadership roles lack verification"));
+      assert.ok(!isNonClaimRemark("Candidate's claim to have led a 40-person team at Google is not supported"));
+      assert.ok(!isNonClaimRemark("The draft says the candidate managed 12 engineers at Atlassian"));
+      assert.ok(!isNonClaimRemark("Claims about a 35% cost reduction lack verification"));
     },
   },
   {

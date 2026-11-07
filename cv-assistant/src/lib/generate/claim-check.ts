@@ -22,6 +22,15 @@ export function isMissingInputRemark(issue: string) {
   return /\bno (?:clarification|candidate) (?:answers?|responses?|material|information)\b/i.test(issue) || /\bclarification answers (?:were |was |are )?(?:not )?(?:provided|supplied|given|available)\b/i.test(issue);
 }
 
+/** Remarks that are not claims in the letter: the role named in the posting, an "implied relevance", or a vague line with nothing specific to check. */
+export function isNonClaimRemark(issue: string) {
+  if (isMissingInputRemark(issue)) return true;
+  if (/^(?:the )?(?:draft|letter) (?:mentions|references|states|names) the (?:role|position|job)\b[^.]{0,160}\bappl(?:ied|ying|y|ication)/i.test(issue)) return true;
+  if (/\bimplies (?:relevance|a (?:connection|link|fit))\b/i.test(issue)) return true;
+  const rest = issue.replace(/^\S+\s+/, '');
+  return /^claims? (?:about|of|regarding)\b/i.test(issue) && issue.length < 90 && !/\d/.test(rest) && !/\b[A-Z][a-z]+/.test(rest);
+}
+
 /** The model check sometimes flags a claim that the CV states almost word for word. Such an issue is a false alarm. */
 export function issueQuotesEvidence(issue: string, evidenceText: string) {
   const quoted = issue.match(/'([^']{15,}?)'(?=[\s,.;:)]|$)|"([^"]{15,}?)"|\u2018([^\u2019]{15,}?)\u2019|\u201C([^\u201D]{15,}?)\u201D/);
@@ -86,7 +95,7 @@ Return only JSON: {"supported":true,"issues":[]}. Set supported to false if any 
       .map((issue) => issue.replace(/\s+/g, ' ').trim())
       .filter(Boolean);
     const evidenceText = JSON.stringify(evidence);
-    const issues = raised.filter((issue) => !isMissingInputRemark(issue) && !issueQuotesEvidence(issue, evidenceText)).map((issue) => cutAtWord(issue.replace(/[.!?]+$/, ''), 200)).slice(0, 3);
+    const issues = raised.filter((issue) => !isNonClaimRemark(issue) && !issueQuotesEvidence(issue, evidenceText)).map((issue) => cutAtWord(issue.replace(/[.!?]+$/, ''), 200)).slice(0, 3);
     // Every issue was a false alarm: the CV states those claims.
     if (!issues.length && raised.length) return {};
     return { reviewWarning: issues.length
