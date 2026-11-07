@@ -492,7 +492,7 @@ export type CoverLetterAgentResult = {
 };
 
 /** Writes and evidence-checks a cover letter for one job. `advanced` runs the multi-step agent used by the /generate studio. */
-export async function runCoverLetterAgent(args: {
+async function runCoverLetterPipeline(args: {
   profile?: Partial<Profile> | null;
   company: string;
   title: string;
@@ -711,4 +711,59 @@ ${text}`, 0, args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(VER
   // A concrete model finding (not "check unavailable") asks the applicant to confirm the letter before approval.
   const modelFinding = modelWarning && !/could not complete the evidence check|some claims could not be verified/i.test(modelWarning) ? modelWarning.replace(/^Please check these potentially unsupported claims against your own experience:\s*/i, "").replace(/\.$/, "") : "";
   return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: [...remaining.map(describeClaim), ...leftoverDefects.map((defect) => `the letter ${defect}`), ...(thinNote ? [thinNote] : []), ...(modelFinding ? [modelFinding] : [])] };
+}
+
+type CoverLetterPipelineArgs = Parameters<typeof runCoverLetterPipeline>[0];
+
+/**
+ * Writes one cover letter. By default two complete pipelines run side by side: a letter with no findings is returned as soon as it
+ * exists (the other pipeline is cancelled), otherwise the letter with the fewest findings wins. The advanced agent and `redundancy: 1` run once.
+ */
+export async function runCoverLetterAgent(args: CoverLetterPipelineArgs & { redundancy?: number }): Promise<CoverLetterAgentResult> {
+  const copies = args.advanced ? 1 : Math.max(1, Math.min(2, args.redundancy ?? 2));
+  if (copies === 1) return runCoverLetterPipeline(args);
+
+  const controllers = Array.from({ length: copies }, () => new AbortController());
+  const cancelAll = () => controllers.forEach((controller) => controller.abort());
+  args.signal?.addEventListener("abort", cancelAll, { once: true });
+  const isClean = (result: CoverLetterAgentResult) => (result.unsupportedClaims || []).length === 0 && !result.reviewWarning && WORDS(result.text) >= TARGET_MIN_WORDS;
+  const better = (results: CoverLetterAgentResult[]) => [...results].sort((a, b) => (a.unsupportedClaims || []).length - (b.unsupportedClaims || []).length || Math.abs(WORDS(a.text) - 230) - Math.abs(WORDS(b.text) - 230))[0];
+
+  return new Promise<CoverLetterAgentResult>((resolve, reject) => {
+    const results: CoverLetterAgentResult[] = [];
+    const errors: unknown[] = [];
+    let pending = copies;
+    let settled = false;
+    const finish = (result: CoverLetterAgentResult) => {
+      if (settled) return;
+      settled = true;
+      cancelAll();
+      args.signal?.removeEventListener("abort", cancelAll);
+      resolve(result);
+    };
+    const oneDone = () => {
+      pending -= 1;
+      if (pending > 0 || settled) return;
+      if (results.length) return finish(better(results));
+      settled = true;
+      args.signal?.removeEventListener("abort", cancelAll);
+      reject(errors[0] instanceof Error ? errors[0] : new Error("No cover letter could be written."));
+    };
+    controllers.forEach((controller) => {
+      runCoverLetterPipeline({ ...args, signal: controller.signal }).then(
+        (result) => {
+          if (settled) return;
+          if (!result.text) return oneDone();
+          results.push(result);
+          if (isClean(result)) return finish(result);
+          oneDone();
+        },
+        (error) => {
+          if (settled) return;
+          errors.push(error);
+          oneDone();
+        },
+      );
+    });
+  });
 }
