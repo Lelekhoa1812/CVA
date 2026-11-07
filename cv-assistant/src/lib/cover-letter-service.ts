@@ -105,6 +105,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 
 
 const CLAIM_LEXICON = [
+  "linux", "unix", "terabyte", "terabytes", "petabyte", "petabytes", "bare metal", "ansible", "jenkins", "prometheus", "grafana", "datadog", "splunk", "snowflake", "bigquery", "redshift", "kafka", "spark", "hadoop", "airflow", "dbt", "cloudformation", "helm", "istio", "nginx", "postgresql", "mongodb atlas", "oracle cloud", "sre", "devops", "site reliability",
   "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
   "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "master of", "doctor of", "master's degree", "masters degree", "postgraduate", "graduate diploma", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",

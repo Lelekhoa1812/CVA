@@ -16,6 +16,15 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "scale and infrastructure terms that only the posting mentions are flagged once; terms in the CV are not",
+    run: () => {
+      const text = "I built data pipelines processing terabyte-scale data and maintained Linux systems with Docker.";
+      const claims = findUnsupportedClaims(text, { skills: ["Docker", "Python"] } as never, "Acme");
+      assert.deepEqual(claims.filter((claim) => /terabyte|linux|docker/.test(claim)).sort(), ["linux", "terabyte"]);
+      assert.deepEqual(findUnsupportedClaims(text, { skills: ["Docker", "Linux", "terabyte datasets"] } as never, "Acme").filter((claim) => /terabyte|linux/.test(claim)), []);
+    },
+  },
+  {
     name: "repairs: requirement-talk sentences are dropped and an opening that never names the role and company gets one",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nI seek to apply my experience with Kubernetes. In my role at Axion Solutions, I led the Axis platform. My experience directly aligns with Airwallex's need for reliable internal tooling. I also built ETL pipelines.\n\nI would welcome the opportunity to discuss.\n\nSincerely,\nDang Khoa Le";
