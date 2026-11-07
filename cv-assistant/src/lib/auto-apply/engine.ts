@@ -21,6 +21,10 @@ import { PREPARE_LOCK_MS, RUN_STALL_MS, normalizeStage } from "./state";
 import { autoApplyFiltersSchema, toSearchRequest } from "./types";
 
 export const RUN_BUDGET_MS = 270_000;
+/** A run lives at most 300 s on the platform and one application can take 100-200 s (the letter alone is 80-150 s), so a new application only starts early in the run. */
+export const PREPARE_START_CUTOFF_MS = 100_000;
+/** Every application in a run must finish before this point, just inside the 300 s function limit, so nothing is killed mid-write. */
+export const PREPARE_HARD_DEADLINE_MS = 285_000;
 const SCORE_TOP_N = 28;
 const SELECT_MIN_SCORE = 62;
 const BOARD_CRAWL_MS = 70_000;
@@ -373,9 +377,9 @@ export async function preparePending(args: { sessionId: string; userId: string; 
   await setRun(args.sessionId, "preparing", `Preparing ${pending.length} applications`, stats, "preparing");
   let done = 0;
   await mapWithConcurrency(pending, 3, async (entry) => {
-    if (Date.now() - startedAt > RUN_BUDGET_MS) return;
+    if (Date.now() - startedAt > PREPARE_START_CUTOFF_MS) return;
     if (await isCancelled(args.sessionId)) return;
-    const result = await prepareJobById({ jobId: entry._id.toString(), userId: args.userId });
+    const result = await prepareJobById({ jobId: entry._id.toString(), userId: args.userId, deadlineAt: startedAt + PREPARE_HARD_DEADLINE_MS });
     done += 1;
     stats.prepared = (stats.prepared || 0) + (result === "prepared" ? 1 : 0);
     stats.needsInput = (stats.needsInput || 0) + (result === "needs_input" ? 1 : 0);
@@ -389,7 +393,7 @@ export async function preparePending(args: { sessionId: string; userId: string; 
   }
   const remaining = await AutoApplyJobCandidateModel.countDocuments({ sessionId: args.sessionId, status: "selected" });
   const message = remaining
-    ? `${remaining} applications still queued; run again to continue`
+    ? `${remaining} more ${remaining === 1 ? "application is" : "applications are"} queued. Open Matches and press Prepare to continue.`
     : "Applications ready to review";
   await setRun(args.sessionId, "idle", message, stats, "review");
   await logAutoApplyEvent({ userId: args.userId, sessionId: args.sessionId, type: "prepare_completed", message, payload: stats });
@@ -397,7 +401,7 @@ export async function preparePending(args: { sessionId: string; userId: string; 
 
 export type PrepareOutcome = "prepared" | "needs_input" | "failed" | "busy" | "missing";
 
-export async function prepareJobById(args: { jobId: string; userId: string; force?: boolean }): Promise<PrepareOutcome> {
+export async function prepareJobById(args: { jobId: string; userId: string; force?: boolean; deadlineAt?: number }): Promise<PrepareOutcome> {
   await connectToDatabase();
   const staleBefore = new Date(Date.now() - PREPARE_LOCK_MS);
   const lockable = ["discovered", "shortlisted", "selected", "needs_input", "prepared", "failed"];
@@ -439,7 +443,7 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
       memory,
       targetLocation: filters.location || "Australia",
       resolved: cached,
-      signal: AbortSignal.timeout(200_000),
+      signal: AbortSignal.timeout(args.deadlineAt ? Math.max(30_000, Math.min(200_000, args.deadlineAt - Date.now())) : 200_000),
     });
     const missing = countMissing(prepared.answers);
     const stage = missing ? "needs_input" : "prepared";

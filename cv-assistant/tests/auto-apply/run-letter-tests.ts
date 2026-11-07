@@ -1,5 +1,6 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
+import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { extractTechTerms, findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 
 const profile = {
@@ -83,6 +84,14 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(where.includes("In that role, I architected a platform."), where);
       const dash = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Software Engineer, AI Tooling role at Airwallex. Senior Software Engineer, AI Tooling at Airwallex \u2014 led an enterprise platform at Mizco.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Airwallex", "Senior Software Engineer, AI Tooling");
       assert.ok(dash.includes("Airwallex. I led an enterprise platform at Mizco."), dash);
+    },
+  },
+  {
+    name: "prepare runs: jobs only start early and every job must end inside the 300 s function limit",
+    run: () => {
+      assert.ok(PREPARE_HARD_DEADLINE_MS < 300_000, "deadline is inside the platform limit");
+      assert.ok(PREPARE_HARD_DEADLINE_MS - PREPARE_START_CUTOFF_MS >= 150_000, "a job that starts at the cutoff still has at least 150 s");
+      assert.ok(PREPARE_START_CUTOFF_MS >= 60_000, "the first batch always gets to start");
     },
   },
 ];
