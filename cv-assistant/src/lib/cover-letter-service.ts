@@ -150,9 +150,12 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
 /** Structural defects that make a letter unsendable regardless of its claims. */
 export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string): string[] {
   const defects: string[] = [];
+  // Contact details under the name are by design: they are neither a sign-off nor a sentence fragment.
+  const contactLine = /^(?:\+?[\d ()-]{8,}\s*\|.*|.*\|.*@.*|[\w.+-]+@[\w-]+\.[\w.]+(?:\s*\|.*)?|https?:\/\/\S+.*)$/i;
+  const visible = text.split(/\n/).filter((line) => !contactLine.test(line.trim())).join("\n");
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
-  if (text.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
+  if (visible.split(/\n+/).some((line) => /^[a-z0-9]/.test(line.trim()) && WORDS(line) > 3)) defects.push("contains a broken sentence fragment");
   if (/\b(?:essential|key|minimum|stated|preferred|required) (?:requirement|qualification)s?\b|\bmeeting the [^.]{0,60}requirement|\b(?:matching|meeting|fulfilling|addressing|directly addressing|directly aligning with) your (?:needs?|requirements?)\b/i.test(text)) defects.push("talks about meeting the posting's requirements instead of showing experience");
   if (title && new RegExp(`${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^.\\n]{0,40} - I `, "i").test(text.replace(/^[^\n]*\n+/, "").slice(0, 600))) defects.push("contains a garbled run-on title opening");
   if (/(^|\n)\s*(Let me know|Feel free|Happy to|Let's discuss|Thank you for (your|considering))/i.test(text)) defects.push("ends with a chat-style line instead of a closing sentence");
@@ -185,7 +188,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (/^\s*Dear[^\n]*\n+\s*In this role\b/i.test(text)) defects.push("opens with 'In this role' instead of naming the role and company");
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
   if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
-  const trimmed = text.trim();
+  const trimmed = visible.trim();
   if (!/^(dear|hello|hi|to the|greetings)\b/i.test(trimmed)) defects.push("does not open with a greeting such as 'Dear Hiring Manager,'");
   const lastLine = trimmed.split(/\n+/).pop() || "";
   if (!/^(sincerely|regards|kind regards|best regards|yours|thank you)\b/i.test(lastLine) && lastLine.split(/\s+/).length > 6) defects.push("has no sign-off with the applicant's name");
@@ -213,6 +216,9 @@ const name_ = (value?: string) => (value || "").trim();
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  // Email-style "Subject:" lines and a repeated greeting are not part of the letter.
+  fixed = fixed.replace(/^[ \t]*Subject:[^\n]*\n+/gim, "");
+  fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n+(?:Dear [^\n]{2,60},[ \t]*\n+)+/i, "$1\n\n");
   // A greeting run into the first sentence ("Dear Hiring Manager, I am writing...") gets its own line.
   fixed = fixed.replace(/^(Dear [^,\n]{2,60},)[ \t]+(?=[A-Z])/, "$1\n\n");
   // "As Senior Engineer at Acme, I built X" claims the posting's job as past experience: keep the work, drop the borrowed title.
@@ -226,6 +232,11 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   }
   // "In the same organization, I built X" would credit a separate project to an employer.
   fixed = fixed.replace(/\bIn the same (?:organi[sz]ation|company|team|role),?\s+I\b/gi, "I also");
+  // "Senior Software Engineer - AI Platform at Xero, I designed ..." claims the posting's job as the applicant's own: keep the work.
+  if (company) {
+    const escCo = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)((?:[A-Z][\\w/&]*[ ,\\u2013-]+){1,8})at ${escCo},\\s+(?=I\\b)`, "g"), (match, lead, phrase) => (/\b(?:Engineer|Developer|Scientist|Architect|Manager|Lead|Analyst)\b/.test(phrase) && !/^(?:As|At|In)\b/.test(phrase.trim()) ? lead : match));
+  }
   // "I at Xero: I designed ..." is a stray label: keep the sentence, drop the label.
   fixed = fixed.replace(/\bI at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*)?:\s+I\b/g, "I");
   // A company name the model garbled ("Airwalexecss" for "Airwallex") is put back, when the stem is unmistakable.
@@ -278,6 +289,20 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
     if (/^\s*[\d+(]|@/.test(block.trim()) && block.trim().split(/\s+/).length < 12) return block;
     return block.split(/(?<=[.!?])\s+(?=[A-Z])/).filter((sentence) => !contact.test(sentence)).join(" ");
   }).filter((block) => block.trim()).join("\n\n");
+  // One wall of text is split at sentence boundaries into paragraphs of about 55-80 words.
+  fixed = fixed.split(/\n{2,}/).map((block) => {
+    if (WORDS(block) <= 110 || /^\s*(dear|sincerely|regards)\b/i.test(block)) return block;
+    const sentences = block.split(/(?<=[.!?])\s+(?=[A-Z])/);
+    if (sentences.length < 3) return block;
+    const chunks: string[] = [];
+    let current: string[] = [];
+    for (const sentence of sentences) {
+      current.push(sentence);
+      if (WORDS(current.join(" ")) >= 55) { chunks.push(current.join(" ")); current = []; }
+    }
+    if (current.length) { if (chunks.length && WORDS(current.join(" ")) < 25) chunks[chunks.length - 1] += ` ${current.join(" ")}`; else chunks.push(current.join(" ")); }
+    return chunks.join("\n\n");
+  }).join("\n\n");
   // A letter should end on a closing sentence before the sign-off.
   const bodyParagraphs = fixed.split(/\n{2,}/);
   const bodyOnly = bodyParagraphs.filter((block) => WORDS(block) > 3 && !/^(sincerely|regards|kind regards|best regards)/i.test(block.trim()) && !contact.test(block) && block.trim().toLowerCase() !== name_(candidateName).toLowerCase());

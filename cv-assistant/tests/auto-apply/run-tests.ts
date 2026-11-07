@@ -18,6 +18,7 @@ import {
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
+const WORDS_ = (text: string) => text.split(/\s+/).filter(Boolean).length;
 import { findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { cleanTitle } from "../../src/lib/auto-apply/engine";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
@@ -575,6 +576,16 @@ const tests: TestCase[] = [
       assert.ok(garbled.includes("at Airwallex.") && !garbled.includes("Airwalexecss"), garbled);
       assert.ok(findLetterDefects(`Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. This is directly addressing your need for reliability. ${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\n${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\nSincerely,\nDang Khoa Le`, "Dang Khoa Le", "Acme", "Engineer").some((d) => d.includes("requirements")));
       assert.ok(findLetterDefects(`Dear Hiring Manager,\n\nI am applying for the Staff Software Engineer, AI Tooling role at Airwallex. Staff Software Engineer, AI Tooling position at Airwallex, demonstrated by leading work. ${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\n${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\nSincerely,\nDang Khoa Le`, "Dang Khoa Le", "Airwallex", "Staff Software Engineer, AI Tooling").some((d) => d.includes("bare sentence")));
+      const wall = "I built agent platforms, shipped them, and measured results across teams. ".repeat(12).trim();
+      const split = repairLetterStructure(`Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. ${wall}\n\nSincerely,\nDang Khoa Le`, "Dang Khoa Le", "Acme", "Engineer");
+      assert.ok(split.split(/\n{2,}/).filter((b) => WORDS_(b) > 25).length >= 2, split);
+      const titled = repairLetterStructure("Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Platform role at Xero.\n\nSenior Software Engineer - AI Platform at Xero, I designed and delivered a platform.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Xero", "Senior Engineer - AI Platform");
+      assert.ok(titled.includes("\n\nI designed and delivered a platform.") && !titled.includes("Software Engineer - AI Platform at Xero, I"), titled);
+      const withContact = `Dear Hiring Manager,\n\nI am applying for the Engineer role at Acme. ${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\n${"I built agent platforms, shipped them, and measured results. ".repeat(14)}\n\nSincerely,\nDang Khoa Le\n0450445373 | liam@example.com | https://example.com/me`;
+      const contactDefects = findLetterDefects(withContact, "Dang Khoa Le", "Acme", "Engineer");
+      assert.ok(!contactDefects.some((d) => d.includes("sign-off") || d.includes("fragment")), contactDefects.join("; "));
+      const subject = repairLetterStructure("Dear Hiring Manager,\n\nSubject: AI Engineer - Alex Tester\n\nDear Hiring Manager,\n\nI am applying for the AI Engineer role at Acme.", "Alex Tester", "Acme", "AI Engineer");
+      assert.ok(!/Subject:/.test(subject) && (subject.match(/Dear Hiring Manager,/g) || []).length === 1, subject);
       assert.ok(repairLetterStructure("Dear Recruiter,\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
       assert.ok(repairLetterStructure("Dear Hiring Team\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
     },

@@ -29,7 +29,7 @@ This page records what was actually run against the live app and the eval suite 
 | Auto Apply: read-only | Brief, Matches, Review and Apply steps viewed on the existing account (96 ranked roles, 10 prepared) | Pass for viewing. Nothing approved, edited or submitted. |
 | Auto Apply: prepare | Not run | The prepare step would overwrite or add to the existing applications on this account, so it was not run. The behaviour is documented from code. |
 | Control Room: overview and lead | Overview, one lead detail opened | Pass for viewing. The specialist workflow was not run. |
-| Control Room: specialist workflow | Not run | It writes evaluations to the account. Documented from code. |
+| Control Room: specialist workflow | Run once on one lead (`POST /api/control-room/leads/<id>/orchestrate`, 200 in about 5 s) | Pass with a caveat. The lead ended `scored`, fit 43, recommendation `skip`, `analysisSource: fallback`, `model: heuristic`. The LLM strategist did not produce the result and the response does not record why. The lead is a Talent.com record whose title is "Show more" and whose company is empty, so the result is not meaningful. Each run appends events and an evaluation to the lead. |
 | Promptfoo cover-letter eval | `npm run eval:letters`, 3 cases, live model calls | **Fail: 1 of 3 passed.** See below. |
 | Live browser scripts | Not run | They fill real employer forms (Greenhouse, Ashby and Lever) with name and contact details. That needs explicit permission from the user first. Not requested yet. |
 
