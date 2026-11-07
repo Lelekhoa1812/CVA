@@ -441,7 +441,7 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
       resolved: cached,
       signal: AbortSignal.timeout(150_000),
     });
-    const missing = countMissing(prepared.answers);
+    const missing = countMissing(prepared.answers) + (prepared.letterClaims.length ? 1 : 0);
     const stage = missing ? "needs_input" : "prepared";
     const applyUrl = prepared.resolved.applyUrl || job.applyUrl;
     const payloadHash = hashApplicationPayload({ answers: prepared.answers, coverLetter: prepared.coverLetter, applyUrl });
@@ -459,6 +459,7 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
           uncertaintyFlags: prepared.answers.filter((answer) => answer.needsInput || answer.confidence < 0.6).map((answer) => answer.questionId),
           generatedApplicationSummary: `${job.title} at ${prepared.resolved.company || job.company}. ${job.fitReasons[0] || ""}`.trim(),
           riskNotes: prepared.warnings,
+          letterClaims: prepared.letterClaims,
           finalReviewStatus: missing ? "needs_input" : "ready",
           applyUrl,
           formSource: prepared.resolved.formSource,

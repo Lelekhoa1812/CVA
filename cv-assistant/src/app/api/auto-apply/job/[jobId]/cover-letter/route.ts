@@ -55,12 +55,13 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     const answers = ((draft.toObject().answers || []) as unknown as DraftAnswer[]).map((answer) =>
       answer.category === "cover_letter" && answer.type !== "file" ? { ...answer, value: result.text, needsInput: Boolean(result.unsupportedClaims?.length), note: result.unsupportedClaims?.length ? `Check before approving: the letter mentions ${result.unsupportedClaims.join(", ")}, which is not in your profile. Edit or confirm it.` : undefined } : answer,
     );
-    const missing = countMissing(answers);
+    const missing = countMissing(answers) + (result.unsupportedClaims?.length ? 1 : 0);
     await draft.updateOne({
       $set: {
         answers,
         coverLetterText: result.text,
         generatedBy: result.model,
+        letterClaims: result.unsupportedClaims || [],
         riskNotes: [
           ...(draft.riskNotes || []).filter((note: string) => !note.startsWith("Cover letter:")),
           ...(result.reviewWarning ? [`Cover letter: ${result.reviewWarning}`] : []),

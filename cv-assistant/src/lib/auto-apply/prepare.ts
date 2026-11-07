@@ -25,6 +25,7 @@ export type PreparedApplication = {
   coverLetter: string;
   generatedBy: string;
   warnings: string[];
+  letterClaims: string[];
 };
 
 type JobInput = {
@@ -216,6 +217,7 @@ export async function prepareApplication(args: {
     coverLetter: coverLetter.text,
     generatedBy: coverLetter.model,
     warnings,
+    letterClaims: coverLetter.unsupportedClaims || [],
   };
 }
 

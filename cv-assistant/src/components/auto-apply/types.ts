@@ -75,6 +75,7 @@ export type JobDetail = {
     formSource: string;
     finalReviewStatus: string;
     riskNotes: string[];
+    letterClaims?: string[];
     generatedBy: string;
     preparedAt?: string;
     approvedAt?: string | null;

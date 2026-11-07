@@ -29,6 +29,8 @@ const AutoApplyApplicationDraftSchema = new Schema(
     uncertaintyFlags: { type: [String], default: [] },
     generatedApplicationSummary: { type: String, default: "" },
     riskNotes: { type: [String], default: [] },
+    // Claims in the cover letter the CV does not support; the applicant must edit or confirm the letter before approval.
+    letterClaims: { type: [String], default: [] },
     finalReviewStatus: {
       type: String,
       enum: ["not_ready", "needs_input", "ready", "approved", "applied", "confirmed", "submitted", "blocked"],

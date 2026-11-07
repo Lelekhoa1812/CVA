@@ -38,6 +38,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
           formSource: draft.formSource,
           finalReviewStatus: draft.finalReviewStatus,
           riskNotes: draft.riskNotes,
+          letterClaims: draft.letterClaims || [],
           generatedBy: draft.generatedBy,
           preparedAt: draft.preparedAt,
           approvedAt: draft.approvedAt,
@@ -85,11 +86,14 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ jobId
         if (answer.category === "cover_letter" && answer.type !== "file" && (confirmCoverLetter || typeof coverLetterText === "string")) return { ...answer, value: cover, needsInput: false, note: undefined };
         return answer;
       });
-      const missing = countMissing(next);
+      const reviewed = Boolean(confirmCoverLetter) || typeof coverLetterText === "string";
+      const letterClaims = reviewed ? [] : ((draft.letterClaims || []) as string[]);
+      const missing = countMissing(next) + (letterClaims.length ? 1 : 0);
       await draft.updateOne({
         $set: {
           answers: next,
           coverLetterText: cover,
+          letterClaims,
           finalReviewStatus: missing ? "needs_input" : "ready",
           approvedAt: null,
           payloadHash: hashApplicationPayload({ answers: next, coverLetter: cover, applyUrl: draft.applyUrl }),

@@ -15,7 +15,7 @@
     "test:autofill-safari": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/autofill-safari.ts",
     "agent:fill": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/agent-fill.ts",
     "test:autofill-live": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/autofill-live.ts",
-    "eval:letters": "npx --yes promptfoo@latest eval -c evals/promptfooconfig.yaml --no-cache"
+    "eval:letters": "npx --yes promptfoo@0.125.1 eval -c evals/promptfooconfig.yaml --no-cache"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",
