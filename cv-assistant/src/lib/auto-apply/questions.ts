@@ -397,6 +397,11 @@ export function answerDeterministically(args: {
       return value ? makeAnswer(question, value, remembered ? "memory" : "preference", 0.85) : null;
     }
     case "workplace": {
+      // Choice lists like "office / hybrid / remote" cannot take a Yes/No: a hybrid-friendly applicant picks the hybrid option.
+      const wantsHybrid = YES.test(normalizeQuestionLabel(preferences.hybridOk || ""));
+      const hybridOption = question.options.length ? question.options.find((option) => /\bhybrid\b/i.test(option.label)) : undefined;
+      const isYesNoList = question.options.every((option) => YES.test(normalizeQuestionLabel(option.label)) || NO.test(normalizeQuestionLabel(option.label)));
+      if (!remembered && wantsHybrid && hybridOption && !isYesNoList) return makeAnswer(question, hybridOption.label, "preference", 0.85);
       const value = remembered?.answer || yesNo(preferences.hybridOk);
       return value ? makeAnswer(question, value, remembered ? "memory" : "preference", 0.85) : null;
     }

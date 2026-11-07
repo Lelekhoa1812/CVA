@@ -154,6 +154,16 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "hybrid-friendly applicants pick the hybrid option on workplace choice lists",
+    run: () => {
+      const prefs = { ...EMPTY_PREFERENCES, hybridOk: "yes" };
+      const options = ["In one of our beautiful offices", "Hybrid - a combination of office and remote", "Fully remote"];
+      const picked = answerDeterministically({ question: q("Flexible Working", "select", options), profile, preferences: prefs, memory: [], company: "Xero" });
+      assert.equal(picked?.value, "Hybrid - a combination of office and remote");
+      assert.equal(picked?.needsInput, false);
+    },
+  },
+  {
     name: "user edits resolve missing answers and mapping failures stay flagged",
     run: () => {
       const missing = answerDeterministically({ question: q("What is your desired salary?"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "X" })!;
