@@ -21,6 +21,12 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 ## Measured on the real app (lelekhoa1812, live NVIDIA NIM)
 
-- Letters (10 jobs, last full run): 196-252 words, all with greeting, company, role and sign-off; no term, year, degree, figure or employer claim flagged by the guards; call time 14-59 s.
-- Hand-read: letters were read in full twice. The first read found requirements echoed as experience (on-call, security, Go, serverless); the grounding pass (an editor given the whole CV) removed most of them. Wording slips (such as "In that role") and occasional JD echoes can still occur, so letters stay drafts to review.
+Final-state run of all 10 prepared jobs, every letter read in full against the CV:
+
+- Structure: 9 of 10 are 197-266 words with greeting, company, role, paragraphs and sign-off; one (Xero ML & AI Systems) is 143 words.
+- Grounding: letters now draw on real CV entries (employers, projects, figures). Earlier reads found job requirements stated as experience (on-call, security, Go, serverless, forward-deployed); the grounding editor pass and term checks removed those. Remaining slips seen: one garbled figure ("boosted diagnostic accuracy by 500k+ curated cases"), one typo ("HPa"), generic closings, and occasional echoes of job-posting wording such as stakeholder or success-criteria phrasing.
+- Latency of the letter step: 14-75 s (target p95 <= 60 s is not met on slow models).
 - Promptfoo (`npm run eval:letters`): 3/3 cases pass, including a hostile job description.
+- The model-based claim check flags about half of letters; flags only warn (decision: warn only).
+
+Letters remain drafts for the applicant to review.

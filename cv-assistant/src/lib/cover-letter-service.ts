@@ -97,7 +97,7 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 const CLAIM_LEXICON = [
   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
-  "on-call", "incident response", "threat response", "security operations", "pagerduty", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
+  "forward-deployed", "forward deployed", "internal tools and platforms", "runbook", "runbooks", "rollback", "on-call", "incident response", "threat response", "security operations", "pagerduty", "computer science", "systems programming", "threat hunting", "databricks", "master's", "masters", "phd", "doctorate", "mba", "pmp", "cissp", "root-cause analysis", "root cause analysis",
 ];
 
 function normalise(value: string) {
@@ -113,9 +113,14 @@ export function findUnsupportedClaims(text: string, profile?: Partial<Profile> |
   const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
   // Specific figures and magnitudes are the applicant's own facts: flag any that the profile never states.
   const figures = Array.from(letter.matchAll(/\b\d[\d,.]*\s*(?:%|k\b|x\b|million|billion)|\b(?:sub-second|millions?|billions?|thousands)\b(?:\s+of)?/g)).map((match) => match[0].trim()).filter((term) => !facts.includes(term));
+  // A personal or academic project is never an employer: "At EstateFolio, I led a team" misstates the CV.
+  const projectEmployers = ((profile?.projects || []) as Array<{ name?: string }>)
+    .map((project) => (project.name || "").trim())
+    .filter((name) => name.length > 2 && new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text))
+    .map((name) => `project as employer: ${name}`);
   const employer = (company || "").trim();
   const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
-  return [...employment, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
+  return [...employment, ...projectEmployers, ...figures, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
@@ -125,7 +130,8 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   if (text.split(/\n{2,}/).filter((part) => WORDS(part) > 25).length < 2) defects.push("is one block of text; use short paragraphs");
   if (WORDS(text) > 400) defects.push("too long: keep it under 350 words, one letter only");
   const name = (candidateName || "").trim();
-  if (/\b(?:a|the)?\s*[\w -]*\bcandidate\s+(?:at|for|to)\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
+  if (/\bcandidate\b/i.test(text)) defects.push("calls the applicant a 'candidate'");
+  if (!isWellFormedLetter(text)) defects.push("is missing punctuation (commas)");
   if (/^\s*Dear[^\n]*\n+\s*In this role\b/i.test(text)) defects.push("opens with 'In this role' instead of naming the role and company");
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
   if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
@@ -146,10 +152,21 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [paragraph];
-    return sentences.filter((sentence) => findUnsupportedClaims(sentence, null, company).filter((term) => terms.includes(term)).length === 0).join("").trim();
+    return sentences.filter((sentence) => !terms.some((term) => (term.startsWith("project as employer: ") ? new RegExp(`\\b(?:at|with|for)\\s+(?:the\\s+)?${term.slice(21).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(sentence) : findUnsupportedClaims(sentence, null, company).includes(term)))).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
   return stripped.split(/\s+/).length >= 120 ? stripped : null;
+}
+
+/** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
+export function repairLetterStructure(text: string, candidateName?: string): string {
+  let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  if (!/^(dear|hello|hi|to the|greetings)\b/i.test(fixed)) fixed = `Dear Hiring Manager,\n\n${fixed}`;
+  const name = (candidateName || "").trim();
+  const lines = fixed.split(/\n+/);
+  const last = lines[lines.length - 1] || "";
+  if (name && !last.toLowerCase().includes(name.toLowerCase().split(/\s+/).slice(-1)[0]) && !/^(sincerely|regards|kind regards|best regards|yours)\b/i.test(last)) fixed = `${fixed}\n\nSincerely,\n${name}`;
+  return fixed;
 }
 
 export type CoverLetterAgentResult = {
@@ -256,14 +273,14 @@ export async function runCoverLetterAgent(args: {
   // Grounding pass: an editor with the whole CV removes or rewords anything a job requirement put in the applicant's mouth.
   try {
     if (!within(70_000)) throw new Error("letter time budget spent");
-    const facts = allItems.map((item) => `- ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 420)}`).join("\n").slice(0, 14000);
-    const grounded = await generateLetterText(`You are a strict fact-checker and editor of a job application letter. Every statement about the applicant must be directly supported by the CV FACTS below. Job requirements, tools, responsibilities and phrases from the job posting are NOT facts about the applicant, even if the letter states them as experience.
+    const facts = allItems.map((item) => `- [${item.type === "project" ? "PROJECT, not an employer" : "EMPLOYMENT"}] ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 420)}`).join("\n").slice(0, 14000);
+    const grounded = await generateLetterText(`You are a strict fact-checker and editor of a job application letter. Every statement about the applicant must be directly supported by the CV FACTS below. Items marked PROJECT are personal or academic projects, never employers: never write "At <project name>". Job requirements, tools, responsibilities and phrases from the job posting are NOT facts about the applicant, even if the letter states them as experience.
 
 Rewrite the letter so that:
 1. Any claim not supported by the CV FACTS is deleted or reworded to what the CV actually shows (for example, remove on-call, incident response, mentoring, security, serverless, Go or other tools or duties the CV does not state).
 2. Text that merely repeats the job posting's wording as the applicant's experience is replaced with a real example from the CV.
 3. It opens "Dear Hiring Manager," then states the role (${args.title}) and company (${args.company}) in the first sentence, in the first person ("I"), never calling the applicant a candidate.
-4. It is 220 to 320 words, ends with a short sign-off and the applicant's name only, and adds no new facts.
+4. It is 220 to 320 words in three or four short paragraphs separated by blank lines, ends with a short sign-off and the applicant's name only, and adds no new facts.
 
 CV FACTS:
 ${facts}
@@ -274,7 +291,7 @@ ${text}
 Return only the corrected letter text.`, args.signal);
     const before = findUnsupportedClaims(text, args.profile, args.company).length + findLetterDefects(text, args.profile?.name, args.company, args.title).length;
     const after = findUnsupportedClaims(grounded.text, args.profile, args.company).length + findLetterDefects(grounded.text, args.profile?.name, args.company, args.title).length;
-    if (WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
+    if (isWellFormedLetter(grounded.text) && WORDS(grounded.text) >= TARGET_MIN_WORDS && WORDS(grounded.text) <= 400 && after <= before) text = grounded.text;
   } catch (error) {
     if (args.signal?.aborted) throw error;
   }
@@ -282,13 +299,14 @@ Return only the corrected letter text.`, args.signal);
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (WORDS(text) < TARGET_MIN_WORDS && within(90_000)) {
     try {
-      const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice and the greeting and sign-off. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
-      if (WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
+      const expanded = await generateLetterText(`Extend this cover letter to between 220 and 300 words. Keep every fact, the first-person voice, the greeting and sign-off, and use three or four paragraphs separated by blank lines. Add detail only by elaborating on what the letter already says about the applicant's work, and explain more specifically why the applicant is a fit for ${args.company}'s ${args.title} role. Do not add any new tools, degrees, employers or numbers.\n\nLETTER:\n${text}`, args.signal);
+      if (isWellFormedLetter(expanded.text) && WORDS(expanded.text) > WORDS(text) && WORDS(expanded.text) <= 380 && findUnsupportedClaims(expanded.text, args.profile, args.company).length === 0) text = expanded.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
   }
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
+  text = repairLetterStructure(text, args.profile?.name);
   text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
   const remaining = findUnsupportedClaims(text, args.profile, args.company);
   const leftoverDefects = findLetterDefects(text, args.profile?.name, args.company, args.title).filter((defect) => !defect.startsWith("too short"));

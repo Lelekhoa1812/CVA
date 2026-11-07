@@ -18,7 +18,7 @@ import {
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
-import { findLetterDefects, findUnsupportedClaims, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { cleanTitle } from "../../src/lib/auto-apply/engine";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
 import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
@@ -33,9 +33,21 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "projects are not employers; greeting, sign-off and CV-shows filler are repaired",
+    run: () => {
+      const cv = { projects: [{ name: "EstateFolio" }] } as never;
+      const text = "My CV shows I led a team. At EstateFolio, I led a 5-engineer team to build a forecasting system. I also built other things.";
+      assert.deepEqual(findUnsupportedClaims(text, cv, "Acme"), ["project as employer: EstateFolio"]);
+      const stripped = stripUnsupportedSentences(text + " " + "Filler words are here, again. ".repeat(30), ["project as employer: EstateFolio"], "Acme");
+      assert.ok(stripped && !/EstateFolio/.test(stripped) && /other things/.test(stripped));
+      const fixed = repairLetterStructure("My CV shows I built things, and shipped them.", "Dang Khoa Le");
+      assert.ok(fixed.startsWith("Dear Hiring Manager,") && fixed.includes("I built things") && !/My CV shows/.test(fixed) && fixed.endsWith("Sincerely,\nDang Khoa Le"));
+    },
+  },
+  {
     name: "letter defects: fragment opening, missing company and role, missing sign-off",
     run: () => {
-      const body = "I have built many things and enjoy shipping software. ".repeat(14);
+      const body = "I have built many things, and I enjoy shipping software. ".repeat(14);
       const bad = `Senior AI Engineer Dang Khoa Le, with proven experience. ${body}\nThanks for reading this long closing sentence that never ends well.`;
       const defects = findLetterDefects(bad, "Dang Khoa Le", "Airwallex", "Senior AI Engineer");
       assert.ok(defects.some((d) => d.includes("greeting")) && defects.some((d) => d.includes("Airwallex")) && defects.some((d) => d.includes("sign-off")));
