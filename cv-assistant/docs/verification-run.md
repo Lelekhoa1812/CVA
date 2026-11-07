@@ -24,14 +24,22 @@ This page records what was actually run against the live app and the eval suite 
 | Cover letter: evidence | Job description entered, AI Coaching run | Pass. Six evidence items ranked. |
 | Cover letter: letter | Three clarification decisions answered, letter generated | Pass. `clarifications` 200, `cover-letter` 200. The letter rendered. |
 | Cover letter: PDF | Export PDF | Pass. `POST /api/generate/cover-letter/pdf` returned 200 with `application/pdf`, filename `<company>-cover-letter.pdf`, about 21 KB. The file opens and its text extracts. |
-| Cover letter: Advanced Mode | Not run | Not exercised (it uses more model calls and was not needed to verify the flow) |
+| Cover letter: Advanced Mode | Run twice. Run 1: two decision questions were shown and not answered, so no letter was produced. Run 2: both decisions answered, then `POST /api/generate/cover-letter` returned **504** after about four minutes. | **Fail.** The letter was not generated. The draft area was empty afterwards (see the screenshot below). |
 | Job Search: live run | Title, location and platforms set, Search run to completion, results panel read | Partial. See the Job Search findings below. |
 | Auto Apply: read-only | Brief, Matches, Review and Apply steps viewed on the existing account (96 ranked roles, 10 prepared) | Pass for viewing. Nothing approved, edited or submitted. |
-| Auto Apply: prepare | Not run | The prepare step would overwrite or add to the existing applications on this account, so it was not run. The behaviour is documented from code. |
+| Auto Apply: prepare | A two-application prepare run was started from the Brief step (`PATCH` then `POST .../run`, both accepted). The run then stopped early. The page shows "The last run stopped early. Press Prepare to continue where it left off." A resume attempt found no Prepare button. | **Not verified. The run did not complete.** The cause is not known. The account still shows 4 ready and 0 applied, so no new applications were prepared. |
 | Control Room: overview and lead | Overview, one lead detail opened | Pass for viewing. The specialist workflow was not run. |
 | Control Room: specialist workflow | Run once on one lead (`POST /api/control-room/leads/<id>/orchestrate`, 200 in about 5 s) | Pass with a caveat. The lead ended `scored`, fit 43, recommendation `skip`, `analysisSource: fallback`, `model: heuristic`. The LLM strategist did not produce the result and the response does not record why. The lead is a Talent.com record whose title is "Show more" and whose company is empty, so the result is not meaningful. Each run appends events and an evaluation to the lead. |
 | Promptfoo cover-letter eval | `npm run eval:letters`, 3 cases, live model calls, run twice | **Run 1: 1 of 3 passed. Run 2: 3 of 3 passed.** The same inputs gave different outcomes, so the eval is not stable. See below. |
 | Live browser scripts | Not run | They fill real employer forms (Greenhouse, Ashby and Lever) with name and contact details. That needs explicit permission from the user first. Not requested yet. |
+
+Evidence screenshots from these two attempts:
+
+![Auto Apply after the prepare run stopped early](../../imgsrc/auto-apply/prepare-resumed.png)
+*The Review step after the run stopped early. The status line says the last run stopped and asks for Prepare to be pressed again.*
+
+![Advanced Mode draft area after the 504](../../imgsrc/generate/advanced-result.png)
+*The letter area after the Advanced Mode request returned 504. No draft was produced.*
 
 ## Job Search findings (live run)
 
