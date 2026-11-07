@@ -174,6 +174,7 @@ All detailed documentation lives in [`cv-assistant/docs/`](./cv-assistant/docs/)
 | Environment variables and configuration | [`docs/configuration.md`](./cv-assistant/docs/configuration.md) |
 | Deployment, operations and troubleshooting | [`docs/deployment.md`](./cv-assistant/docs/deployment.md) |
 | Testing, scripts and manual QA | [`docs/testing.md`](./cv-assistant/docs/testing.md) |
+| Verification run: what was exercised live, and eval results | [`docs/verification-run.md`](./cv-assistant/docs/verification-run.md) |
 | Contributing and the codebase conventions | [`docs/contributing.md`](./cv-assistant/docs/contributing.md) |
 | Profile | [`docs/features/profile.md`](./cv-assistant/docs/features/profile.md) |
 | Resume Studio | [`docs/features/resume-studio.md`](./cv-assistant/docs/features/resume-studio.md) |

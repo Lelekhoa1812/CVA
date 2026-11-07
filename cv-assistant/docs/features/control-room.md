@@ -178,6 +178,12 @@ Interaction notes:
 - Selecting another lead loads its detail. If that detail has HTML artifacts, the selected variant resets to the first one.
 - The page has no delete, archive, export or download controls.
 
+### Screenshots from the verification run
+
+![Lead detail](../../../imgsrc/control-room/lead-detail.png)
+*A lead open in the detail panel. Fit and dimension scores show 0 and "Unscored" because the specialist workflow has not run for this lead.*
+
+
 ## Concepts glossary
 
 Terms are used as the code defines them.

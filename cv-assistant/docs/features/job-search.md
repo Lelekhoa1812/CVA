@@ -224,6 +224,18 @@ Archiving hides every card in the same duplicate group. The group key is the nor
 
 Server `error` messages appear in the red error panel (`role="alert"`). Section 7 lists them.
 
+### Screenshots from the verification run
+
+![Search running](../../../imgsrc/search/running.png)
+*A live search while platforms stream in. SEEK and Indeed show blocked status (HTTP 403).*
+
+![Search finished with results](../../../imgsrc/search/results.png)
+*The live panel after the run. CareerOne and Adzuna completed, SEEK and Indeed were blocked, and the run ended as incomplete. The results header reads 98 results.*
+
+![Result cards](../../../imgsrc/search/result-cards.png)
+*CareerOne cards from the same run. Listings show "Company TBD" and "Location TBD" when the board does not supply them, and some descriptions show undecoded HTML entities.*
+
+
 ## 3. Search pipeline
 
 ### 3.1 Overview

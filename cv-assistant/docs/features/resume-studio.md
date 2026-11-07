@@ -309,6 +309,18 @@ Each preview is an iframe of a sample PDF with the viewer toolbar hidden. See [T
 | Content flow | "Enhancement failed. Moving to next item..." | Rewrite request failed. The code adds a warning emoji, omitted here. |
 | Styling (unreachable from the UI) | "Styling preferences set successfully!" | See [Known limitations](#known-limitations-verified-in-code). |
 
+### Screenshots from the verification run
+
+![Style picker](../../../imgsrc/resume/style-picker.png)
+*Generate PDF opens the style picker. The preview pane is blank here because the sample PDF does not render inside headless Chromium.*
+
+![PDF loading](../../../imgsrc/resume/generating-pdf.png)
+*Step 4 while the PDF is being generated. The preview area stays blank until the response arrives.*
+
+![PDF ready](../../../imgsrc/resume/pdf-preview-masked.png)
+*Step 4 after generation, with Download PDF enabled. The preview frame is replaced by a placeholder so no personal details are shown.*
+
+
 ## The template library
 
 `STYLE_OPTIONS` in `src/components/resume/style-options.ts` lists five entries. Each has `id`, `label`, `previewKind` and `previewSrc`. The file has no description field, so the summaries below are written from the label and from the layout code in `src/lib/resume/pdf-renderer.ts`.

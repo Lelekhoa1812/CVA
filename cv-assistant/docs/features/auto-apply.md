@@ -252,6 +252,15 @@ Apply lists approved and applied roles. With none, it shows "Nothing approved ye
 | That did not work. | An action failed with no message |
 | Auto Apply hit a problem | An unexpected error reached the page (`src/app/auto-apply/error.tsx`). The reference code is shown when available |
 
+### Screenshots from the verification run
+
+![Brief step (live account)](../../../imgsrc/auto-apply/step-brief.png)
+*The Brief step on the test account, with the previous searches listed. The four step cards are the Search, Prepare, Approve and Apply stages.*
+
+![Apply step (live account)](../../../imgsrc/auto-apply/step-apply.png)
+*The Apply step with no approved applications yet. It links back to Review.*
+
+
 ## 3. Session lifecycle and states
 
 ### 3.1 Records
