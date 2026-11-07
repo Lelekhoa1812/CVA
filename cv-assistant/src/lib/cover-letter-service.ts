@@ -386,6 +386,36 @@ Return only the corrected letter text.`, args.signal, { models: GROUNDING_MODELS
   }
   unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
   if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
+  // Independent verifier: a second pass, on a different preset, lists sentences that are not supported by the CV,
+  // copy the posting, or use the job title as experience. Those sentences are removed when the letter stays long enough.
+  if (within(85_000)) {
+    try {
+      const facts = allItems.map((item) => `- [${item.type === "project" ? "PROJECT" : "EMPLOYMENT"}] ${item.title}: ${[item.summary, item.description].filter(Boolean).join(" ").slice(0, 380)}`).join("\n").slice(0, 12000);
+      const verdict = (await generateJsonSafe("hard", `You verify a job application letter against the applicant's CV. Return only JSON: {"issues":[{"sentence":"<exact sentence copied from the letter>","reason":"<short>"}]}.
+
+Flag a sentence when it: states an experience, employer, figure, tool or qualification that the CV FACTS do not contain; copies or closely paraphrases the job posting as the applicant's experience; uses the job title as if it were experience ("As an <title>, I..."); or attaches a figure or result to the wrong project. Do not flag normal first-person phrasing that the facts support.
+
+JOB TITLE: ${args.title}
+CV FACTS:
+${facts}
+
+LETTER:
+${text}`, 0, args.signal)) as { issues?: Array<{ sentence?: unknown }> };
+      const sentences = (Array.isArray(verdict?.issues) ? verdict.issues : []).map((issue) => (typeof issue?.sentence === "string" ? issue.sentence.trim() : "")).filter((value) => value.length > 20);
+      if (sentences.length) {
+        const norm = (value: string) => value.replace(/\s+/g, " ").trim();
+        // Prune inside each paragraph so the letter keeps its paragraph breaks.
+        const pruned = text
+          .split(/\n{2,}/)
+          .map((paragraph) => paragraph.split(/(?<=[.!?])\s+/).filter((sentence) => !sentences.some((bad) => norm(sentence).includes(norm(bad).slice(0, 60)))).join(" ").trim())
+          .filter(Boolean)
+          .join("\n\n");
+        if (WORDS(pruned) >= TARGET_MIN_WORDS && isWellFormedLetter(pruned)) text = pruned;
+      }
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+    }
+  }
   // Still too short after the retries: ask the model to extend its own draft using only the evidence already in it.
   if (WORDS(text) < TARGET_MIN_WORDS && within(100_000)) {
     try {

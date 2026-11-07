@@ -33,6 +33,15 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "verifier pruning keeps paragraph breaks and removes only the flagged sentence",
+    run: () => {
+      const text = "Dear Hiring Manager,\n\nI built payment systems for many years.\n\nAs an Agent Deployment Engineer, I led everything at scale.\n\nI welcome the opportunity to talk.\n\nDang Khoa Le";
+      const bad = "As an Agent Deployment Engineer, I led everything at scale.";
+      const pruned = text.split(/\n{2,}/).map((paragraph) => paragraph.split(/(?<=[.!?])\s+/).filter((sentence) => !sentence.includes(bad.slice(0, 40))).join(" ").trim()).filter(Boolean).join("\n\n");
+      assert.ok(!/Agent Deployment/.test(pruned) && pruned.includes("\n\n") && pruned.split("\n\n").length === 4);
+    },
+  },
+  {
     name: "a hyphenated title is not a run-on; a bare title sentence is flagged",
     run: () => {
       const ok = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. I built things for many teams.\n\nDang Khoa Le";
