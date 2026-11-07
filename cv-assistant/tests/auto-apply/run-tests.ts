@@ -32,6 +32,16 @@ const q = (label: string, type: Parameters<typeof buildQuestion>[0]["type"] = "t
 
 const tests: TestCase[] = [
   {
+    name: "employer-employment claims, bare trailing link and years are caught",
+    run: () => {
+      const cv = { projects: [{ title: "Chatbot" }] } as never;
+      const letter = "As Senior ML Engineer at Neara, I developed deep learning models. Other text here.";
+      assert.deepEqual(findUnsupportedClaims(letter, cv, "Neara"), ["employment at Neara"]);
+      assert.deepEqual(findUnsupportedClaims(letter, { projects: [{ title: "Neara intern" }] } as never, "Neara"), []);
+      assert.ok(findLetterDefects("word ".repeat(200) + "\n\ncom", "X Y").includes("truncated link"));
+    },
+  },
+  {
     name: "letter defects: candidate phrasing, short, truncated link; years and degree fields flagged",
     run: () => {
       const bad = "As Senior Engineer candidate Dang Khoa Le, I bring value.\n\ncom/in/dang-khoa-le";

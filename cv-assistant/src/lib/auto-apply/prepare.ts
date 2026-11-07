@@ -9,6 +9,7 @@ import { buildCandidateSummary, candidateContact } from "./candidate";
 import { resolveJob, type ResolvedJob } from "./discovery";
 import {
   answerDeterministically,
+  classifyQuestion,
   finalizeGeneratedAnswer,
   isSensitiveCategory,
   suggestOption,
@@ -113,6 +114,8 @@ export async function prepareApplication(args: {
       signal: args.signal,
     }));
   warnings.push(...resolved.notes);
+  // Stored questions can predate newer classification rules: classify again so standing answers always apply.
+  resolved.questions = resolved.questions.map((question) => (question.category === "other" ? { ...question, category: classifyQuestion(question.label, question.type) } : question));
 
   const company = resolved.company || args.job.company;
   const contact = candidateContact(args.profile, args.preferences);
@@ -156,7 +159,7 @@ export async function prepareApplication(args: {
     signal: args.signal,
   }).catch((error: unknown) => {
     warnings.push(`Cover letter generation failed: ${error instanceof Error ? error.message : "unknown error"}.`);
-    return { text: "", model: "", mode: "standard" as const, indices: [] as number[], reviewWarning: undefined as string | undefined };
+    return { text: "", model: "", mode: "standard" as const, indices: [] as number[], reviewWarning: undefined as string | undefined, unsupportedClaims: [] as string[] };
   });
 
   const answersTask = pending.length
@@ -198,7 +201,13 @@ export async function prepareApplication(args: {
   for (const question of coverLetterQuestions) {
     const isFile = question.type === "file";
     const answer = finalizeGeneratedAnswer(question, isFile ? (coverLetter.text ? "Generated cover letter (attach as file)" : "") : coverLetter.text, 0.85);
-    answers.set(question.id, { ...answer, source: "ai", needsInput: question.required && !coverLetter.text });
+    const flagged = !isFile && (coverLetter.unsupportedClaims || []).length > 0;
+    answers.set(question.id, {
+      ...answer,
+      source: "ai",
+      needsInput: (question.required && !coverLetter.text) || flagged,
+      note: flagged ? `Check before approving: the letter mentions ${(coverLetter.unsupportedClaims || []).join(", ")}, which is not in your profile. Edit or confirm it.` : answer.note,
+    });
   }
 
   return {

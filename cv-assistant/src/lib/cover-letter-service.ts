@@ -105,12 +105,15 @@ function normalise(value: string) {
 }
 
 /** Technology, credential and certification terms the letter asserts but the candidate's profile never mentions. */
-export function findUnsupportedClaims(text: string, profile?: Partial<Profile> | null): string[] {
+export function findUnsupportedClaims(text: string, profile?: Partial<Profile> | null, company?: string): string[] {
   const facts = normalise(JSON.stringify(profile || {}));
   const letter = normalise(text);
+  const employmentPattern = (name: string) => new RegExp(`\\b(?:at|with|for|joined)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},?\\s+I\\s+(?:\\w+\\s+){0,2}(?:developed|built|led|delivered|designed|shipped|managed|worked|created|implemented)`, "i");
   const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
-  return [...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts));
+  const employer = (company || "").trim();
+  const employment = employer && !facts.includes(normalise(employer)) && employmentPattern(employer).test(text) ? [`employment at ${employer}`] : [];
+  return [...employment, ...[...years, ...CLAIM_LEXICON].filter((term) => new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(letter) && !new RegExp(`(^|[^a-z0-9+#])${escape(term)}($|[^a-z0-9+#])`).test(facts))];
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
@@ -119,19 +122,19 @@ export function findLetterDefects(text: string, candidateName?: string): string[
   if (WORDS(text) < TARGET_MIN_WORDS) defects.push("too short");
   const name = (candidateName || "").trim();
   if (/\bcandidate\s+[A-Z][a-z]+/.test(text) || (name && new RegExp(`candidate\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(text))) defects.push("refers to the applicant as 'candidate'");
-  if (/(^|\n)\s*(com|org|net|au)\/\S+\s*$/i.test(text.trim())) defects.push("truncated link");
+  if (/(^|\n)\s*(com|org|net|au)(\/\S+)?\s*$/i.test(text.trim())) defects.push("truncated link");
   return defects;
 }
 
 /** Drops sentences that assert unsupported terms; returns null when that would leave too little of a letter. */
-export function stripUnsupportedSentences(text: string, terms: string[]): string | null {
+export function stripUnsupportedSentences(text: string, terms: string[], company?: string): string | null {
   if (!terms.length) return text;
   const paragraphs = text.split(/\n{2,}/).map((paragraph) => {
     const sentences = paragraph.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [paragraph];
-    return sentences.filter((sentence) => findUnsupportedClaims(sentence, null).filter((term) => terms.includes(term)).length === 0).join("").trim();
+    return sentences.filter((sentence) => findUnsupportedClaims(sentence, null, company).filter((term) => terms.includes(term)).length === 0).join("").trim();
   }).filter(Boolean);
   const stripped = paragraphs.join("\n\n");
-  return stripped.split(/\s+/).length >= 150 ? stripped : null;
+  return stripped.split(/\s+/).length >= 120 ? stripped : null;
 }
 
 export type CoverLetterAgentResult = {
@@ -140,6 +143,8 @@ export type CoverLetterAgentResult = {
   mode: "standard" | "advanced";
   indices: number[];
   reviewWarning?: string;
+  /** Terms or credentials the letter still asserts that the profile does not support. */
+  unsupportedClaims?: string[];
   /** Set when the advanced agent was requested but the standard letter was written instead. */
   fallbackNote?: string;
 };
@@ -207,7 +212,7 @@ export async function runCoverLetterAgent(args: {
   }
 
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
-  let unsupported = findUnsupportedClaims(text, args.profile);
+  let unsupported = findUnsupportedClaims(text, args.profile, args.company);
   const defects = findLetterDefects(text, args.profile?.name);
   if (unsupported.length || defects.length) {
     try {
@@ -220,20 +225,20 @@ export async function runCoverLetterAgent(args: {
         clarificationContext: `${args.clarificationContext || ""}\n${unsupported.length ? `The candidate has NO experience with: ${unsupported.join(", ")}. Do not mention these, never state a degree field, years of experience or tools that the evidence does not give.` : ""}${defects.length ? ` The previous draft ${defects.join("; ")}. Write in the first person ("I"), at least ${TARGET_MIN_WORDS} words, and end with the plain name only.` : ""}`.trim(),
       });
       const retried = await generateLetterText(retryPrompt, args.signal);
-      const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile).length;
+      const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company).length;
       const retriedDefects = findLetterDefects(retried.text, args.profile?.name).length;
       if (retriedUnsupported + retriedDefects < unsupported.length + defects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;
     }
-    unsupported = findUnsupportedClaims(text, args.profile);
-    if (unsupported.length) text = stripUnsupportedSentences(text, unsupported) ?? text;
+    unsupported = findUnsupportedClaims(text, args.profile, args.company);
+    if (unsupported.length) text = stripUnsupportedSentences(text, unsupported, args.company) ?? text;
   }
-  text = text.replace(/\n+\s*(?:com|org|net|au)\/\S+\s*$/i, "").trim();
-  const remaining = findUnsupportedClaims(text, args.profile);
+  text = text.replace(/\n+\s*(?:com|org|net|au)(?:\/\S+)?\s*$/i, "").trim();
+  const remaining = findUnsupportedClaims(text, args.profile, args.company);
   const guardWarning = remaining.length ? `Check these before sending, they are not in your profile: ${remaining.join(", ")}.` : undefined;
 
   const { reviewWarning: modelWarning } = await checkDraftClaims({ draft: text, candidateName: args.profile?.name, evidence, clarificationContext: args.clarificationContext, signal: args.signal }).catch(() => ({ reviewWarning: undefined as string | undefined }));
   const reviewWarning = [guardWarning, modelWarning].filter(Boolean).join(" ") || undefined;
-  return { text, model, mode, indices, reviewWarning, fallbackNote };
+  return { text, model, mode, indices, reviewWarning, fallbackNote, unsupportedClaims: remaining };
 }
