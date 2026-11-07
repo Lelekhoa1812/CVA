@@ -109,6 +109,9 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!issueQuotesEvidence("The letter claims strong leadership skills", evidence));
       assert.ok(issueQuotesEvidence("Claimed leading a six-person team delivering a Vietnamese-language AI assistant - the evidence only shows a summary", evidence));
       assert.ok(!issueQuotesEvidence("Claimed managing a 40-engineer platform organisation at Google - the evidence does not mention it", evidence));
+      // Possessive wording ("Candidate's claim to have ... is not supported ...") is read the same way.
+      assert.ok(issueQuotesEvidence("Candidate's claim to have led a 6-person team delivering a Vietnamese-language AI assistant is not supported by any evidence in the candidate material", evidence));
+      assert.ok(!issueQuotesEvidence("Candidate's claim to have led a 40-person team at Google is not supported by any evidence in the candidate material", evidence));
     },
   },
   {
