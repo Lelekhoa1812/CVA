@@ -103,6 +103,8 @@ export const EMPTY_PREFERENCES: ApplicantPreferences = {
 
 export type CandidateProfile = {
   employers?: string[];
+  /** Employer of the experience marked as ongoing, when there is one. */
+  currentEmployer?: string;
   name?: string;
   email?: string;
   workEmail?: string;
@@ -377,7 +379,9 @@ export function answerDeterministically(args: {
     case "location":
       return makeAnswer(question, preferences.currentLocation || profile.location || "", "preference", 0.95);
     case "current_company":
-      return makeAnswer(question, preferences.currentCompany, "preference", 0.9);
+      if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.95);
+      if (preferences.currentCompany) return makeAnswer(question, preferences.currentCompany, "preference", 0.9);
+      return makeAnswer(question, profile.currentEmployer || "", "profile", 0.85, profile.currentEmployer ? undefined : "Add your current employer in Application preferences.");
     case "resume":
       return { ...makeAnswer(question, "Attached resume", "document", 1), needsInput: false };
     case "cover_letter":

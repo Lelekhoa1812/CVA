@@ -200,6 +200,19 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "current company comes from the ongoing experience unless a preference or memory says otherwise",
+    run: () => {
+      const withCurrent = { ...profile, currentEmployer: "Acme Pty Ltd" };
+      const fromProfile = answerDeterministically({ question: q("Current company"), profile: withCurrent, preferences: EMPTY_PREFERENCES, memory: [], company: "Blinq" });
+      assert.equal(fromProfile?.value, "Acme Pty Ltd");
+      assert.equal(fromProfile?.needsInput, false);
+      const preferred = answerDeterministically({ question: q("Current company"), profile: withCurrent, preferences: { ...EMPTY_PREFERENCES, currentCompany: "Freelance" }, memory: [], company: "Blinq" });
+      assert.equal(preferred?.value, "Freelance");
+      const unknown = answerDeterministically({ question: q("Current company"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "Blinq" });
+      assert.equal(unknown?.needsInput, true);
+    },
+  },
+  {
     name: "user edits resolve missing answers and mapping failures stay flagged",
     run: () => {
       const missing = answerDeterministically({ question: q("What is your desired salary?"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "X" })!;

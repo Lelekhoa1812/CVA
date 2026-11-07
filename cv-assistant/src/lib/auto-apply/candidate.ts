@@ -16,7 +16,12 @@ export function hasUsableProfile(profile?: LooseProfile | null) {
 
 export function candidateContact(profile?: LooseProfile | null, preferences?: Partial<ApplicantPreferences>): CandidateProfile {
   const recentLocation = (profile?.experiences || []).map((experience) => clean(experience.location)).find(Boolean) || "";
+  const ongoing = (profile?.experiences || []).find((experience) => {
+    const to = clean((experience as { timeTo?: string }).timeTo);
+    return Boolean((experience as { normalizedTimeToIsPresent?: boolean }).normalizedTimeToIsPresent) || /^(present|current|now|ongoing)$/i.test(to);
+  });
   return {
+    currentEmployer: ongoing ? clean(ongoing.companyName) : "",
     employers: (profile?.experiences || []).map((experience) => clean(experience.companyName)).filter(Boolean),
     name: clean(profile?.name),
     email: clean(profile?.email),
