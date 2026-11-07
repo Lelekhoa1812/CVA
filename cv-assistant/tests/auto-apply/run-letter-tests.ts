@@ -20,6 +20,9 @@ const tests: Array<{ name: string; run: () => void }> = [
     run: () => {
       const stock = "Dear Hiring Manager,\n\nAs an AI Software Engineer with proven experience building agents, I am applying for the Agent Deployment Engineer role at Decagon.\n\nSincerely,\nDang Khoa Le";
       assert.ok(findLetterDefects(stock, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer").some((defect) => /stock filler/.test(defect)));
+      const fixed = repairLetterStructure(stock, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer");
+      assert.ok(/with experience building agents/.test(fixed), fixed);
+      assert.ok(!findLetterDefects(fixed, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer").some((defect) => /stock filler/.test(defect)));
     },
   },
   {

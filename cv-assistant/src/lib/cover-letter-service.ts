@@ -268,7 +268,20 @@ const name_ = (value?: string) => (value || "").trim();
 
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
+  // One fix can expose another (a split paragraph puts a sign-off block above the closing sentence), so repair until nothing changes.
+  let current = repairLetterStructureOnce(text, candidateName, company, title);
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = repairLetterStructureOnce(current, candidateName, company, title);
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+function repairLetterStructureOnce(text: string, candidateName?: string, company?: string, title?: string): string {
   let fixed = text.trim().replace(/\bMy (?:CV|resume|profile) (?:shows|demonstrates|indicates) (?:that )?I\b/gi, "I");
+  // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
+  fixed = fixed.replace(/\bproven (?=experience|ability|track record)/gi, "");
   // The greeting always sits on its own line followed by a blank line.
   fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n(?!\n)/i, "$1\n\n");
   // "I where I architected ..." is a garbled "In that role, I architected ...".
