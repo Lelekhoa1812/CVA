@@ -22,7 +22,7 @@ const WORDS_ = (text: string) => text.split(/\s+/).filter(Boolean).length;
 import { findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { cleanTitle } from "../../src/lib/auto-apply/engine";
 import { crawlJobDescription } from "../../src/lib/auto-apply/jd";
-import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled } from "../../src/lib/auto-apply/state";
+import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults, isRunStalled, stalledRunMessage } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
@@ -374,6 +374,15 @@ const tests: TestCase[] = [
       assert.equal(isRunStalled({ phase: "idle", updatedAt: new Date(now - 900_000) }, now), false);
       assert.equal(isRunStalled({ phase: "searching", updatedAt: null }, now), true);
       assert.equal(isRunStalled(undefined, now), false);
+    },
+  },
+  {
+    name: "a stalled search asks for Search again, a stalled preparation points to Prepare in Matches",
+    run: () => {
+      assert.match(stalledRunMessage("searching"), /Press Search again/);
+      assert.match(stalledRunMessage("scoring"), /Press Search again/);
+      assert.doesNotMatch(stalledRunMessage("searching"), /Prepare/);
+      assert.match(stalledRunMessage("preparing"), /Open Matches and press Prepare/);
     },
   },
   {

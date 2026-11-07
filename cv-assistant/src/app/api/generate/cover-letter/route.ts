@@ -14,6 +14,12 @@ import { validateGenerationInput } from '@/lib/generate/validation';
 import { formatClarificationAnswers, normalizeClarificationAnswers } from '@/lib/generate/clarifications';
 import { generateAdvancedCoverLetter } from '@/lib/cover-letter-advanced';
 
+// Long model calls need an explicit platform limit (docs/contributing.md, "For a long model call").
+export const maxDuration = 300;
+// Advanced Mode makes up to nine model calls in sequence. Its own budget leaves the rest of the
+// 240-second request budget for the standard writer, which runs when the advanced run does not finish.
+const ADVANCED_BUDGET_MS = 150_000;
+
 type ModelName = 'hard' | 'easy';
 
 async function generateWithFallback(prompt: string, signal: AbortSignal) {
@@ -76,11 +82,12 @@ export async function POST(req: NextRequest) {
   const selected = selectCoverLetterItems(items, indices);
   const contactInfo = getCoverLetterContactDetails(profile);
 
+  let advancedNote: string | undefined;
   if (advancedMode) {
     try {
       const advanced = await generateAdvancedCoverLetter({
         clarificationContext,
-        signal,
+        signal: AbortSignal.any([signal, AbortSignal.timeout(ADVANCED_BUDGET_MS)]),
         candidateName: profile?.name,
         company,
         jobDescription,
@@ -101,6 +108,7 @@ export async function POST(req: NextRequest) {
       if (req.signal.aborted) throw req.signal.reason;
       if (signal.aborted) return NextResponse.json({ error: 'Generation timed out. Please try again.' }, { status: 504 });
       console.error('Advanced cover letter generation failed, falling back to standard mode', advancedError);
+      advancedNote = 'Advanced Mode did not finish, so the standard writer wrote this letter.';
     }
   }
 
@@ -117,7 +125,7 @@ export async function POST(req: NextRequest) {
     const result = await generateWithFallback(prompt, signal);
     const { reviewWarning } = await checkDraftClaims({ draft: result.text, candidateName: profile?.name, evidence: selected, clarificationContext, signal });
     return NextResponse.json({
-      reviewWarning,
+      reviewWarning: [advancedNote, reviewWarning].filter(Boolean).join(' ') || undefined,
       coverLetter: result.text,
       fallback: result.fallback,
       advancedFallback: advancedMode || undefined,

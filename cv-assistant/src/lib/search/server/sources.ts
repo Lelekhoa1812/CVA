@@ -550,9 +550,11 @@ function parseGenericDetailPage(
   if (payload?.jobLocation && typeof payload.jobLocation === "object" && !Array.isArray(payload.jobLocation)) {
     const address = (payload.jobLocation as { address?: Record<string, unknown> }).address || {};
     location = cleanText(
-      [address.addressLocality, address.addressRegion, address.addressCountry]
-        .filter((value): value is string => typeof value === "string")
-        .join(" "),
+      decodeHtmlEntities(
+        [address.addressLocality, address.addressRegion, address.addressCountry]
+          .filter((value): value is string => typeof value === "string")
+          .join(" "),
+      ),
     );
   }
 
@@ -563,12 +565,12 @@ function parseGenericDetailPage(
     !Array.isArray(payload.hiringOrganization) &&
     typeof (payload.hiringOrganization as { name?: unknown }).name === "string"
   ) {
-    company = cleanText((payload.hiringOrganization as { name: string }).name);
+    company = cleanText(decodeHtmlEntities((payload.hiringOrganization as { name: string }).name));
   }
 
   const employmentType =
     payload && typeof payload.employmentType === "string" ? cleanText(payload.employmentType) : "";
-  const title = payload && typeof payload.title === "string" ? cleanText(payload.title) : "";
+  const title = payload && typeof payload.title === "string" ? cleanText(decodeHtmlEntities(payload.title)) : "";
   const postedText =
     payload && typeof payload.datePosted === "string" ? cleanText(payload.datePosted) : "";
 
@@ -782,9 +784,14 @@ async function crawlLandingPage(
     }
 
     const applyTarget = chooseApplicationUrl(source, detail?.applicationUrl, link.listingUrl);
+    const title = detail?.title || link.title;
+    // A listing with no title from its detail page or its link text (for example, a bare "Show more" control) is skipped
+    // rather than shown under that label.
+    if (!title) continue;
+
     const result = buildResult({
       source,
-      title: detail?.title || link.title,
+      title,
       company: detail?.company || link.companyHint || "",
       location: detail?.location || "",
       postedText: detail?.postedText || link.postedHint || "",
@@ -794,7 +801,7 @@ async function crawlLandingPage(
       applicationUrlType: detail?.applicationUrlType || applyTarget.applicationUrlType,
       searchQueryMatch: computeSearchQueryMatch(
         request.jobTitle,
-        [link.title, detail?.company || link.companyHint || "", link.context],
+        [title, detail?.company || link.companyHint || "", link.context],
         request,
       ),
     });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { AUTOMATIC_RETRY_MESSAGE, streamSearchJobs } from "../../src/lib/search/server/stream";
 import type { SearchRequest, SearchStreamEvent } from "../../src/lib/search/types";
+import { stripHtmlTags } from "../../src/lib/search/server/utils";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 type Fetch = typeof globalThis.fetch;
@@ -32,6 +33,23 @@ function linkedinCards(count: number, offset = 0) {
       <span class="job-search-card__location">Melbourne</span>
     </li>`).join("")}</ul>`;
 }
+
+// Offline board fixtures. Each URL maps to a page body; any other URL gets an empty page, so no test reaches the network.
+function stubBoardPages(pages: Record<string, string>) {
+  globalThis.fetch = (async (input) => new Response(pages[String(input)] ?? "", { status: 200 })) as Fetch;
+}
+
+function jsonLdPage(payload: Record<string, unknown>) {
+  return `<html><head><script type="application/ld+json">${JSON.stringify(payload)}</script></head><body></body></html>`;
+}
+
+const careerOneRequest: SearchRequest = {
+  jobTitle: "AI Engineer",
+  location: "Melbourne",
+  filters: { postedWithin: "any", workplaceMode: "any", employmentType: "any" },
+  maxResultsPerSource: 25,
+  selectedSources: ["careerone"],
+};
 
 const tests: TestCase[] = [
   {
@@ -312,6 +330,78 @@ const tests: TestCase[] = [
         while (true) await iterator.next();
       }, /aborted/i);
       assert.equal(calls, 2);
+    },
+  },
+  {
+    name: "stripHtmlTags removes tags and decodes entities exactly once",
+    run: () => {
+      assert.equal(
+        stripHtmlTags("<p>Bakery &amp; cafe&nbsp;team&#39;s &#x2013; &lt;b&gt;</p>"),
+        "Bakery & cafe team's – <b>",
+      );
+      assert.equal(stripHtmlTags("R&amp;amp;D"), "R&amp;D");
+      assert.equal(stripHtmlTags("Tom &unknown; Jerry"), "Tom &unknown; Jerry");
+    },
+  },
+  {
+    name: "careerone cards show decoded detail text and keep non-matching titles as partial matches instead of dropping them",
+    run: async () => {
+      stubBoardPages({
+        "https://www.careerone.com.au/jobs-in-melbourne/keyword-ai-engineer": `<html><body>
+          <div class="job-card-small"><a href="/jobview/detail/job-1">Retail Manager</a></div>
+        </body></html>`,
+        "https://www.careerone.com.au/jobview/detail/job-1": jsonLdPage({
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          title: "Retail &amp; Wholesale Manager",
+          hiringOrganization: { "@type": "Organization", name: "Ana &amp; Sons Bakery" },
+          jobLocation: {
+            "@type": "Place",
+            address: { "@type": "PostalAddress", addressLocality: "Chatswood", addressRegion: "NSW", addressCountry: "AU" },
+          },
+          datePosted: "2026-11-01",
+          description: "<p>Bread &amp; pastry team</p>",
+        }),
+      });
+
+      const events = await collectEvents(careerOneRequest);
+      const results = events.flatMap((event) => (event.type === "result" ? [event.result] : []));
+      assert.equal(results.length, 1);
+      assert.equal(results[0].title, "Retail & Wholesale Manager");
+      assert.equal(results[0].company, "Ana & Sons Bakery");
+      assert.equal(results[0].location, "Chatswood NSW AU");
+      assert.equal(results[0].snippet, "Bread & pastry team");
+      assert.equal(results[0].searchQueryMatch, "partial");
+      assert.ok(events.some((event) => event.type === "complete" && event.totalResults === 1));
+    },
+  },
+  {
+    name: "a control label such as Show more never becomes a listing title",
+    run: async () => {
+      stubBoardPages({
+        "https://au.talent.com/jobs?k=Data+Engineer&l=Melbourne": `<html><body>
+          <div class="card"><a href="/view?id=101">Show more</a><a href="/view?id=101">Senior Data Engineer</a></div>
+          <div class="card"><a href="/view?id=102">Show more</a></div>
+          <div class="card"><a href="/view?id=103">Show more</a></div>
+        </body></html>`,
+        "https://au.talent.com/view?id=101": "<html><body><p>Senior data role.</p></body></html>",
+        "https://au.talent.com/view?id=102": jsonLdPage({ "@type": "JobPosting", title: "Platform Engineer" }),
+        "https://au.talent.com/view?id=103": "<html><body><p>No structured data.</p></body></html>",
+      });
+
+      const events = await collectEvents({
+        ...request,
+        jobTitle: "Data Engineer",
+        selectedSources: ["talent"],
+      });
+      const titles = events.flatMap((event) => (event.type === "result" ? [event.result.title] : []));
+      assert.deepEqual([...titles].sort(), ["Platform Engineer", "Senior Data Engineer"]);
+      assert.ok(!events.some((event) => event.type === "result" && /show more/i.test(event.result.title)));
+      assert.ok(
+        events.some(
+          (event) => event.type === "source-progress" && event.source === "talent" && event.status === "complete" && event.resultsFound === 2,
+        ),
+      );
     },
   },
 ];

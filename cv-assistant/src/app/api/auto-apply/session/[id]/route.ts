@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildGroundTruthSnapshot, suggestGroundTruthSelection } from "@/lib/auto-apply/ground-truth";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
-import { countStages, deriveSessionPhase, isRunStalled, normalizeStage, withJobDefaults } from "@/lib/auto-apply/state";
+import { countStages, deriveSessionPhase, isRunStalled, normalizeStage, stalledRunMessage, withJobDefaults } from "@/lib/auto-apply/state";
 import { autoApplyFiltersSchema, updateAutoApplySessionSchema } from "@/lib/auto-apply/types";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { AutoApplyApplicationDraftModel } from "@/lib/models/AutoApplyApplicationDraft";
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   if (isRunStalled(session.run)) {
     await AutoApplySessionModel.updateOne(
       { _id: id, userId: auth.userId, "run.updatedAt": session.run?.updatedAt ?? null },
-      { $set: { "run.phase": "idle", "run.message": "The last run stopped early. Press Prepare to continue where it left off.", "run.updatedAt": new Date(), status: "review" } },
+      { $set: { "run.phase": "idle", "run.message": stalledRunMessage(session.run?.phase), "run.updatedAt": new Date(), status: "review" } },
     );
     await AutoApplyJobCandidateModel.updateMany({ userId: auth.userId, sessionId: id, status: "preparing" }, { $set: { status: "selected", preparingStartedAt: null } });
     session = (await loadOwnedSession(auth.userId, id)) || session;

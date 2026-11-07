@@ -71,6 +71,12 @@ export function isRunStalled(run: { phase?: string | null; updatedAt?: Date | st
   return !updated || now - updated > RUN_STALL_MS;
 }
 
+/** What a stalled run tells the user. Only a stalled preparation leaves roles to press Prepare for; a stalled search does not. */
+export function stalledRunMessage(phase: string | null | undefined) {
+  if (phase === "preparing") return "The last run stopped early. Open Matches and press Prepare to continue where it left off.";
+  return "The last search stopped early. Press Search again to continue.";
+}
+
 export type PipelineCounts = Record<JobStage, number> & { total: number };
 
 export function countStages(stages: string[]): PipelineCounts {
