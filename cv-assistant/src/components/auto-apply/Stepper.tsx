@@ -17,6 +17,7 @@ export default function Stepper({ steps, current, onSelect }: { steps: StepDef[]
                 type="button"
                 disabled={!step.enabled}
                 aria-current={active ? "step" : undefined}
+                aria-label={`Step ${index + 1}: ${step.label}${step.count ? `, ${step.count}` : ""}${step.done ? ", done" : ""}`}
                 onClick={() => onSelect(step.id)}
                 className={cn(
                   "flex min-h-14 w-full flex-col items-start gap-0.5 rounded-2xl border px-2.5 py-2 text-left transition-colors sm:flex-row sm:items-center sm:gap-3 sm:px-4",
