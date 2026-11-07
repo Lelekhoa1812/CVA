@@ -680,6 +680,11 @@ npm run agent:fill -- --pack <pack.json> [--resume <cv file>] [--headless] [--en
 - **Safety.** Non-GET requests that match the submit rules are aborted, and submit events are cancelled. The script prints "Blocked N submission request(s). Nothing was submitted." It does not click submit or apply buttons itself.
 - **Window.** Without `--headless`, the window stays open until the applicant closes it. The applicant reviews the fields and presses Submit. With `--headless`, the script saves a screenshot (default `agent-fill.png`) and closes the browser.
 
+**Verified run (2026-11-07).** Headless Chromium against the public Quantium Greenhouse form with a five-field placeholder pack: "Bookmarklet pass: 5/5 filled", "Blocked 0 submission request(s). Nothing was submitted." The country dropdown and the "Location (City)" search box, which the in-page filler leaves partial on Chromium in the autofill matrix, were completed by the real-input pass ("Melbourne, Victoria, Australia" selected).
+
+![agent:fill result on a Greenhouse form](../../../imgsrc/auto-apply/agent-fill.png)
+*The filled form and the "Agent mode finished: 5/5 fields filled" panel. The Phone field was not in the pack and is empty.*
+
 ### 10.2 `npm run test:autofill-live`
 
 `scripts/autofill-live.ts` checks the in-page filler against three live public forms, one each on Greenhouse, Ashby and Lever. It runs them in Chromium (installed Google Chrome), Firefox and WebKit. The applicant data is fixed test data. The script fails when a field is left unfilled, or when a submit event fires (it observes submit events and does not block them). Output shows, per form, the number filled and each field's status. Results depend on the live pages, so the test can fail when a form changes.

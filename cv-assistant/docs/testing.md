@@ -30,7 +30,7 @@ The content was derived from the source code. Observed results and timings come 
 | `npm run test:ai` | NVIDIA NIM key rotation, model cascade, streaming | No (fetch is stubbed) | No (fake keys are set by the script) | No | Exit 0, summary line printed (about 1 s) |
 | `npm run verify:career` | `lint`, then `test:unit`, then `test:auto-apply` | No | No | No | Exit 0 (about 3 s) |
 | `npm run test:autofill-safari` | Live autofill in Safari through `safaridriver` | Yes (live employer form) | No | No | Not run in this review |
-| `npm run agent:fill -- --pack <file>` | Fills a live form in a real browser from a pack, never submits | Yes | No | No | Not run in this review |
+| `npm run agent:fill -- --pack <file>` | Fills a live form in a real browser from a pack, never submits | Yes | No | No | Run once headless on a public Greenhouse test page with a placeholder pack: 5 of 5 fields filled, 0 submissions |
 | `npm run test:autofill-live` | Live autofill on three employer forms in three engines | Yes | No | No | Not run in this review |
 | `npm run eval:letters` | Promptfoo cover-letter quality on live model output | Yes | Yes (`NVIDIA_NIM_API_KEY_1` to `_9`) | No | Not run in this review |
 | `npm run dev`, `build`, `start` | Application server and build, not tests | Optional | Optional | Needed for saved data | Not run in this review |
