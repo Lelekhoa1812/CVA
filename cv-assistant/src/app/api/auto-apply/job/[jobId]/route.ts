@@ -23,8 +23,17 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
     draft: draft
       ? {
           _id: draft._id,
-          coverLetterText: draft.coverLetterText,
-          answers: draft.answers,
+          coverLetterText: draft.coverLetterText || "",
+          // Drafts from before the engine rewrite may lack option lists and flags; give clients a stable shape.
+          answers: (draft.toObject().answers || []).map((answer: Record<string, unknown>) => ({
+            value: "",
+            needsInput: false,
+            required: false,
+            type: "text",
+            category: "other",
+            ...answer,
+            options: Array.isArray(answer.options) ? answer.options : [],
+          })),
           applyUrl: draft.applyUrl,
           formSource: draft.formSource,
           finalReviewStatus: draft.finalReviewStatus,

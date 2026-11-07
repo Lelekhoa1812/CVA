@@ -56,8 +56,8 @@ function JobCard({ job, c }: { job: JobSummary; c: AutoApplyController }) {
             </Chip>
             <span className="text-muted-foreground text-xs">{sourceLabel(job)}</span>
           </div>
-          {job.fitReasons.length ? <p className="text-muted-foreground text-sm leading-6">{job.fitReasons.slice(0, 2).join(" ")}</p> : null}
-          {job.fitGaps.length ? (
+          {job.fitReasons?.length ? <p className="text-muted-foreground text-sm leading-6">{job.fitReasons.slice(0, 2).join(" ")}</p> : null}
+          {job.fitGaps?.length ? (
             <p className="text-sm leading-6">
               <span className="text-[hsl(var(--warning))] font-medium">Gaps: </span>
               <span className="text-muted-foreground">{job.fitGaps.slice(0, 3).join(" · ")}</span>

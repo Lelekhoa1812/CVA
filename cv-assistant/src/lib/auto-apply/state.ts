@@ -91,3 +91,18 @@ export function remainingApplicationSlots(limit: number, counts: PipelineCounts)
   const committed = counts.preparing + counts.needs_input + counts.prepared + counts.approved + counts.applied + counts.selected;
   return Math.max(0, limit - committed);
 }
+
+/** Fills fields that records created before the engine rewrite do not have, so clients can rely on the shape. */
+export function withJobDefaults<T extends Record<string, unknown>>(job: T) {
+  const list = (value: unknown) => (Array.isArray(value) ? (value as string[]) : []);
+  return {
+    ...job,
+    fitScore: typeof job.fitScore === "number" ? job.fitScore : 0,
+    fitVerdict: (job.fitVerdict as string) || "",
+    scoredBy: (job.scoredBy as string) || "heuristic",
+    fitReasons: list(job.fitReasons),
+    fitGaps: list(job.fitGaps),
+    riskFlags: list(job.riskFlags),
+    formSource: (job.formSource as string) || "",
+  };
+}

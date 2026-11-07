@@ -16,7 +16,7 @@ import {
   standardQuestionSet,
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
-import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError } from "../../src/lib/auto-apply/state";
+import { assertTransition, canTransition, countStages, deriveSessionPhase, normalizeStage, remainingApplicationSlots, TransitionError, withJobDefaults } from "../../src/lib/auto-apply/state";
 import { AUTOFILL_FUNCTION, buildBookmarklet } from "../../src/lib/auto-apply/autofill-script";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
@@ -138,6 +138,19 @@ const tests: TestCase[] = [
       const other = answerDeterministically({ question: q("Will you now or in the future require visa sponsorship to work in the country this role is located?", "boolean"), profile, preferences: EMPTY_PREFERENCES, memory, company: "Decagon" });
       assert.equal(other?.value, "No");
       assert.equal(other?.needsInput, false);
+    },
+  },
+  {
+    name: "legacy job records get safe defaults for list and score fields",
+    run: () => {
+      const legacy = withJobDefaults({ _id: "1", title: "AI Engineer", status: "discovered" });
+      assert.deepEqual(legacy.fitReasons, []);
+      assert.deepEqual(legacy.fitGaps, []);
+      assert.equal(legacy.fitScore, 0);
+      assert.equal(legacy.scoredBy, "heuristic");
+      const modern = withJobDefaults({ fitScore: 88, fitReasons: ["x"], scoredBy: "llm" });
+      assert.equal(modern.fitScore, 88);
+      assert.deepEqual(modern.fitReasons, ["x"]);
     },
   },
   {

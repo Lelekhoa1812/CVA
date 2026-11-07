@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildGroundTruthSnapshot, suggestGroundTruthSelection } from "@/lib/auto-apply/ground-truth";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
-import { countStages, deriveSessionPhase, normalizeStage } from "@/lib/auto-apply/state";
+import { countStages, deriveSessionPhase, normalizeStage, withJobDefaults } from "@/lib/auto-apply/state";
 import { autoApplyFiltersSchema, updateAutoApplySessionSchema } from "@/lib/auto-apply/types";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { AutoApplyApplicationDraftModel } from "@/lib/models/AutoApplyApplicationDraft";
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     const draft = draftByJob.get(job._id.toString());
     const answers = ((draft?.answers || []) as unknown as DraftAnswer[]);
     return {
-      ...job,
+      ...withJobDefaults(job as unknown as Record<string, unknown>),
       status: normalizeStage(job.status),
       missingAnswers: answers.filter((answer) => answer.needsInput).length,
       answerCount: answers.length,
