@@ -225,7 +225,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
     if (first && first.length > 2 && new RegExp(`(^|\\n|[.!?]\\s+|,\\s+)${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+[a-z]`).test(visible.replace(/^Dear[^\n]*\n/i, "")) && !defects.some((d) => d.includes("third person"))) defects.push("refers to the applicant by name in the body (third person)");
   }
   // Stock filler says nothing about the applicant and reads as mass-produced.
-  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
+  const stock = text.match(/\bI am (?:so |very )?(?:excited|thrilled|delighted|passionate)\b|\bwhat sets me apart\b|\bproven (?:ability|track record|experience)\b|\bdeep expertise\b|\bcutting-edge\b|\bbridge the gap\b/i);
   if (stock) defects.push(`uses stock filler ("${stock[0].toLowerCase()}") instead of specific experience`);
   // "As Senior Software Engineer for AI Tooling, I led..." uses the posting's own title as past experience.
   if (title) {

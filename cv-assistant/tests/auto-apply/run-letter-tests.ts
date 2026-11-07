@@ -16,12 +16,21 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "'proven experience' is flagged as stock filler",
+    run: () => {
+      const stock = "Dear Hiring Manager,\n\nAs an AI Software Engineer with proven experience building agents, I am applying for the Agent Deployment Engineer role at Decagon.\n\nSincerely,\nDang Khoa Le";
+      assert.ok(findLetterDefects(stock, "Dang Khoa Le", "Decagon", "Agent Deployment Engineer").some((defect) => /stock filler/.test(defect)));
+    },
+  },
+  {
     name: "model-check issues that quote the CV almost word for word are dropped; invented claims are kept",
     run: () => {
       const evidence = JSON.stringify([{ title: "CPG Seedcom", description: "Led a 6-person team delivering a Vietnamese-language AI assistant that converts business questions into executable SQL, reducing manual effort by 80%." }]);
       assert.ok(issueQuotesEvidence("Claimed 'leading a six-person team delivering a Vietnamese-language AI assistant' is not verified", evidence));
       assert.ok(!issueQuotesEvidence("The draft says 'managed a 40-engineer platform organisation at Google' which is not in the evidence", evidence));
       assert.ok(!issueQuotesEvidence("The letter claims strong leadership skills", evidence));
+      assert.ok(issueQuotesEvidence("Claimed leading a six-person team delivering a Vietnamese-language AI assistant - the evidence only shows a summary", evidence));
+      assert.ok(!issueQuotesEvidence("Claimed managing a 40-engineer platform organisation at Google - the evidence does not mention it", evidence));
     },
   },
   {

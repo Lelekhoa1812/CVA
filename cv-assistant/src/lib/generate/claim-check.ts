@@ -20,13 +20,24 @@ function contentWords(value: string) {
 /** The model check sometimes flags a claim that the CV states almost word for word. Such an issue is a false alarm. */
 export function issueQuotesEvidence(issue: string, evidenceText: string) {
   const quoted = issue.match(/'([^']{15,}?)'(?=[\s,.;:)]|$)|"([^"]{15,}?)"|\u2018([^\u2019]{15,}?)\u2019|\u201C([^\u201D]{15,}?)\u201D/);
-  const phrase = quoted ? quoted[1] || quoted[2] || quoted[3] || quoted[4] : '';
+  // Without quotation marks the claim is the text after "Claimed ..." up to the model's own reasoning ("- the evidence only ...").
+  const unquoted = quoted ? undefined : issue.match(/^(?:the (?:draft|letter) )?(?:claims?|claimed|states?|stated|mentions?|mentioned)\s+(.+?)(?:\s[-\u2013\u2014]\s|,?\s(?:but|yet|however)\b|;|$)/i);
+  const phrase = quoted ? quoted[1] || quoted[2] || quoted[3] || quoted[4] : unquoted ? unquoted[1] : '';
   const words = contentWords(phrase);
   if (words.length < 4) return false;
-  const known = new Set(contentWords(evidenceText));
-  const stems = new Set([...known].map((word) => word.slice(0, 5)));
-  const found = words.filter((word) => known.has(word) || stems.has(word.slice(0, 5))).length;
-  return found / words.length >= 0.8;
+  const evidenceWords = contentWords(evidenceText);
+  const known = new Set(evidenceWords);
+  const stem = (word: string) => word.slice(0, 5);
+  const stems = new Set(evidenceWords.map(stem));
+  // Numbers and proper nouns must appear exactly; other words may differ in ending ("leading" and "led" aside).
+  const proper = new Set((phrase.match(/\b[A-Z][A-Za-z0-9+#]{2,}\b/g) || []).map((word) => word.toLowerCase()));
+  const inEvidence = (word: string) => (/^\d/.test(word) || proper.has(word) ? known.has(word) : known.has(word) || stems.has(stem(word)));
+  const found = words.filter(inEvidence).length;
+  if (found / words.length < 0.8) return false;
+  // The words must also occur together: most consecutive pairs of the claim appear next to each other in the CV.
+  const pairs = new Set(evidenceWords.slice(1).map((word, index) => `${stem(evidenceWords[index])} ${stem(word)}`));
+  const claimPairs = words.slice(1).map((word, index) => `${stem(words[index])} ${stem(word)}`);
+  return claimPairs.filter((pair) => pairs.has(pair)).length / claimPairs.length >= 0.5;
 }
 
 function cutAtWord(value: string, max: number) {
