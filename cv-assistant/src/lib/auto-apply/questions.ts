@@ -237,6 +237,9 @@ function normalizeUrl(value?: string) {
 
 const YES = /^(y|yes|true|1|i do|i will|i am|correct)\b/i;
 const NO = /^(n|no|false|0|i do not|i don t|i will not|not required|none)\b/i;
+// Option labels are matched on words only: a numbered option such as "1. AU Citizen" must never read as "yes".
+const OPTION_YES = /^(y|yes|true|i do|i will|i am|correct)\b/i;
+const OPTION_NO = /^(n|no|false|i do not|i don t|i will not|not required|none)\b/i;
 
 /** Map a free-text answer onto one of a question's options (exact, contains, yes/no synonyms). */
 export function matchOption(value: string, options: QuestionOption[]): QuestionOption | null {
@@ -246,11 +249,11 @@ export function matchOption(value: string, options: QuestionOption[]): QuestionO
   const exact = normalized.find((entry) => entry.label === target || normalizeQuestionLabel(entry.option.value) === target);
   if (exact) return exact.option;
   if (YES.test(target)) {
-    const yes = normalized.find((entry) => YES.test(entry.label));
+    const yes = normalized.find((entry) => OPTION_YES.test(entry.label));
     if (yes) return yes.option;
   }
   if (NO.test(target)) {
-    const no = normalized.find((entry) => NO.test(entry.label));
+    const no = normalized.find((entry) => OPTION_NO.test(entry.label));
     if (no) return no.option;
   }
   const contains = normalized.find((entry) => entry.label && (entry.label.includes(target) || target.includes(entry.label)));

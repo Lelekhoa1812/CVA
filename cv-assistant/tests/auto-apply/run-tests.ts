@@ -164,6 +164,18 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "work rights are never mapped onto a citizenship option the applicant did not state",
+    run: () => {
+      const prefs = { ...EMPTY_PREFERENCES, workRights: "Yes - full work rights" };
+      const options = ["1. AU Citizen or Permanent Resident", "2. New Zealand Citizen", "3. Other"];
+      const answer = answerDeterministically({ question: q("Please advise what your working rights are?", "multiselect", options), profile, preferences: prefs, memory: [], company: "Prezzee" });
+      assert.equal(answer?.needsInput, true);
+      assert.notEqual(answer?.value, "1. AU Citizen or Permanent Resident");
+      const yesNo = answerDeterministically({ question: q("Do you have the right to work in Australia?", "select", ["Yes - valid working rights or visa", "No - require sponsorship"]), profile, preferences: prefs, memory: [], company: "Neara" });
+      assert.equal(yesNo?.value, "Yes - valid working rights or visa");
+    },
+  },
+  {
     name: "user edits resolve missing answers and mapping failures stay flagged",
     run: () => {
       const missing = answerDeterministically({ question: q("What is your desired salary?"), profile, preferences: EMPTY_PREFERENCES, memory: [], company: "X" })!;
