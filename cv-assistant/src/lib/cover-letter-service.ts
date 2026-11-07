@@ -177,7 +177,7 @@ export function findLetterDefects(text: string, candidateName?: string, company?
   // "As Senior Software Engineer for AI Tooling, I led..." uses the posting's own title as past experience.
   if (title) {
     const core = title.split(/[,(–]|\s-\s/)[0].replace(/^(?:senior|staff|lead|principal|junior)\s+/i, "").trim();
-    if (core.length > 4 && new RegExp(`\\bAs (?:an? |the )?(?:senior |staff |lead |principal )?${core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?: for [A-Za-z/ ]{3,30})?,\\s+I\\b`, "i").test(text.replace(/^[^\n]*\n+/, ""))) defects.push("uses the job title as past experience ('As <title>, I ...')");
+    if (core.length > 4 && new RegExp(`\\bAs (?:an? |the )?(?:senior |staff |lead |principal )?${core.replace(/\s*\/\s*/g, "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\//g, "\\s*\\/\\s*")}(?: for [A-Za-z/ ]{3,30})?(?: at [A-Z][\\w&. -]{1,40})?,\\s+I\\b`, "i").test(text.replace(/^[^\n]*\n+/, ""))) defects.push("uses the job title as past experience ('As <title>, I ...')");
   }
   // "In the same organization, I built <project>" credits a personal project to an employer.
   if (/\bIn the same (?:organi[sz]ation|company|team|role)\b/i.test(text)) defects.push("says 'in the same organization' and so credits a separate project to an employer");
@@ -225,7 +225,7 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
   if (title) {
     const core = title.split(/[,(–]|\s-\s/)[0].replace(/^(?:senior|staff|lead|principal|junior)\s+/i, "").trim();
     if (core.length > 4) {
-      const escCore = core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escCore = core.replace(/\s*\/\s*/g, "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\//g, "\\s*\\/\\s*");
       const escCompany = (company || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       fixed = fixed.replace(new RegExp(`(^|\\n\\n|[.!?]\\s+)As (?:an? |the )?(?:senior |staff |lead |principal )?${escCore}(?: for [A-Za-z/ ]{3,30})?(?: at ${escCompany || "\\S+"})?,\\s+I\\b`, "gi"), "$1I");
     }

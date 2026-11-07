@@ -23,13 +23,14 @@ Gaps found against these go in the audit reports; each fix is retested on the re
 
 State after commit bfb9c90. The gate is a full read of 10 live letters, not Promptfoo: Promptfoo on a three-item fixture did not predict real-job quality.
 
-**Last full live read (code 2649022), 10 letters**
-- 5-6 of 10 read as clean: 2840, 282b, 2856, 2826, 281e, and 2861 apart from one posting echo.
-- Defects seen: single-block letters (281f, 2823); the posting's title used as employment (2835, 281f); "systems programming" and mentoring claims echoing the posting (281f, 2835); two letters of 158-167 words, correctly flagged short; a contact line under the name wrongly flagged as a missing sign-off (284b).
-- Latency (metric 8): 57-128 s per letter. The p95 target of 60 s is not met.
-- Claim-check warnings (warn only): on roughly 3-4 of 10 letters; at least one is a false positive.
+**Last full live read (code c2bf937), 10 letters: the best so far**
+- 8 of 10 read as clean (2840, 284b, 2835, 282b, 281f, 2861, 2856, 281e) and 2826 only has one defect; all have a greeting, a sign-off, proper paragraphs, and no contact lines or "Subject:" lines in the body. 158-306 words.
+- Defects seen: 2826 opened "As Senior AI/ML Engineer at Artificial Analysis, I am applying" (the posting's title claimed as employment; the title check missed it because the posting spells it "AI / ML"; fixed afterwards with a test). 2823 is the thin case: 158 words, third person ("Senior Machine Learning Engineer Khoa Dang brings ..."), and TensorFlow and LiDAR claims echoing the posting; the app flagged all of it (short, posting echoes, third person). 2835 has one odd filler sentence ("This work involves governing agentic pipelines ...").
+- Latency (metric 8): 71-132 s per letter. The p95 target of 60 s is not met.
 
-**Fixed since that read (unit tests, 50 pass; not yet re-read live)**: contact lines no longer trip sign-off or fragment checks; walls of text are split into paragraphs; "<Title> at <Company>, I ..." is repaired to "I ..."; "Subject:" lines and repeated greetings are removed; garbled company names and stray "I at <Company>:" labels are repaired; stock filler, "in the same organization", title-as-experience, third-person and requirement-talk are flagged.
+**Earlier full live read (code 2649022)**: 5-6 of 10 clean. The fixes since then (contact lines no longer trip sign-off or fragment checks, text walls split, "<Title> at <Company>, I ..." repaired, "Subject:" lines and duplicate greetings removed, garbled company names repaired) all showed up as improvements in the later read.
+
+**Guards in place (50 unit tests)**: stock filler, "in the same organization", title-as-experience (flag and repair, tolerant of slash spacing), third person by name, requirement talk, run-on title sentences, unsupported claims and posting echoes (always stripped), short letters (flagged, never padded).
 
 **Promptfoo (`npm run eval:letters`)**: varies run to run, 1/3 to 3/3 on the latest code. Typical failures are a model slip the retry did not fix (duplicate greeting, "I am excited") and padding with plausible invented detail ("improving customer satisfaction"). The small first-draft model still invents detail that no deterministic guard catches, so letters remain drafts that the applicant must review.
 

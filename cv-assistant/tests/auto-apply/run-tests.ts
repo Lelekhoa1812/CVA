@@ -586,6 +586,9 @@ const tests: TestCase[] = [
       assert.ok(!contactDefects.some((d) => d.includes("sign-off") || d.includes("fragment")), contactDefects.join("; "));
       const subject = repairLetterStructure("Dear Hiring Manager,\n\nSubject: AI Engineer - Alex Tester\n\nDear Hiring Manager,\n\nI am applying for the AI Engineer role at Acme.", "Alex Tester", "Acme", "AI Engineer");
       assert.ok(!/Subject:/.test(subject) && (subject.match(/Dear Hiring Manager,/g) || []).length === 1, subject);
+      const slash = repairLetterStructure("Dear Hiring Manager,\n\nAs Senior AI/ML Engineer at Artificial Analysis, I am applying for the Senior AI / ML Engineer position at Artificial Analysis.\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Artificial Analysis", "Senior AI / ML Engineer");
+      assert.ok(!slash.includes("As Senior AI/ML Engineer at Artificial Analysis, I") && slash.includes("I am applying for the Senior AI / ML Engineer position"), slash);
+      assert.ok(findLetterDefects("Dear Hiring Manager,\n\nAs Senior AI/ML Engineer at Artificial Analysis, I am applying for it. " + "I built agent platforms, shipped them, and measured results. ".repeat(14) + "\n\n" + "I built agent platforms, shipped them, and measured results. ".repeat(14) + "\n\nSincerely,\nDang Khoa Le", "Dang Khoa Le", "Artificial Analysis", "Senior AI / ML Engineer").some((d) => d.includes("job title as past experience")));
       assert.ok(repairLetterStructure("Dear Recruiter,\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
       assert.ok(repairLetterStructure("Dear Hiring Team\n\nI am applying for the Engineer role at Acme.", "Dang Khoa Le", "Acme", "Engineer").startsWith("Dear Hiring Manager,\n\n"));
     },
