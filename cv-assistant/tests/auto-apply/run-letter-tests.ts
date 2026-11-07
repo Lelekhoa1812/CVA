@@ -16,6 +16,16 @@ const degreeProfile = { ...profile, major: "Bachelor of Software Engineer (Honou
 
 const tests: Array<{ name: string; run: () => void }> = [
   {
+    name: "repairs: an orphan 'This platform ...' first sentence is dropped when the opening is added; model-check issues phrased 'The candidate states ...' are filtered too",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nThis platform includes diagram generation for faster onboarding. At Mizco, I led the Axis platform and built ETL pipelines.\n\nSincerely,\nDang Khoa Le";
+      const fixed = repairLetterStructure(letter, "Dang Khoa Le", "Xero", "Senior Engineer");
+      assert.ok(fixed.startsWith("Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. At Mizco, I led the Axis platform"), fixed);
+      const evidence = JSON.stringify([{ title: "Mizco", description: "Led end-to-end architecture and production delivery of an enterprise AI platform that transformed unstructured RFQ corpora into governed artifacts under a Trust-First AI model." }]);
+      assert.ok(issueQuotesEvidence("The candidate states they led end-to-end architecture and production delivery of an enterprise AI platform at Mizco to transform unstructured RFQ corpora into governed artifacts under a Trust-First - not shown", evidence));
+    },
+  },
+  {
     name: "repairs: a verbless 'AI Software Engineer at <Company> who ...' sentence becomes 'I am an ...'",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. AI Software Engineer at Axion Solutions who architected a modular workflow engine. I also built ETL pipelines.\n\nSincerely,\nDang Khoa Le";

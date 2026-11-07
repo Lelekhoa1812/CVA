@@ -456,6 +456,21 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
     const blocksNow = fixed.split(/\n{2,}/);
     const firstBody = blocksNow.findIndex((block, index) => index > 0 && block.trim());
     const companyWord = company.trim().split(/\s+/)[0].toLowerCase();
+    // A sentence that starts "This platform ..." right after the opening has nothing to refer to: drop it.
+    if (firstBody > 0) {
+      const sentences = blocksNow[firstBody].trim().split(/(?<=[.!?])\s+/);
+      const orphan = /^(?:This|These|That|Those|It|Such|Its)\b(?!\s+(?:role|position|opportunity|company|team|posting|job))/;
+      const at = /^I am applying\b/.test(sentences[0]) ? 1 : 0;
+      if (sentences.length > at + 1 && orphan.test(sentences[at]) && (at === 1 || !blocksNow[firstBody].toLowerCase().includes(companyWord))) {
+        sentences.splice(at, 1);
+        blocksNow[firstBody] = sentences.join(" ");
+        fixed = blocksNow.join("\n\n");
+      }
+    }
+    if (firstBody > 0 && !blocksNow[firstBody].toLowerCase().includes(companyWord)) {
+      const sentences = blocksNow[firstBody].trim().split(/(?<=[.!?])\s+/);
+      if (sentences.length > 1 && /^(?:This|These|That|Those|It|Such|Its)\b/.test(sentences[0])) blocksNow[firstBody] = sentences.slice(1).join(" ");
+    }
     if (firstBody > 0 && !blocksNow[firstBody].toLowerCase().includes(companyWord) && !/^(?:sincerely|regards|kind regards|best regards|yours)\b/i.test(blocksNow[firstBody].trim())) {
       blocksNow[firstBody] = `I am applying for the ${title} role at ${company}. ${blocksNow[firstBody].trim()}`;
       fixed = blocksNow.join("\n\n");

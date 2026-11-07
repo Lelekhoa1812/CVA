@@ -21,7 +21,7 @@ function contentWords(value: string) {
 export function issueQuotesEvidence(issue: string, evidenceText: string) {
   const quoted = issue.match(/'([^']{15,}?)'(?=[\s,.;:)]|$)|"([^"]{15,}?)"|\u2018([^\u2019]{15,}?)\u2019|\u201C([^\u201D]{15,}?)\u201D/);
   // Without quotation marks the claim is the text after "Claimed ..." up to the model's own reasoning ("- the evidence only ...").
-  const unquoted = quoted ? undefined : issue.match(/^(?:the (?:draft|letter) )?(?:claims?|claimed|states?|stated|mentions?|mentioned)\s+(.+?)(?:\s[-\u2013\u2014]\s|,?\s(?:but|yet|however)\b|;|$)/i);
+  const unquoted = quoted ? undefined : issue.match(/^(?:the (?:draft|letter|candidate) )?(?:claims?|claimed|states?|stated|mentions?|mentioned|references?|referenced)(?: that| they| to have| having)*\s+(.+?)(?:\s[-\u2013\u2014]\s|,?\s(?:but|yet|however)\b|;|$)/i);
   const phrase = quoted ? quoted[1] || quoted[2] || quoted[3] || quoted[4] : unquoted ? unquoted[1] : '';
   const words = contentWords(phrase);
   if (words.length < 4) return false;
