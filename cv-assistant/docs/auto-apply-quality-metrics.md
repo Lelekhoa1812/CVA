@@ -300,3 +300,7 @@ Sweep of eight jobs not used before, on the live build (fbb98df): SymphonyAI 98 
 Reading them showed that the writer still opens most letters with "I am writing to apply for", which its own rules forbid: 46 of 86 recent stored letters. Fix: the repair step rewrites "I am writing to apply for/to" as "I am applying for" (other uses of "writing to" are untouched). 46 of 46 affected stored letters are repaired, none remain. One existing test that used the old wording was updated; a new test added. Offline: 51 auto-apply tests and 33 letter guard tests pass.
 
 Production check of f02fd83: SymphonyAI 58 s, Wagetap 67 s and the job with no company name 115 s; all 200, no warnings, none contains "writing to", each opens "I am applying for the <role> ...". The cliché opening is gone on the live app.
+
+## Style audit against the writer's own rules (2026-11-08)
+
+112 stored and fresh letters scanned for the phrases the writer rules forbid: "passionate", "leverage", "synergy", "team player", "go-getter", "results-driven", "I am excited", "express my interest", "thrilled": 0 of 112. "dynamic": 6, all technical terms from the CV ("dynamic multi-LLM routing", "dynamic portfolio execution", "dynamic indexing"). Dashes: 3, all from one early run (r23) made before the dash repair; none in the later runs. The only rule the model broke regularly was the "I am writing to apply" opening, now repaired and live. No further evidence-backed defect is open in the letter pipeline.
