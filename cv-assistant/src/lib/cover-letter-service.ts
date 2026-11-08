@@ -828,7 +828,7 @@ async function runCoverLetterPipeline(args: {
   trace("drafts done");
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length || densityDefects(text).length); round += 1) {
+  for (let round = 0; round < 2 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length || densityDefects(text).length); round += 1) {
     const roundDefects = [...findLetterDefects(text, args.profile?.name, args.company, args.title, minWords), ...densityDefects(text)];
     try {
       const retryPrompt = buildRetryPrompt(unsupported, roundDefects);
