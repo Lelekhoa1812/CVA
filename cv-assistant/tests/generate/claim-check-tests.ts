@@ -23,6 +23,18 @@ async function main() {
   globalThis.fetch = (async () => stream('{"unexpected":true}')) as typeof fetch;
   assert.match((await checkDraftClaims({ draft: 'I built an API.', evidence })).reviewWarning || '', /could not complete/i);
 
+  // A failed first attempt is retried once on the second model list before the check is reported unavailable.
+  process.env.NVIDIA_NIM_HARD_MODELS = 'test-check-hard-model';
+  const models: string[] = [];
+  globalThis.fetch = (async (_url, init) => {
+    const model = JSON.parse(String(init?.body)).model as string;
+    models.push(model);
+    return model === 'test-check-hard-model' ? stream(JSON.stringify({ supported: true, issues: [] })) : stream('not json at all');
+  }) as typeof fetch;
+  assert.deepEqual(await checkDraftClaims({ draft: 'I built an API.', evidence }), {});
+  assert.ok(models.includes('test-check-model') && models.includes('test-check-hard-model'), models.join(','));
+  delete process.env.NVIDIA_NIM_HARD_MODELS;
+
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(checkDraftClaims({ draft: 'Text', evidence, signal: controller.signal }), /cancelled/i);
