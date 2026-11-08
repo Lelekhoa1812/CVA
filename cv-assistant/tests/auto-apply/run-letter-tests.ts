@@ -56,6 +56,17 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "delivery-process terms (CI/CD, Git workflows) taken from the posting are flagged unless the CV states them",
+    run: () => {
+      const text = "I developed a multi-agent platform, with CI/CD pipelines using modern Git workflows.";
+      const found = findUnsupportedClaims(text, { skills: "Docker, Python" } as never, "Xero");
+      assert.ok(found.includes("ci/cd") && found.includes("git workflows"), `found: ${found}`);
+      assert.deepEqual(findUnsupportedClaims(text, { skills: "CI/CD, Git workflows" } as never, "Xero").filter((claim) => /ci\/cd|git/.test(claim)), []);
+      const stripped = stripUnsupportedSentences(`Dear Hiring Manager,\n\nI am applying for the role at Xero. ${text} I built a LangGraph workflow engine for a capital markets platform and evaluated it on live data with a five person team. I led the design of the retrieval layer and wrote the evaluation harness myself, which kept the release cadence steady across several quarters of delivery.\n\nI would welcome the opportunity to discuss the role.\n\nSincerely,\nAlex Tester`, ["ci/cd", "git workflows"], "Xero");
+      assert.ok(stripped === null || !/ci\/cd/i.test(stripped), "sentence with CI/CD survives strip");
+    },
+  },
+  {
     name: "scale and infrastructure terms that only the posting mentions are flagged once; terms in the CV are not",
     run: () => {
       const text = "I built data pipelines processing terabyte-scale data and maintained Linux systems with Docker.";

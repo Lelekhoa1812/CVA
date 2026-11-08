@@ -249,3 +249,9 @@ Single-pipeline traced runs (three hard cross-field cases): 51-69 s (previously 
 Seven letters on the live app (prepared jobs only; three other jobs correctly answered 409 "Prepare this application first"): Downer 59 s, Xero 77 s, AustralianSuper 76 s, Artificial Analysis 41 s, Decagon 90 s, Airwallex 55 s, Neara 100 s. All HTTP 200, standard mode, 188-242 words, no warnings.
 
 Reading the slowest (Neara) found one defect the guards missed: "At Neara, my experience spans creating machine learning models ...", which reads as if the applicant already worked at the employer. The employment guard only matched "At <Company>, I <past verb>". It now also matches "At <Company>, my experience/work/role/background/time/..." and a wider set of past verbs. Offline test added (flags the false claim; does not flag a genuine employer or "I would bring my experience"). Measured over 246 stored letters: 0 flagged, so no new false positives.
+
+## Production check of ceac34d, and a second missed claim (2026-11-08)
+
+The employment fix is live: Neara regenerated without "At Neara, my experience ..." (five letters: Neara 109 s, NAB 104 s, Quantium 70 s, Binance 69 s, Xero 97 s; all 200, no warnings).
+
+Checking the new letters' specific claims against the CV found another one that passed every guard: the Xero letter said "CI/CD pipelines using modern Git workflows", copied from the posting; the CV mentions neither. "CI" and "CD" are in the tech-term stop list (too common) and "Git" is too short, so the posting-term guard never saw it. Fix: CI/CD, Git workflows, GitOps, GitHub Actions, GitLab, continuous integration/delivery/deployment, Scrum, Kanban and A/B testing are in the claim lexicon (flagged only when the letter has the term and the CV does not). Over the 246 stored letters 13 are flagged, all "ci/cd" on the Xero and Downer postings, all genuine. Offline test added.
