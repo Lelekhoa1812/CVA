@@ -304,3 +304,11 @@ Production check of f02fd83: SymphonyAI 58 s, Wagetap 67 s and the job with no c
 ## Style audit against the writer's own rules (2026-11-08)
 
 112 stored and fresh letters scanned for the phrases the writer rules forbid: "passionate", "leverage", "synergy", "team player", "go-getter", "results-driven", "I am excited", "express my interest", "thrilled": 0 of 112. "dynamic": 6, all technical terms from the CV ("dynamic multi-LLM routing", "dynamic portfolio execution", "dynamic indexing"). Dashes: 3, all from one early run (r23) made before the dash repair; none in the later runs. The only rule the model broke regularly was the "I am writing to apply" opening, now repaired and live. No further evidence-backed defect is open in the letter pipeline.
+
+## Latency target and what is and is not verifiable on production (2026-11-08)
+
+Target chosen for the standard (non-advanced) letter: every letter inside 120 s, median under 90 s. The route allows 300 s, and a person waiting on a letter should not wait more than two minutes.
+
+Measured on the live app across the final builds of this session (34 letters, three at a time): fastest 41 s, median 71 s, 90th percentile 107 s, slowest 117 s; 34 of 34 inside 120 s, 34 of 34 with no warnings. The target is met, so the number of racing pipelines (3) stays as it is; changing it without run-to-run data would be a guess, and the model service's own variance is the spread seen here.
+
+Production-only cases (thin profile, empty profile 422, non-English CV): not run on the live app, because that needs a second account or changes to the existing account's data, and creating accounts on production is outside what testing may do. They are covered by the real route handler against a throwaway local database, direct pipeline runs and the offline suite (51 auto-apply tests, 33 letter guard tests).
