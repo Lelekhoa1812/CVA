@@ -186,7 +186,13 @@ function Detail({ c }: { c: AutoApplyController }) {
           </div>
         </div>
         <textarea value={cover} onChange={(event) => setCover(event.target.value)} readOnly={!editable} rows={12} className="input-premium min-h-60 resize-y font-sans leading-7" aria-label="Cover letter text" />
-        {!cover.trim() ? <p className="text-[hsl(var(--warning))] text-xs">The cover letter could not be generated. Use Re-prepare to try again.</p> : null}
+        {!cover.trim() ? (
+          <p className="text-[hsl(var(--warning))] text-xs">
+            {(detail.draft.riskNotes || []).some((note) => /profile has no experience/i.test(note))
+              ? "No cover letter can be written yet: your profile has no experience, projects, education or skills. Add some to your profile, then use Re-prepare."
+              : "The cover letter could not be generated. Use Re-prepare to try again."}
+          </p>
+        ) : null}
         {shortNote ? <p className="text-muted-foreground text-xs leading-5">{`${shortNote.charAt(0).toUpperCase()}${shortNote.slice(1)}.`}</p> : null}
         {flaggedLetter ? (
           <div role="alert" className="surface-subtle space-y-2 rounded-2xl border border-[hsl(var(--warning))]/40 p-3">
