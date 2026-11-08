@@ -271,3 +271,5 @@ Changes:
 - The model-check filter ignores remarks that say the claim "is supported by evidence" and remarks that only restate a translated title.
 
 After (three letters, 54-72 s, no warnings, no defects): titles consistent ("General Accountant", "intern accountant"), company names kept as written, no figure outside the CV (15 to 4 items, 5 to 3 days), one language throughout. The Vietnamese posting's own job title is kept as the posting wrote it. Four offline tests added (51 auto-apply tests and 31 letter guard tests pass).
+
+Production check of 33d66be (English CV, translation step inactive): Neara 70 s, NAB 65 s, Quantium 117 s, Binance 68 s, Decagon 71 s; all 200, no warnings, 175-319 words. No regression for English CVs. Observation: the Quantium letter is long and dense (319 words, near-verbatim CV lines) and contains a model typo, "Bachelor of Software Engineer (Honsours)" (the CV has no such word); earlier a one-off "Bachelor ofAccounting" appeared in a local run. Two glitches in about 300 letters, both in the degree line; a general spelling check needs a dictionary and is not in place, so a user should still read the letter before sending.
