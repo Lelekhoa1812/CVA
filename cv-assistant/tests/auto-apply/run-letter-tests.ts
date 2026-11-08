@@ -378,6 +378,8 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(isNonClaimRemark("The draft implies relevance to 'Information Security' through terms like 'Trust-First AI model'"));
       assert.ok(isNonClaimRemark("Draft claims candidate is 'General Ledger Accountant' at Sao Viet Company, but evidence shows official title is 'Kế toán tổng hợp' (General Ledger Accountant)"));
       assert.ok(isNonClaimRemark("Draft states candidate 'prepare quarterly financial statements', which is supported by evidence"));
+      assert.ok(isNonClaimRemark("In application draft: Claims deployed an Agentic RAG over EMR/EHR and PubMed - evidence states building Agentic RAG over EMR/EHR + PubMed, so this claim is supported."));
+      assert.ok(!isNonClaimRemark("In application draft: Claims led a five-person team - evidence shows no team leadership, so this claim is not supported."));
       assert.ok(!isNonClaimRemark("Draft claims candidate is 'Finance Director' at Sao Viet Company, but evidence shows official title is 'Kế toán tổng hợp' (General Ledger Accountant)"));
       assert.ok(!isNonClaimRemark("Draft states candidate led a team of ten, which is not supported by evidence"));
       assert.ok(isNonClaimRemark("Claims about leadership roles lack verification"));

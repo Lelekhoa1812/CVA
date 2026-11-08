@@ -29,6 +29,8 @@ export function isNonClaimRemark(issue: string) {
   if (/\bimplies (?:relevance|a (?:connection|link|fit))\b/i.test(issue)) return true;
   // The model's own remark says the claim is supported: nothing for the candidate to check.
   if (/\b(?:is|are|was|were) (?:directly |explicitly |fully |clearly )?supported (?:by|in) (?:the )?(?:candidate )?(?:evidence|material|cv)\b/i.test(issue)) return true;
+  // "..., so this claim is supported." / "the claim is supported." : the model confirms the claim and raises nothing to check.
+  if (/\b(?:claim|statement|point|detail) (?:is|are) (?:directly |explicitly |fully |clearly )?supported\b/i.test(issue)) return true;
   // A translated title: "claims 'General Ledger Accountant' ... official title is 'Kế toán tổng hợp' (General Ledger Accountant)".
   const translated = issue.match(/\b(?:official )?title is ['‘“"]([^'’”"]+)['’”"]\s*\(([^)]+)\)/i);
   if (translated && issue.toLowerCase().includes(`'${translated[2].trim().toLowerCase()}'`)) return true;
