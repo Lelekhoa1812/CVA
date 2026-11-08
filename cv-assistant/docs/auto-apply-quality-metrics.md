@@ -312,3 +312,24 @@ Target chosen for the standard (non-advanced) letter: every letter inside 120 s,
 Measured on the live app across the final builds of this session (34 letters, three at a time): fastest 41 s, median 71 s, 90th percentile 107 s, slowest 117 s; 34 of 34 inside 120 s, 34 of 34 with no warnings. The target is met, so the number of racing pipelines (3) stays as it is; changing it without run-to-run data would be a guess, and the model service's own variance is the spread seen here.
 
 Production-only cases (thin profile, empty profile 422, non-English CV): not run on the live app, because that needs a second account or changes to the existing account's data, and creating accounts on production is outside what testing may do. They are covered by the real route handler against a throwaway local database, direct pipeline runs and the offline suite (51 auto-apply tests, 33 letter guard tests).
+
+## Dummy accounts on a local production build, and the fixes they found (2026-11-08)
+
+Creating accounts on the live site is not allowed for the agent, so the thin, empty and non-English cases were run on a production build (`next build` + `next start`) of the deployed commit on localhost, with dummy accounts registered through `/api/auth/register`, profiles saved through `PUT /api/profile`, a throwaway MongoDB in Docker, and the live model service. Everything was torn down afterwards.
+
+- Empty profile: 422 with the plain-language message; in the review screen it appears as a dismissible alert.
+- Thin profile: 200, instant short letter from the CV, with its note.
+- Vietnamese CV: 200 in 60-72 s, English throughout, titles translated, figures from the CV, no warnings (four runs).
+
+Defects found by reading these letters and the review screen, all fixed:
+- Self-assessment the writer rules forbid: ", which demonstrates my ability to ...", "... equipped me with ...", "... provides the foundation for ...", "... will help me ...", "I have demonstrated the ability to" (now "I can"), and a closing question ("Would you like to discuss the role?" now a statement). 2 of 246 stored letters affected, both genuine.
+- A borrowed posting title: "As an AI/ML Engineer with production experience ..." for an AI/ML Engineer posting when the CV's title is AI Software Engineer (3 of 370 stored letters; 2 of 4 Vietnamese runs). Now "With production experience ...".
+- Review screen: the thin-profile note rendered as "The letter needs checking: is short because ..." with a "Mark as checked" prompt; it is now its own plain sentence. Other letter findings read "Check these before approving: ...".
+- Review screen: only three risk notes are shown and the profile spelling hint came last; it now comes first (confirmed on the live review screen for the Downer job).
+- Review screen: an empty profile showed "The cover letter could not be generated. Use Re-prepare to try again."; it now says the profile is empty and points to it.
+- Prepare warnings ended with a double full stop ("... first.."); fixed.
+- Production showed one letter in about 40 with "We could not complete the evidence check" (the model service did not answer within 18 s). The check now retries once on the second model list before giving up (offline test with a mocked model service).
+
+Production check of the letter and screen changes (a6b0176): Downer 85 s, Neara 82 s, Rosewood Partners 53 s; all 200, none with the repaired patterns or a borrowed title. The evidence-check retry (cd4f030) is pushed but not deployed: Vercel answered "Deployment rate limited, retry in 24 hours" after the day's deployments. It needs a redeploy once the limit resets.
+
+Remaining, by measurement: mild soft-skill wording from a posting ("attention to detail", "fast-moving environment") can still appear in letters for modest CVs; it is low risk and not caught by a guard, because a general phrase guard flagged 96 of 246 good letters.
