@@ -397,3 +397,5 @@ Live, Xero letter, test account, drafts only, nothing approved:
 - Sentences without a safe boundary can still be long. The split does not cover them.
 
 Change in `c30423d`: the repair that drops "<experience> aligns with <Company>'s need" sentences also accepts a curly apostrophe (Xero’s). The second post-split sample contained "My work directly aligns with Xero’s need for production discipline", which that repair missed. Regression test added. Not yet verified on production at the time of writing.
+
+Live check of `c30423d` (`dpl_2ev9C1W9`, READY): one rewrite of the Xero letter, draft only. The new letter is 1,240 characters, 9 sentences, with no "aligns with … need" sentence, no sentence over 40 words and no trait line. One sample, so this is evidence the fix works, not proof for every letter.
