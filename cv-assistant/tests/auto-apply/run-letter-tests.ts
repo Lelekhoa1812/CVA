@@ -174,6 +174,19 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "claims: personal style and learning claims the CV does not state are flagged, and the sentence is stripped",
+    run: () => {
+      const cvFacts = "Python, SQL, Docker. Built an API that cut report time by 30%. Maintained weekly reporting dashboards for the operations team. Led a team of five on a CI/CD pipeline for the payment service. Developed inventory forecasting models with scikit-learn. Mentored two junior engineers on code review and on-call rotations, and wrote the runbooks the team still uses. Owned release planning for three product teams and kept the deployment failure rate under two percent.";
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. I built an API that cut report time by 30%.\n\nI maintained weekly reporting dashboards for the operations team. I led a team of five on a CI/CD pipeline for the payment service. I developed inventory forecasting models with scikit-learn, and I work with Python, SQL and Docker every week. The work gave me a clear view of how reporting pipelines fail under load, and I apply that view to every new service I touch. I mentored two junior engineers on code review and on-call rotations, and I wrote the runbooks the team still uses. I owned release planning for three product teams and kept our deployment failure rate under two percent.\n\nI communicate clearly to challenge decisions respectfully and learn new technologies through structured quality-focused approaches, fluent in English and Vietnamese.\n\nSincerely,\nNguyen Van Minh";
+      const flagged = findUnsupportedClaims(letter, { skills: cvFacts } as never, "Xero", "", "Senior Engineer - AI Agentic");
+      assert.ok(flagged.some((claim) => /communicate clearly/.test(claim)), flagged.join(" | "));
+      const stripped = stripUnsupportedSentences(letter, flagged);
+      assert.ok(stripped, "strip returned null for a letter of 120+ words");
+      assert.ok(!/communicate clearly|respectfully/.test(stripped), stripped);
+      assert.ok(stripped.includes("I built an API that cut report time by 30%."), stripped);
+    },
+  },
+  {
     name: "repairs: the employer's own title as an opening and a trailing 'aligning with your need' clause",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nAs Decagon's Agent Deployment Engineer, I deliver end-to-end agent builds at Axion Solutions, directly aligning with your need for enterprise-grade AI solutions deployed at scale. I also led a team.\n\nSincerely,\nDang Khoa Le";

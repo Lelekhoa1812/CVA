@@ -173,6 +173,8 @@ export async function selectEvidenceForJob(items: CoverLetterItem[], jobText: st
 
 
 const CLAIM_LEXICON = [
+  // Personal style and learning claims the candidate has to state: the verifier has missed them, so the lexicon catches them.
+  "communicate clearly", "challenge decisions", "respectfully", "quality-focused", "learn new technologies",
   "marketplace", "linux", "unix", "terabyte", "terabytes", "petabyte", "petabytes", "bare metal", "ansible", "jenkins", "prometheus", "grafana", "datadog", "splunk", "snowflake", "bigquery", "redshift", "kafka", "spark", "hadoop", "airflow", "dbt", "cloudformation", "helm", "istio", "nginx", "postgresql", "mongodb atlas", "oracle cloud", "sre", "devops", "site reliability",
   "cpa", "ahpra", "pmp", "cfa", "white card", "working with children", "police check", "security clearance", "multimodal", "multi-modal", "serverless", "production kubernetes", "medication safety",   "oauth", "oidc", "typescript", "javascript", "kubernetes", "terraform", "lidar", "graphql", "rust", "golang", "scala", "kafka", "spark", "snowflake", "databricks",
   "salesforce", "sap", "aws", "azure", "gcp", "docker", "react", "angular", "vue", "java", "kotlin", "swift", "c#", ".net", "pytorch", "tensorflow", "langchain",
