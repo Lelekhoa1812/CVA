@@ -210,6 +210,15 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "repairs: a sentence that says the experience aligns with the company's need is dropped, also with a curly apostrophe",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero.\n\nMy work directly aligns with Xero’s need for production discipline: I engineered an agent layer for high-throughput workloads.\n\nI built an API that cut report time by 30%.\n\nSincerely,\nNguyen Van Minh";
+      const fixed = repairLetterStructure(letter, "Nguyen Van Minh", "Xero", "Senior Engineer");
+      assert.ok(!/need for production discipline/.test(fixed), fixed);
+      assert.ok(fixed.includes("I built an API that cut report time by 30%."), fixed);
+    },
+  },
+  {
     name: "repairs: the employer's own title as an opening and a trailing 'aligning with your need' clause",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nAs Decagon's Agent Deployment Engineer, I deliver end-to-end agent builds at Axion Solutions, directly aligning with your need for enterprise-grade AI solutions deployed at scale. I also led a team.\n\nSincerely,\nDang Khoa Le";
