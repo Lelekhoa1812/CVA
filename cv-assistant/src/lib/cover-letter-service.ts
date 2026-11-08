@@ -351,6 +351,15 @@ export function describeClaim(term: string): string {
 }
 
 /** Structural defects that make a letter unsendable regardless of its claims. */
+/** Sentences of more than this many words are hard to read in a cover letter; a retry is asked to split or cut them. */
+const MAX_SENTENCE_WORDS = 40;
+
+/** Readability, not a claim: long sentences that stack many CV terms. Used to choose and retry drafts, not shown to the applicant. */
+export function densityDefects(text: string): string[] {
+  const sentences = text.split(/\n\s*\n|(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+  return sentences.filter((sentence) => WORDS(sentence) > MAX_SENTENCE_WORDS).map((sentence) => `a sentence runs past ${MAX_SENTENCE_WORDS} words (${sentence.split(/\s+/).slice(0, 6).join(" ")}...): split it or cut the detail`);
+}
+
 export function findLetterDefects(text: string, candidateName?: string, company?: string, title?: string, minWords: number = TARGET_MIN_WORDS): string[] {
   const defects: string[] = [];
   // Contact details under the name are by design: they are neither a sign-off nor a sentence fragment.
@@ -770,7 +779,7 @@ async function runCoverLetterPipeline(args: {
       const failure = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
       throw failure?.reason instanceof Error ? failure.reason : new Error("No model returned a cover letter.");
     }
-    const score = (draft: { text: string }) => findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(repairLetterStructure(draft.text, args.profile?.name, args.company, args.title), args.profile?.name, args.company, args.title, minWords).length;
+    const score = (draft: { text: string }) => densityDefects(draft.text).length + findUnsupportedClaims(draft.text, args.profile, args.company, jobText, args.title).length + findLetterDefects(repairLetterStructure(draft.text, args.profile?.name, args.company, args.title), args.profile?.name, args.company, args.title, minWords).length;
     const generated = drafts.reduce((best, draft) => (score(draft) < score(best) || (score(draft) === score(best) && Math.abs(WORDS(draft.text) - 230) < Math.abs(WORDS(best.text) - 230)) ? draft : best));
     text = generated.text;
     model = generated.model;
@@ -790,13 +799,13 @@ async function runCoverLetterPipeline(args: {
   trace("drafts done");
   // Deterministic guard: terms and credentials absent from the profile are rewritten away, never shipped.
   let unsupported = findUnsupportedClaims(text, args.profile, args.company, jobText, args.title);
-  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length); round += 1) {
-    const roundDefects = findLetterDefects(text, args.profile?.name, args.company, args.title, minWords);
+  for (let round = 0; round < 1 && within(50_000) && (unsupported.length || findLetterDefects(text, args.profile?.name, args.company, args.title, minWords).length || densityDefects(text).length); round += 1) {
+    const roundDefects = [...findLetterDefects(text, args.profile?.name, args.company, args.title, minWords), ...densityDefects(text)];
     try {
       const retryPrompt = buildRetryPrompt(unsupported, roundDefects);
       const retried = await generateLetterText(retryPrompt, args.signal, { minWords });
       const retriedUnsupported = findUnsupportedClaims(retried.text, args.profile, args.company, jobText, args.title).length;
-      const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title, minWords).length;
+      const retriedDefects = findLetterDefects(retried.text, args.profile?.name, args.company, args.title, minWords).length + densityDefects(retried.text).length;
       if (retriedUnsupported + retriedDefects < unsupported.length + roundDefects.length) text = retried.text;
     } catch (error) {
       if (args.signal?.aborted) throw error;

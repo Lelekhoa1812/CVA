@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { findProfileSpellingHints } from "../../src/lib/profile-hints";
-import { NoEvidenceError, buildRecordLetter, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
+import { NoEvidenceError, buildRecordLetter, densityDefects, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -184,6 +184,17 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(stripped, "strip returned null for a letter of 120+ words");
       assert.ok(!/communicate clearly|respectfully/.test(stripped), stripped);
       assert.ok(stripped.includes("I built an API that cut report time by 30%."), stripped);
+    },
+  },
+  {
+    name: "readability: a sentence over 40 words is a density defect for choosing and retrying drafts, not a claim shown to the applicant",
+    run: () => {
+      const long = "At Mizco, I owned end-to-end architecture and production delivery of an AI platform that transformed unstructured RFQ corpora into deterministic, auditable systems, implementing a FastAPI-based agent orchestration layer with dual-path reasoning, self-correction loops, probabilistic confidence gates, concurrency-aware tooling, real-time telemetry and HITL overrides across the whole stack.";
+      const dense = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I built an API that cut report time.\n\n" + long + "\n\nI look forward to discussing the role.\n\nSincerely,\nNguyen Van Minh";
+      assert.equal(densityDefects(dense).length, 1, densityDefects(dense).join(" | "));
+      assert.ok(!findLetterDefects(dense, "Nguyen Van Minh", "Xero", "Senior Engineer").some((d) => /runs past/.test(d)), "density must not be shown as a claim");
+      const normal = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I built an API that cut report time.\n\nI led a team of five on a CI/CD pipeline for the payment service.\n\nI look forward to discussing the role.\n\nSincerely,\nNguyen Van Minh";
+      assert.deepEqual(densityDefects(normal), []);
     },
   },
   {
