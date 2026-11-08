@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
+import { findProfileSpellingHints } from "../../src/lib/profile-hints";
 import { NoEvidenceError, buildRecordLetter, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
 
 const profile = {
@@ -83,6 +84,18 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.equal(isMostlyNonEnglish("Responsable de la gestión de proyectos de construcción residencial y coordinación de equipos de obra en Madrid. Elaboración de presupuestos y control de costes para clientes particulares y promotores durante cinco años."), true);
       assert.equal(isMostlyNonEnglish("Triaged up to 40 patients per shift using the Australasian Triage Scale. Administered IV medications and managed wound care for trauma presentations. Precepted six graduate nurses through their first rotation."), false);
       assert.equal(isMostlyNonEnglish("Barista. Made coffee. Served customers. Cleaned the store. Opened and closed shop. Handled cash. Worked weekends. Trained new staff on the espresso machine. Stocked shelves. Greeted regulars by name. Managed the till and balanced it at close of day."), false);
+    },
+  },
+  {
+    name: "a garbled degree line is reported to the applicant; a correct one is not",
+    run: () => {
+      assert.equal(findProfileSpellingHints({ major: "Bachelor of Software Engineer (Hornours)" }).length, 1);
+      assert.equal(findProfileSpellingHints({ major: "Bacheler of Arts" }).length, 1);
+      assert.equal(findProfileSpellingHints({ major: "Batchelor of Commerce (Honours)" }).length, 1);
+      for (const major of ["Bachelor of Software Engineering (Hons)", "Bachelor of Science (Honours)", "Bachelor of Arts (Honors)", "Master of Business Administration", "Certificate III in Electrotechnology Electrician", "Bachelor of Nursing", "Cử nhân Kế toán", ""]) {
+        assert.deepEqual(findProfileSpellingHints({ major }), [], major);
+      }
+      assert.deepEqual(findProfileSpellingHints(null), []);
     },
   },
   {

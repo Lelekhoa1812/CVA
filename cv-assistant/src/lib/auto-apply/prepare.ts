@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { generateJsonSafe } from "@/lib/ai";
 import { isWellFormedLetter as isWellFormedLetterImpl, runCoverLetterAgent } from "@/lib/cover-letter-service";
+import { findProfileSpellingHints } from "@/lib/profile-hints";
 import { crawlJobDescription } from "./jd";
 import type { Profile } from "@/lib/models/User";
 import { buildCandidateSummary, candidateContact } from "./candidate";
@@ -174,6 +175,7 @@ export async function prepareApplication(args: {
 
   const [coverLetter, generated] = await Promise.all([coverLetterTask, answersTask]);
   if (coverLetter.reviewWarning) warnings.push(`Cover letter: ${coverLetter.reviewWarning}`);
+  for (const hint of findProfileSpellingHints(args.profile)) warnings.push(`Cover letter: ${hint}`);
   const generatedList = (generated.answers || []) as Array<{ id?: string; question?: string; value?: unknown; confidence?: unknown }>;
   const generatedById = new Map(generatedList.filter((entry) => entry.id).map((entry) => [String(entry.id), entry]));
 

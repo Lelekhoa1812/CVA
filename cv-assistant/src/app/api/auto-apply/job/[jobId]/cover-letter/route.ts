@@ -7,6 +7,7 @@ import { hashApplicationPayload } from "@/lib/auto-apply/prepare";
 import { countMissing, type DraftAnswer } from "@/lib/auto-apply/questions";
 import { isAuthPayload, loadOwnedDraftByJob, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 import { NoEvidenceError, runCoverLetterAgent } from "@/lib/cover-letter-service";
+import { findProfileSpellingHints } from "@/lib/profile-hints";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
 import { UserModel, type Profile } from "@/lib/models/User";
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
           ...(draft.riskNotes || []).filter((note: string) => !note.startsWith("Cover letter:")),
           ...(result.reviewWarning ? [`Cover letter: ${result.reviewWarning}`] : []),
           ...(result.fallbackNote ? [`Cover letter: ${result.fallbackNote}`] : []),
+          ...findProfileSpellingHints(profile).map((hint) => `Cover letter: ${hint}`),
         ],
         finalReviewStatus: missing ? "needs_input" : "ready",
         approvedAt: null,
