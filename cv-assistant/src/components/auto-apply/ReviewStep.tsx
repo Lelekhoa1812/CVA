@@ -91,7 +91,12 @@ function Detail({ c }: { c: AutoApplyController }) {
   const job = detail.job;
   const editable = !["approved", "applied"].includes(job.status);
   const letterClaims = detail.draft.letterClaims || [];
-  const flaggedLetter = letterClaims.length ? { note: `The letter needs checking: ${letterClaims.map((item) => item.replace(/^the letter /i, "")).join("; ")}. Edit it if anything is not accurate; approval is not blocked.` } : undefined;
+  // "The letter is short because ..." explains a thin profile; it is not a claim to check, so it is shown on its own and does not ask for confirmation.
+  const shortNote = letterClaims.find((item) => /^the letter is short because/i.test(item));
+  const claimsToCheck = letterClaims.filter((item) => item !== shortNote);
+  const flaggedLetter = claimsToCheck.length ? { note: `Check these before approving: ${claimsToCheck.join("; ")}. Edit anything that is not accurate; approval is not blocked.` } : undefined;
+  // A note that asks the applicant to fix their profile comes first, so it is never cut off by the three-note limit.
+  const riskNotes = [...(detail.draft.riskNotes || [])].sort((a, b) => Number(/check the spelling/i.test(b)) - Number(/check the spelling/i.test(a)));
   const ordered = [...answers].filter((answer) => answer.type !== "file" && answer.category !== "cover_letter");
   const needs = ordered.filter((answer) => answer.needsInput && !(values[answer.questionId] ?? "").trim());
   const rest = ordered.filter((answer) => !needs.includes(answer));
@@ -129,9 +134,9 @@ function Detail({ c }: { c: AutoApplyController }) {
           </div>
         </div>
         {job.fitReasons?.length ? <p className="text-muted-foreground text-sm leading-6">Why it fits: {job.fitReasons.slice(0, 2).join(" ")}</p> : null}
-        {detail.draft.riskNotes?.length ? (
+        {riskNotes.length ? (
           <ul className="text-muted-foreground list-disc space-y-0.5 pl-5 text-xs leading-5">
-            {detail.draft.riskNotes.slice(0, 3).map((note) => <li key={note}>{note}</li>)}
+            {riskNotes.slice(0, 3).map((note) => <li key={note}>{note}</li>)}
           </ul>
         ) : null}
       </div>
@@ -182,6 +187,7 @@ function Detail({ c }: { c: AutoApplyController }) {
         </div>
         <textarea value={cover} onChange={(event) => setCover(event.target.value)} readOnly={!editable} rows={12} className="input-premium min-h-60 resize-y font-sans leading-7" aria-label="Cover letter text" />
         {!cover.trim() ? <p className="text-[hsl(var(--warning))] text-xs">The cover letter could not be generated. Use Re-prepare to try again.</p> : null}
+        {shortNote ? <p className="text-muted-foreground text-xs leading-5">{`${shortNote.charAt(0).toUpperCase()}${shortNote.slice(1)}.`}</p> : null}
         {flaggedLetter ? (
           <div role="alert" className="surface-subtle space-y-2 rounded-2xl border border-[hsl(var(--warning))]/40 p-3">
             <p className="text-[hsl(var(--warning))] text-xs font-semibold">Worth a check</p>
