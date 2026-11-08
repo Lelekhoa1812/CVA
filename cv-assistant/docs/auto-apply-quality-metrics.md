@@ -364,3 +364,11 @@ Live check: a fresh rewrite of the Xero letter on production (test account, draf
 ## Decision on the live cases (2026-11-09)
 
 Asked whether to create a second production account for the empty, thin and Vietnamese cases, the user chose to skip the live runs. They stay verified on the local production build only, as recorded above. Creating accounts on production remains out of scope.
+
+## Personal-trait claims and fit claims: fix and one live check (2026-11-09)
+
+Change in `3f24d06`: the trait phrases from the Xero letter ("communicate clearly", "challenge decisions", "respectfully", "quality-focused", "learn new technologies") are in the claim lexicon, so a sentence that asserts them is flagged and stripped. The claim-check prompt now treats personal style and learning claims, and fit claims ("aligns with", "matches", "fits") that the evidence does not show, as unsupported. Regression test: a 120+ word letter with the trait sentence; the strip keeps the CV-backed sentences. Auto-apply, unit and claim-check suites pass; typecheck and lint are clean.
+
+Live check on `dpl_EokA2TiUDpjDXSwBqKpHCu7T9STj` (READY): one rewrite of the Xero letter on the test account, draft only, nothing approved. The new 1,730-character letter has no trait sentence and no gerund fit sentence. One sample only, because the letter agent is not deterministic.
+
+Still open: the letter is dense and reuses posting wording ("align technical execution with compliance needs and strict SLAs"). The claim check does not catch that style of fit claim, so this is a known limit, not fixed.
