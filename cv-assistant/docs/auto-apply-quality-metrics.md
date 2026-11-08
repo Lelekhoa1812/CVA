@@ -427,3 +427,11 @@ The user signed off on closing the mission, with these limits recorded:
 - Latency: 92 to 100 seconds on the two live samples, inside the 120-second target; 41 to 117 seconds across the earlier 34 production letters.
 - Live empty, thin and Vietnamese cases: not run on cva-mauve.vercel.app, by the user's decision. They were verified on a local production build of the latest main, with dummy accounts.
 - Dense posting-style phrasing: CV-sourced density, not an unsupported claim; the readability guard reduces long sentences but a few can remain.
+
+## Post-closure fix (d4d124e, 2026-11-09)
+
+- A live review screen showed a false alarm for a claim the CV states: "…, so this claim is supported." The remark filter missed this phrasing.
+- Fix: the remark filter in `src/lib/generate/claim-check.ts` now treats "claim/statement/point/detail is supported" as a non-claim. A "not supported" remark is still flagged. Regression tests are in `tests/auto-apply/run-letter-tests.ts`.
+- Verified offline: the three `test:auto-apply` suites and `tests/generate/claim-check-tests.ts` pass. Production deploy of d4d124e is READY on cva-mauve.vercel.app.
+- Not verified live: the old warning stays on the draft until its next cover-letter rewrite, and no rewrite was run after closure.
+- Live cases after closure: the user chose to stay closed. The empty and thin cases were not run. The Vietnamese case was not run because the account has no draft with a Vietnamese-language posting.
