@@ -160,7 +160,7 @@ export async function prepareApplication(args: {
     jobDescription: description,
     signal: args.signal,
   }).catch((error: unknown) => {
-    warnings.push(`Cover letter generation failed: ${error instanceof Error ? error.message : "unknown error"}.`);
+    warnings.push(`Cover letter generation failed: ${(error instanceof Error ? error.message : "unknown error").replace(/[.\s]+$/, "")}.`);
     return { text: "", model: "", mode: "standard" as const, indices: [] as number[], reviewWarning: undefined as string | undefined, unsupportedClaims: [] as string[] };
   });
 
@@ -168,7 +168,7 @@ export async function prepareApplication(args: {
     ? generateJsonSafe("easy", buildAnswersPrompt({ candidate, preferences: args.preferences, job: { ...args.job, company }, description, questions: pending }), 1, args.signal)
         .then((value) => value as { answers?: Array<{ id?: string; value?: unknown; confidence?: unknown }> })
         .catch((error: unknown) => {
-          warnings.push(`Answer drafting failed: ${error instanceof Error ? error.message : "unknown error"}.`);
+          warnings.push(`Answer drafting failed: ${(error instanceof Error ? error.message : "unknown error").replace(/[.\s]+$/, "")}.`);
           return { answers: [] };
         })
     : Promise.resolve({ answers: [] as Array<{ id?: string; value?: unknown; confidence?: unknown }> });
