@@ -441,6 +441,8 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
     const first = company.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     fixed = fixed.replace(new RegExp(`^(Dear[^\\n]*\\n+)As ${first}[\\w&.-]*'s (?:[A-Z][\\w/-]*\\s?){1,6},\\s+I\\s+`), (_m, lead) => `${lead}I am applying for the ${title} role at ${company}. I `);
   }
+  // "I am writing to apply for" is the opening the writer rules forbid, and the model uses it anyway: say the same thing directly.
+  fixed = fixed.replace(/\bI(?: am|'m) writing to apply (?:for|to)\b/g, "I am applying for");
   // "..., directly aligning with your need for enterprise-grade AI" is the posting talking: cut the clause and keep the experience.
   fixed = fixed.replace(/,\s*(?:directly )?(?:matching|meeting|fulfilling|addressing|aligning with) your (?:needs?|requirements?)\b[^.\n]*(?=\.)/gi, "");
   // A whole sentence that only says the experience "directly aligns with Airwallex's need for ..." is the posting talking: drop it.

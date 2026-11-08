@@ -87,6 +87,16 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "\"I am writing to apply for\" becomes \"I am applying for\"; other uses of \"writing to\" are left alone",
+    run: () => {
+      const letter = (opening: string) => `Dear Hiring Manager,\n\n${opening} I built a Python service that routes support tickets and wrote the evaluation harness for it with a small team over two quarters.\n\nI would welcome the opportunity to discuss how my experience fits the role.\n\nSincerely,\nAlex Tester`;
+      const fixed = repairLetterStructure(letter("I am writing to apply for the AI Engineer role at Northwind Labs."), "Alex Tester", "Northwind Labs", "AI Engineer");
+      assert.ok(fixed.includes("I am applying for the AI Engineer role at Northwind Labs."), fixed);
+      assert.ok(!/writing to apply/.test(repairLetterStructure(letter("I'm writing to apply to the AI Engineer role at Northwind Labs."), "Alex Tester", "Northwind Labs", "AI Engineer")));
+      assert.ok(repairLetterStructure(letter("I am writing to you about the AI Engineer role at Northwind Labs."), "Alex Tester", "Northwind Labs", "AI Engineer").includes("I am writing to you about"));
+    },
+  },
+  {
     name: "a garbled degree line is reported to the applicant; a correct one is not",
     run: () => {
       assert.equal(findProfileSpellingHints({ major: "Bachelor of Software Engineer (Hornours)" }).length, 1);

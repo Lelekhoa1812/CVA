@@ -292,3 +292,9 @@ The production account is rich and English, so the thin, empty, non-English and 
 - Degree typo ("Bachelor of Commerce (Hornours)"): 200, and the draft's risk notes carry "Cover letter: Check the spelling of your degree ... in your profile".
 
 The container was removed afterwards. The script is a scratch file (seed users, sessions, jobs and drafts through the models, call `POST` with a `NextRequest`); it needs Docker and is not part of the test suite.
+
+## Final production sweep and the "I am writing to apply" opening (2026-11-08)
+
+Sweep of eight jobs not used before, on the live build (fbb98df): SymphonyAI 98 s, an employer with no company name 71 s, Wagetap 70 s, Rosewood Partners 76 s, Commonwealth Bank 64 s, AustralianSuper 58 s, triniti 113 s, Downer 84 s. All 200, no warnings, 170-253 words, none containing CI/CD, Git, Scrum or Kanban terms, glued words, dashes or "proven". The job with no company name reads correctly ("... role at your organization").
+
+Reading them showed that the writer still opens most letters with "I am writing to apply for", which its own rules forbid: 46 of 86 recent stored letters. Fix: the repair step rewrites "I am writing to apply for/to" as "I am applying for" (other uses of "writing to" are untouched). 46 of 46 affected stored letters are repaired, none remain. One existing test that used the old wording was updated; a new test added. Offline: 51 auto-apply tests and 33 letter guard tests pass.

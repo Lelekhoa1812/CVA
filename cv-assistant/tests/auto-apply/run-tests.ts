@@ -66,7 +66,7 @@ const tests: TestCase[] = [
     name: "repair puts a greeting run into the first sentence on its own line",
     run: () => {
       const fixed = repairLetterStructure("Dear Hiring Manager, I am writing to apply for the role at Acme. I built things.\n\nI welcome the opportunity to discuss this.\n\nDang Khoa Le", "Dang Khoa Le", "Acme", "Data Engineer");
-      assert.ok(fixed.startsWith("Dear Hiring Manager,\n\nI am writing"));
+      assert.ok(fixed.startsWith("Dear Hiring Manager,\n\nI am applying for the role at Acme."), fixed);
     },
   },
   {
