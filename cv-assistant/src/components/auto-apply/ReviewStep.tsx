@@ -61,9 +61,10 @@ function Detail({ c }: { c: AutoApplyController }) {
     setValues(Object.fromEntries(detail.draft.answers.map((answer) => [answer.questionId, answer.value])));
     setCover(detail.draft.coverLetterText);
     setRemember({});
-    // reset only when a different draft loads or it is re-saved
+    // reset when a different draft loads, it is re-saved, or the cover letter is rewritten on the server
+    // (a rewrite changes the stored text without changing preparedAt, which left the textarea 'unsaved' and blocked further actions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftId, detail?.draft?.preparedAt, detail?.draft?.finalReviewStatus]);
+  }, [draftId, detail?.draft?.preparedAt, detail?.draft?.finalReviewStatus, detail?.draft?.coverLetterText]);
 
   const answers = useMemo(() => detail?.draft?.answers || [], [detail]);
   const dirty = useMemo(
