@@ -281,3 +281,14 @@ Correction to the note above: the degree-line variants ("Hons", "Honours", "Hons
 Remedy for the degree-line problem above: `findProfileSpellingHints` (src/lib/profile-hints.ts) checks the education line for a garbled degree word ("Bacheler", "Batchelor") or a garbled honours marker in brackets ("Hornours"), by edit distance from the right word, with "Hons", "Honours" and "Honors" accepted. The hint ("Check the spelling of your degree ... in your profile. It looks like a typo, and a letter may spell it differently each time.") is added to the draft's risk notes when a letter is rewritten and to the prepare warnings, so the applicant sees it next to the letter. Tests: three garbled lines are flagged; eight correct lines (including no degree, a trade certificate and a Vietnamese degree) are not. Offline: 51 auto-apply tests and 32 letter guard tests pass.
 
 Production check of fbb98df: a Decagon letter rewritten on the live app (67 s, 200, 205 words) and the job's draft now carries the note "Cover letter: Check the spelling of your degree, "Bachelor of Software Engineer (Hornours)", in your profile ..." in its risk notes. The hint works end to end.
+
+## End-to-end route check of the cases production cannot cover (2026-11-08)
+
+The production account is rich and English, so the thin, empty, non-English and misspelt-degree cases cannot be run on the live app without creating or changing accounts. They were run instead through the real route handler (`POST /api/auto-apply/job/[jobId]/cover-letter`, with a signed auth cookie, ownership checks, draft lookup, the agent and the draft update) against a throwaway MongoDB in a local Docker container (never production), with synthetic users and the live model service:
+
+- Empty profile (name only): 422 "Your profile has no experience, projects, education or skills yet, so there is nothing to base a cover letter on. Add some details to your profile first."; no draft change.
+- Thin profile (one café job, two short lines): 200, 0 s, a short honest letter built from the CV (no model call) with the note "the letter is short because your profile gives little to draw on for this role: add projects or experience details for a fuller letter" stored on the draft.
+- Vietnamese CV: 200, 58 s, one English letter, "General Accountant" for "Kế toán tổng hợp", company name kept, figures 15 to 4 and 5 to 3 days as in the CV, no warnings, no claims.
+- Degree typo ("Bachelor of Commerce (Hornours)"): 200, and the draft's risk notes carry "Cover letter: Check the spelling of your degree ... in your profile".
+
+The container was removed afterwards. The script is a scratch file (seed users, sessions, jobs and drafts through the models, call `POST` with a `NextRequest`); it needs Docker and is not part of the test suite.
