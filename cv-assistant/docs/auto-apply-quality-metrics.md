@@ -372,3 +372,7 @@ Change in `3f24d06`: the trait phrases from the Xero letter ("communicate clearl
 Live check on `dpl_EokA2TiUDpjDXSwBqKpHCu7T9STj` (READY): one rewrite of the Xero letter on the test account, draft only, nothing approved. The new 1,730-character letter has no trait sentence and no gerund fit sentence. One sample only, because the letter agent is not deterministic.
 
 Still open: the letter is dense and reuses posting wording ("align technical execution with compliance needs and strict SLAs"). The claim check does not catch that style of fit claim, so this is a known limit, not fixed.
+
+## Dense posting-style phrasing: diagnosis (2026-11-09)
+
+Checked against the test profile: the terms in the dense sentences ("SLA", "compliance", "strict", "runbook", "HITL", "telemetry", "stakeholder", "end-to-end") all appear in the CV. The letter is therefore not making claims the CV does not support. The problem is density: long sentences that stack many CV terms. The claim check is the wrong tool for that, so the lexicon was not extended. A readability rule (sentence length or terms per sentence) would change every letter and needs a decision on the target before it is built. Recorded as a known limit.
