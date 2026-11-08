@@ -376,3 +376,13 @@ Still open: the letter is dense and reuses posting wording ("align technical exe
 ## Dense posting-style phrasing: diagnosis (2026-11-09)
 
 Checked against the test profile: the terms in the dense sentences ("SLA", "compliance", "strict", "runbook", "HITL", "telemetry", "stakeholder", "end-to-end") all appear in the CV. The letter is therefore not making claims the CV does not support. The problem is density: long sentences that stack many CV terms. The claim check is the wrong tool for that, so the lexicon was not extended. A readability rule (sentence length or terms per sentence) would change every letter and needs a decision on the target before it is built. Recorded as a known limit.
+
+## Readability guard for long sentences: live result (2026-11-09)
+
+Change in `0bb882f`: a sentence of more than 40 words is a readability defect. It counts against a draft when drafts are compared, and it triggers the one retry round. It is not shown to the applicant as a claim. Offline: auto-apply, unit and claim-check suites pass; typecheck and lint are clean.
+
+Live (`dpl_FsTjLQ`, READY), Xero letter, test account, draft only, nothing approved:
+- Rewrite 1: 1,628 characters, 11 sentences, no sentence over 40 words, no trait line.
+- Rewrite 2: 1,420 characters, 8 sentences, two sentences over 40 words (48 and 52 words), no trait line.
+
+So the guard reduces long sentences but does not remove them: one of two samples still had two. The retry is a single round and the model's output varies. Still open: a deterministic split, or a second retry round, would be the next step if the density has to go to zero. A first live read in this run showed the previous letter still on screen and is not counted.
