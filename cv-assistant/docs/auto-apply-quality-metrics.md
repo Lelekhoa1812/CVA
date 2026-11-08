@@ -419,3 +419,11 @@ Live, Xero letter, test account, draft only, nothing approved: two new rewrites,
 Readings that showed a letter of unchanged length were the previous letter still on screen and are not counted. Two samples are evidence, not proof for every letter. The letter agent is not deterministic, and the 40-word guard and the one-pass retry remain the backstop.
 
 Still open: the latency is 92 to 100 seconds, close to the 120-second target. The live empty, thin and Vietnamese cases are not run on production, as chosen.
+
+## Closure (2026-11-09)
+
+The user signed off on closing the mission, with these limits recorded:
+- Live letter checks: two clean samples of the latest prompt (1,869 and 1,263 characters, no sentence over 40 words, no trait line), plus the earlier live samples recorded above. A non-deterministic letter agent cannot be proven clean for every letter; the 40-word guard and the one retry round are the backstop.
+- Latency: 92 to 100 seconds on the two live samples, inside the 120-second target; 41 to 117 seconds across the earlier 34 production letters.
+- Live empty, thin and Vietnamese cases: not run on cva-mauve.vercel.app, by the user's decision. They were verified on a local production build of the latest main, with dummy accounts.
+- Dense posting-style phrasing: CV-sourced density, not an unsupported claim; the readability guard reduces long sentences but a few can remain.
