@@ -19,7 +19,7 @@ const COVER_LETTER_MODELS = ["poolside/laguna-xs-2.1", "nvidia/nemotron-3-nano-o
 
 /** The stronger editors used by the grounding pass: more precise about what the CV supports, but slower. */
 const GROUNDING_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b", "deepseek-ai/deepseek-v4.1-flash"];
-const GROUNDING_CALL_TIMEOUT_MS = 40_000;
+const GROUNDING_CALL_TIMEOUT_MS = 30_000;
 /** The verifier only prunes; a call slower than this is dropped so a slow model cannot push the letter past its time budget. */
 const VERIFIER_TIMEOUT_MS = 35_000;
 /** A letter the guards still object to gets one more draft, but only when this much of the time budget is left. */
@@ -787,7 +787,7 @@ Rewrite the letter so that:
 1. Any claim not supported by the CV FACTS is deleted or reworded to what the CV actually shows (for example, remove on-call, incident response, mentoring, security, serverless, Go or other tools or duties the CV does not state).
 2. Text that merely repeats the job posting's wording as the applicant's experience is replaced with a real example from the CV.
 3. It opens "Dear Hiring Manager," then states the role (${args.title}) and company (${args.company}) in the first sentence, in the first person ("I"), never calling the applicant a candidate.
-4. It is 220 to 320 words in three or four short paragraphs separated by blank lines, ends with a short sign-off and the applicant's name only, and adds no new facts.
+4. It keeps its current length or becomes shorter (never more than 320 words, never padded), in short paragraphs separated by blank lines, ends with a short sign-off and the applicant's name only, and adds no new facts.
 
 CV FACTS:
 ${facts}

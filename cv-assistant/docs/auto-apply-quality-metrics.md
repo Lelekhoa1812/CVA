@@ -237,3 +237,9 @@ Changes: the minimum length scales with the evidence the writer sees (selected e
 Results (redundancy 3, local, sequential): the 12 cross-field letters now take 21-87 s (previously 28-135 s), all with no warning and no defect, 129-246 words; the AI-engineer set is 10 of 10 clean, 0 defects, 0 unsupported, 38-83 s (previously 39-101 s), 235 words on average. The three traced single-pipeline runs still show the grounding editor taking up to 80 s when both of its models are slow, which the race of three pipelines hides.
 
 Production check of 6c132da, six jobs (Airwallex, Xero AI Builder, Artificial Analysis, Rosewood, Downer, Binance), three at a time: all 200 in 46-84 s, 187-218 words, no review warning, no dashes or "proven". Earlier production runs at the three-pipeline setting reached 102-122 s on the heaviest postings; the slowest here is 84 s.
+
+## Grounding editor: time cap and no padding instruction (2026-11-08)
+
+The stage trace left one tail: the grounding editor (two models, 40 s each) took up to 80 s when both were slow, and its prompt still asked for "220 to 320 words", which contradicts the evidence-scaled minimum and invites padding on a modest CV. Changes: per-call limit 40 s to 30 s (worst case 60 s); instruction changed to keep the current length or become shorter, never padded, never more than 320 words; its own length check uses the evidence-scaled minimum.
+
+Single-pipeline traced runs (three hard cross-field cases): 51-69 s (previously 82-124 s). Redundancy 3: the 12 cross-field letters take 43-68 s, all with no warning and no defect, 118-191 words; the AI-engineer set is 10 of 10 clean, 0 defects, 0 unsupported, 51-112 s (the same ten postings ran 38-83 s in the previous sample, so this is within the run-to-run spread of the model service), 215 words on average with none under 170. The shorter cross-field letters were read against their CVs: concise, specific, every statement present in the CV, no filler.
