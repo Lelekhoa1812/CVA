@@ -87,6 +87,27 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "self-assessment is removed: \"which demonstrates my ability\", \"equipped me with\", \"will help me\", \"have demonstrated the ability to\", and a closing question",
+    run: () => {
+      const letter = [
+        "Dear Hiring Manager,",
+        "I am applying for the Graduate Accountant position at Acme, and I have demonstrated the ability to prepare financial reports through an Excel template that cut month-end closing from 5 days to 3 days.",
+        "As General Accountant at Sao Viet, I reconcile accounts receivable and payable, reducing discrepancy items from 15 to 4 per quarter. I also collaborate with independent auditors during year-end audits, which demonstrates my ability to support customers and work effectively in a fast-moving environment.",
+        "My degree in accounting provides me with strong attention to detail. I am proficient in MISA software and prepare VAT declarations. My native Vietnamese and intermediate English will help me collaborate effectively with team members.",
+        "Would you like to discuss the role?",
+        "Nguyen Minh Anh",
+      ].join("\n\n");
+      const fixed = repairLetterStructure(letter, "Nguyen Minh Anh", "Acme", "Graduate Accountant");
+      assert.ok(!/which demonstrates|provides me with|will help me|demonstrated the ability|\?/.test(fixed), fixed);
+      assert.ok(fixed.includes("and I can prepare financial reports through an Excel template"), fixed);
+      assert.ok(fixed.includes("I also collaborate with independent auditors during year-end audits."), fixed);
+      assert.ok(fixed.includes("I am proficient in MISA software and prepare VAT declarations."), fixed);
+      assert.ok(fixed.includes("I would welcome the opportunity to discuss the role.\n\nNguyen Minh Anh"), fixed);
+      const plain = "Dear Hiring Manager,\n\nI built a reporting service that shows month-end status to the finance team, and the dashboard highlights late items for review.\n\nI would welcome the opportunity to discuss the role.\n\nAlex Tester";
+      assert.ok(repairLetterStructure(plain, "Alex Tester", "Acme", "Analyst").includes("I built a reporting service that shows month-end status to the finance team, and the dashboard highlights late items for review."));
+    },
+  },
+  {
     name: "\"I am writing to apply for\" becomes \"I am applying for\"; other uses of \"writing to\" are left alone",
     run: () => {
       const letter = (opening: string) => `Dear Hiring Manager,\n\n${opening} I built a Python service that routes support tickets and wrote the evaluation harness for it with a small team over two quarters.\n\nI would welcome the opportunity to discuss how my experience fits the role.\n\nSincerely,\nAlex Tester`;

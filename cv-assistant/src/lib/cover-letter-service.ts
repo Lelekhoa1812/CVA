@@ -451,6 +451,14 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)((?:(?:AI|ML|Senior|Staff|Lead|Principal|Junior) )*(?:(?:Software|Machine Learning|Data|AI|Full[- ]Stack|Backend|Frontend) )*(?:Engineer|Developer|Scientist|Architect|Researcher|Analyst)) (at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*){0,3}) (who|with)\b/g, (_m, lead, role, where, link) => `${lead}I am ${/^[AEIOU]/.test(role) ? "an" : "a"} ${role} ${where} ${link}`);
   // "proven experience" / "proven ability" / "a proven track record" is stock filler: say the same thing without it.
   fixed = fixed.replace(/\bproven\s+/gi, "").replace(/\bdemonstrated (?=success|expertise|ability|track record)/gi, "");
+  // Self-assessment the writer rules forbid: what a result "demonstrates" about the applicant, what a role "equipped me with", what a skill "will help me" do.
+  // These are the model's inferences (often worded from the posting), never facts from the CV.
+  fixed = fixed.replace(/,\s*which (?:demonstrates|shows|reflects|highlights|proves|underscores|showcases)\b[^.\n]*(?=\.)/g, "");
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)[A-Z][^.!?\n]*\b(?:provides|provided|gives|gave|equips|equipped|(?:has|have) equipped) me with\b[^.!?\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)[A-Z][^.!?\n]*\bwill (?:help|enable|allow) me\b[^.!?\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  fixed = fixed.replace(/\b(?:I )?(?:have|has) demonstrated (?:the|my|an?) (?:ability|capacity|capability) to\b/g, (match) => (match.startsWith("I ") ? "I can" : "can"));
+  // The closing is a statement, not a question to the reader ("Would you like to discuss the role?").
+  fixed = fixed.replace(/^(?:Would you like|Shall we|Could we|Can we|May I)\b[^\n?]*\?[ \t]*$/gim, "I would welcome the opportunity to discuss the role.");
   // The greeting always sits on its own line followed by a blank line.
   fixed = fixed.replace(/^(Dear [^\n]{2,60},)[ \t]*\n(?!\n)/i, "$1\n\n");
   // "I where I architected ..." is a garbled "In that role, I architected ...".
