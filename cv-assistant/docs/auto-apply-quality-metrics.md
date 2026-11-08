@@ -352,3 +352,11 @@ Agreed as the route for these three cases: a local production build (`next build
 - Vietnamese CV: prepare 200 in 94 s; cover-letter route 200 in 74 s. The letter is in English, 887 characters, the figures match the CV (30% reduction, team of five), and no invented detail appears. No risk notes. Residual weakness: one sentence ("aligns with developing agent skills for remediation tasks") stretches the CV's forecasting work toward the posting, and the claim check did not flag it. Recorded as open; not fixed in this pass.
 
 Live production remains as in the previous section: the empty, thin and Vietnamese cases were not run on the live site, because that needs a second account, which is not created on production.
+
+## Vietnamese-letter fit sentence: fixed and checked live (2026-11-08)
+
+The open defect from the local-build run ("My experience ... aligns with developing agent skills for remediation tasks") is fixed in `4ae1b96`: a sentence whose fit clause is a gerund (aligns, matches, fits, lines up with developing, building, designing, delivering, leading, ...) is dropped as requirement talk. Regression test added to `tests/auto-apply/run-letter-tests.ts`; the auto-apply, unit and claim-check suites pass, and the typecheck and lint are clean.
+
+Deployment: `4ae1b96` is live as `dpl_2XFAAUXwGPW2Rt3bnpoGLEe6VrpX` (READY, confirmed with `vercel inspect`). Its first build (`dpl_2w5RUB`) was cancelled by mistake after about 30 seconds of normal build output, because the elapsed time was misread. A replacement build of the same commit went through. A local production build of `4ae1b96` also completed.
+
+Live check: a fresh rewrite of the Xero letter on production (test account, draft only, nothing approved) produced a 1,529-character letter with no gerund fit sentence and no "remediation" wording. Every claim in it traces to the CV. Remaining style points, not fixed: a soft-skill line ("I communicate clearly to challenge decisions respectfully") and dense phrasing in the Mizco paragraph.
