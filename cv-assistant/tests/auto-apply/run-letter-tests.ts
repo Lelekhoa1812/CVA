@@ -46,6 +46,16 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "\"At <target company>, my experience ...\" is flagged as employment at the employer; a real employer is not",
+    run: () => {
+      const bad = "I am applying for the role. At Neara, my experience spans creating machine learning models across the full lifecycle.";
+      assert.ok(findUnsupportedClaims(bad, { experiences: [{ company: "Axion" }] } as never, "Neara").includes("employment at Neara"));
+      assert.deepEqual(findUnsupportedClaims(bad, { experiences: [{ company: "Neara" }] } as never, "Neara").filter((claim) => claim.startsWith("employment")), []);
+      const fine = "At Neara, I would bring my experience in machine learning.";
+      assert.deepEqual(findUnsupportedClaims(fine, { experiences: [{ company: "Axion" }] } as never, "Neara").filter((claim) => claim.startsWith("employment")), []);
+    },
+  },
+  {
     name: "scale and infrastructure terms that only the posting mentions are flagged once; terms in the CV are not",
     run: () => {
       const text = "I built data pipelines processing terabyte-scale data and maintained Linux systems with Docker.";

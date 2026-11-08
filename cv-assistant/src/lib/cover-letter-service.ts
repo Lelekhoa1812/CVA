@@ -201,7 +201,7 @@ export function extractTechTerms(text: string): Set<string> {
 export function findUnsupportedClaims(text: string, profile?: Partial<Profile> | null, company?: string, jobDescription?: string, title?: string): string[] {
   const facts = normalise(JSON.stringify(profile || {}));
   const letter = normalise(text);
-  const employmentPattern = (name: string) => new RegExp(`\\b(?:at|with|for|joined)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},?\\s+I\\s+(?:\\w+\\s+){0,2}(?:developed|built|led|delivered|designed|shipped|managed|worked|created|implemented)`, "i");
+  const employmentPattern = (name: string) => new RegExp(`\\b(?:at|with|for|joined)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},?\\s+(?:I\\s+(?:\\w+\\s+){0,2}(?:developed|built|led|delivered|designed|shipped|managed|worked|created|implemented|contributed|drove|owned|launched|scaled|improved|trained|deployed|architected|engineered|collaborated|spent)|my\\s+(?:\\w+\\s+){0,2}(?:experience|work|role|career|background|time|tenure|contributions?|responsibilities)\\b)`, "i");
   const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const years = Array.from(letter.matchAll(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\+?\s*(?:\+\s*)?years?\b/g)).map((match) => match[0].replace(/\s+/g, " ")).filter((term) => !facts.includes(term));
   // Specific figures and magnitudes are the applicant's own facts: flag any that the profile never states.
