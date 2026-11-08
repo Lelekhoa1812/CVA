@@ -434,6 +434,35 @@ export function stripUnsupportedSentences(text: string, terms: string[], company
 const name_ = (value?: string) => (value || "").trim();
 
 /** Deterministic fixes for slips a retry cannot be trusted to remove: greeting, sign-off, and "My CV shows" filler. */
+/** Splits one sentence of more than MAX_SENTENCE_WORDS at a clause boundary that starts a new "I" sentence, when both halves are full sentences. */
+function splitOneLongSentence(sentence: string): string[] {
+  if (WORDS(sentence) <= MAX_SENTENCE_WORDS) return [sentence];
+  const boundary = /,\s+and\s+(?=I\s)|;\s+(?=I\s)/g;
+  let match: RegExpExecArray | null;
+  while ((match = boundary.exec(sentence))) {
+    const left = sentence.slice(0, match.index).trim();
+    const right = sentence.slice(match.index + match[0].length).trim();
+    if (WORDS(left) >= 8 && WORDS(right) >= 8) return [left.replace(/[,;]?$/, ".") , right];
+  }
+  return [sentence];
+}
+
+/** Rewrites only the long sentences, at a safe "I" boundary; every other character, including line breaks, is left as it was. */
+export function splitLongSentences(text: string): string {
+  return text.split(/(\n\s*\n)/).map((block) => {
+    if (/^\n\s*\n$/.test(block)) return block;
+    const parts = block.split(/((?<=[.!?])\s+)/);
+    let out = "";
+    for (let i = 0; i < parts.length; i += 2) {
+      const sentence = parts[i];
+      const separator = parts[i + 1] ?? "";
+      const pieces = splitOneLongSentence(sentence);
+      out += pieces.length > 1 ? `${pieces[0]} ${pieces[1]}${separator}` : `${sentence}${separator}`;
+    }
+    return out;
+  }).join("");
+}
+
 export function repairLetterStructure(text: string, candidateName?: string, company?: string, title?: string): string {
   // One fix can expose another (a split paragraph puts a sign-off block above the closing sentence), so repair until nothing changes.
   let current = repairLetterStructureOnce(text, candidateName, company, title);
@@ -442,7 +471,7 @@ export function repairLetterStructure(text: string, candidateName?: string, comp
     if (next === current) break;
     current = next;
   }
-  return current;
+  return splitLongSentences(current);
 }
 
 function repairLetterStructureOnce(text: string, candidateName?: string, company?: string, title?: string): string {

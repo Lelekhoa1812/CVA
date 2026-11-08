@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { findProfileSpellingHints } from "../../src/lib/profile-hints";
-import { NoEvidenceError, buildRecordLetter, densityDefects, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
+import { NoEvidenceError, buildRecordLetter, densityDefects, splitLongSentences, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -195,6 +195,18 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(!findLetterDefects(dense, "Nguyen Van Minh", "Xero", "Senior Engineer").some((d) => /runs past/.test(d)), "density must not be shown as a claim");
       const normal = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer role at Xero. I built an API that cut report time.\n\nI led a team of five on a CI/CD pipeline for the payment service.\n\nI look forward to discussing the role.\n\nSincerely,\nNguyen Van Minh";
       assert.deepEqual(densityDefects(normal), []);
+    },
+  },
+  {
+    name: "readability: a long sentence splits at a safe and-I boundary; the signature block keeps its line breaks",
+    run: () => {
+      const long = "At Mizco, I owned end-to-end architecture and production delivery of an AI platform that transformed unstructured RFQ corpora into deterministic, auditable systems, and I engineered a real-time operations cockpit with concurrency-aware tool execution and probabilistic confidence gates for human-in-the-loop overrides across the stack.";
+      const letter = "Dear Hiring Manager,\n\nI am applying for the role.\n\n" + long + "\n\nSincerely,\nNguyen Van Minh\n0450445373 | a@b.com";
+      const out = splitLongSentences(letter);
+      assert.ok(out.includes("systems. I engineered a real-time operations cockpit"), out);
+      assert.ok(out.includes("Sincerely,\nNguyen Van Minh\n0450445373 | a@b.com"), out);
+      assert.deepEqual(out.split(/(?<=[.!?])\s+/).filter((x) => x.split(/\s+/).length > 40), []);
+      assert.equal(splitLongSentences("A short sentence. Another one."), "A short sentence. Another one.");
     },
   },
   {
