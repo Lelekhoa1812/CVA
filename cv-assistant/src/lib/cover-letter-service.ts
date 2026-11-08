@@ -454,7 +454,14 @@ function repairLetterStructureOnce(text: string, candidateName?: string, company
   // Self-assessment the writer rules forbid: what a result "demonstrates" about the applicant, what a role "equipped me with", what a skill "will help me" do.
   // These are the model's inferences (often worded from the posting), never facts from the CV.
   fixed = fixed.replace(/,\s*which (?:demonstrates|shows|reflects|highlights|proves|underscores|showcases)\b[^.\n]*(?=\.)/g, "");
-  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)[A-Z][^.!?\n]*\b(?:provides|provided|gives|gave|equips|equipped|(?:has|have) equipped) me with\b[^.!?\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)[A-Z][^.!?\n]*\b(?:provides|provided|gives|gave|equips|equipped|(?:has|have) equipped) (?:me with|(?:me )?(?:the|a|an) (?:\w+ )?(?:foundation|grounding|basis))\b[^.!?\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
+  // "As an AI/ML Engineer with production experience, I ..." gives the applicant the posting's own job title: keep the experience, drop the title.
+  if (title) {
+    const posted = title.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    fixed = fixed
+      .replace(new RegExp(`\\bAs an? ${posted} with\\b`, "g"), "With")
+      .replace(new RegExp(`\\bAs an? ${posted},\\s+I\\b`, "g"), "I");
+  }
   fixed = fixed.replace(/(^|\n\n|(?<=[.!?])[ \t]+)[A-Z][^.!?\n]*\bwill (?:help|enable|allow) me\b[^.!?\n]*\.[ \t]*/g, (_m, lead) => (lead.includes("\n") ? lead : lead ? " " : ""));
   fixed = fixed.replace(/\b(?:I )?(?:have|has) demonstrated (?:the|my|an?) (?:ability|capacity|capability) to\b/g, (match) => (match.startsWith("I ") ? "I can" : "can"));
   // The closing is a statement, not a question to the reader ("Would you like to discuss the role?").

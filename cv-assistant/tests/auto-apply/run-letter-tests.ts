@@ -104,6 +104,9 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(fixed.includes("I am proficient in MISA software and prepare VAT declarations."), fixed);
       assert.ok(fixed.includes("I would welcome the opportunity to discuss the role.\n\nNguyen Minh Anh"), fixed);
       const plain = "Dear Hiring Manager,\n\nI built a reporting service that shows month-end status to the finance team, and the dashboard highlights late items for review.\n\nI would welcome the opportunity to discuss the role.\n\nAlex Tester";
+      const borrowed = repairLetterStructure("Dear Hiring Manager,\n\nAs a Graduate Accountant with a track record of reducing month-end closing from 5 days to 3 days, I am applying for the role at Acme. As a Graduate Accountant, I reconciled accounts each quarter for three companies and worked with independent auditors.\n\nAs a Graduate Accountant candidate, I would welcome the opportunity to discuss the role.\n\nNguyen Minh Anh", "Nguyen Minh Anh", "Acme", "Graduate Accountant");
+      assert.ok(borrowed.includes("With a track record of reducing month-end closing") && borrowed.includes("I reconciled accounts each quarter") && borrowed.includes("As a Graduate Accountant candidate"), borrowed);
+      assert.ok(!/My degree provides the academic foundation/.test(repairLetterStructure("Dear Hiring Manager,\n\nI reconciled accounts each quarter for three companies and worked with independent auditors at year end. My degree provides the academic foundation for supporting customers in a fast-moving environment.\n\nI would welcome the opportunity to discuss the role.\n\nNguyen Minh Anh", "Nguyen Minh Anh", "Acme", "Graduate Accountant")));
       assert.ok(repairLetterStructure(plain, "Alex Tester", "Acme", "Analyst").includes("I built a reporting service that shows month-end status to the finance team, and the dashboard highlights late items for review."));
     },
   },
