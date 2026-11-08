@@ -164,6 +164,16 @@ const tests: Array<{ name: string; run: () => void }> = [
     },
   },
   {
+    name: "repairs: a sentence whose fit clause is a gerund ('aligns with developing agent skills for remediation tasks') is requirement talk and is dropped",
+    run: () => {
+      const letter = "Dear Hiring Manager,\n\nI am applying for the Senior Engineer - AI Agentic role at Xero. As a Software Engineer, I built an API that cut report time by 30%.\n\nMy experience building inventory forecasting systems using Python and scikit-learn aligns with developing agent skills for remediation tasks. I would welcome the opportunity to discuss the role.\n\nSincerely,\nNguyen Van Minh";
+      const fixed = repairLetterStructure(letter, "Nguyen Van Minh", "Xero", "Senior Engineer - AI Agentic");
+      assert.ok(!/aligns with developing|remediation/.test(fixed), fixed);
+      assert.ok(fixed.includes("built an API that cut report time by 30%."), fixed);
+      assert.ok(fixed.includes("I would welcome the opportunity to discuss the role."), fixed);
+    },
+  },
+  {
     name: "repairs: the employer's own title as an opening and a trailing 'aligning with your need' clause",
     run: () => {
       const letter = "Dear Hiring Manager,\n\nAs Decagon's Agent Deployment Engineer, I deliver end-to-end agent builds at Axion Solutions, directly aligning with your need for enterprise-grade AI solutions deployed at scale. I also led a team.\n\nSincerely,\nDang Khoa Le";
