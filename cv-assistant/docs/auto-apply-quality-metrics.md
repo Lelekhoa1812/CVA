@@ -360,3 +360,7 @@ The open defect from the local-build run ("My experience ... aligns with develop
 Deployment: `4ae1b96` is live as `dpl_2XFAAUXwGPW2Rt3bnpoGLEe6VrpX` (READY, confirmed with `vercel inspect`). Its first build (`dpl_2w5RUB`) was cancelled by mistake after about 30 seconds of normal build output, because the elapsed time was misread. A replacement build of the same commit went through. A local production build of `4ae1b96` also completed.
 
 Live check: a fresh rewrite of the Xero letter on production (test account, draft only, nothing approved) produced a 1,529-character letter with no gerund fit sentence and no "remediation" wording. Every claim in it traces to the CV. Remaining style points, not fixed: a soft-skill line ("I communicate clearly to challenge decisions respectfully") and dense phrasing in the Mizco paragraph.
+
+## Decision on the live cases (2026-11-09)
+
+Asked whether to create a second production account for the empty, thin and Vietnamese cases, the user chose to skip the live runs. They stay verified on the local production build only, as recorded above. Creating accounts on production remains out of scope.
