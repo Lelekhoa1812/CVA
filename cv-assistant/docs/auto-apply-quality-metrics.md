@@ -386,3 +386,14 @@ Live (`dpl_FsTjLQ`, READY), Xero letter, test account, draft only, nothing appro
 - Rewrite 2: 1,420 characters, 8 sentences, two sentences over 40 words (48 and 52 words), no trait line.
 
 So the guard reduces long sentences but does not remove them: one of two samples still had two. The retry is a single round and the model's output varies. Still open: a deterministic split, or a second retry round, would be the next step if the density has to go to zero. A first live read in this run showed the previous letter still on screen and is not counted.
+
+## Long sentences: deterministic split (2026-11-09)
+
+Change in `264361c` (live as `dpl_CunhVj`, READY): a sentence over 40 words is split at a safe ", and I" or "; I" boundary, when both halves are full sentences. Only the long sentence changes; the signature block keeps its line breaks. Regression test added. Offline suites pass; typecheck and lint are clean.
+
+Live, Xero letter, test account, drafts only, nothing approved:
+- Two rewrites after the change: 1,420 characters with 10 sentences, and 1,337 characters with 9 sentences. In both, no sentence is over 40 words, and no trait line appears.
+- The earlier sample from before the split (1,420 characters, two sentences of 48 and 52 words) is not counted.
+- Sentences without a safe boundary can still be long. The split does not cover them.
+
+Change in `c30423d`: the repair that drops "<experience> aligns with <Company>'s need" sentences also accepts a curly apostrophe (Xero’s). The second post-split sample contained "My work directly aligns with Xero’s need for production discipline", which that repair missed. Regression test added. Not yet verified on production at the time of writing.
