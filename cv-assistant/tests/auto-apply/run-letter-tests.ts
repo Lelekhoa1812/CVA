@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
-import { NoEvidenceError, buildRecordLetter, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
+import { NoEvidenceError, buildRecordLetter, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
 
 const profile = {
   name: "Dang Khoa Le",
@@ -64,6 +64,32 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.deepEqual(findUnsupportedClaims(text, { skills: "CI/CD, Git workflows" } as never, "Xero").filter((claim) => /ci\/cd|git/.test(claim)), []);
       const stripped = stripUnsupportedSentences(`Dear Hiring Manager,\n\nI am applying for the role at Xero. ${text} I built a LangGraph workflow engine for a capital markets platform and evaluated it on live data with a five person team. I led the design of the retrieval layer and wrote the evaluation harness myself, which kept the release cadence steady across several quarters of delivery.\n\nI would welcome the opportunity to discuss the role.\n\nSincerely,\nAlex Tester`, ["ci/cd", "git workflows"], "Xero");
       assert.ok(stripped === null || !/ci\/cd/i.test(stripped), "sentence with CI/CD survives strip");
+    },
+  },
+  {
+    name: "a count spelled out in words is a figure: flagged unless the CV has the number; digits in the CV match words in the letter",
+    run: () => {
+      const text = "I entered invoices for over four hundred transactions and trained two thousand users.";
+      const found = findUnsupportedClaims(text, { skills: "Excel" } as never, "Acme");
+      assert.ok(found.includes("four hundred") && found.includes("two thousand"), `found: ${found}`);
+      assert.deepEqual(findUnsupportedClaims(text, { experiences: [{ description: "Processed 400 invoices and supported 2,000 users" }] } as never, "Acme").filter((claim) => /hundred|thousand/.test(claim)), []);
+      assert.deepEqual(findUnsupportedClaims("I led a five person team and answered fifteen tickets a day.", { skills: "Excel" } as never, "Acme").filter((claim) => /hundred|thousand|million/.test(claim)), []);
+    },
+  },
+  {
+    name: "a CV written in another language is detected; English CVs, terse ones included, are not",
+    run: () => {
+      assert.equal(isMostlyNonEnglish("Lập báo cáo tài chính hàng quý và báo cáo thuế cho 3 công ty thành viên. Đối chiếu công nợ phải thu, phải trả, giảm sai lệch số liệu từ 15 xuống 4 khoản mỗi quý. Phối hợp với kiểm toán độc lập trong đợt kiểm toán cuối năm."), true);
+      assert.equal(isMostlyNonEnglish("Responsable de la gestión de proyectos de construcción residencial y coordinación de equipos de obra en Madrid. Elaboración de presupuestos y control de costes para clientes particulares y promotores durante cinco años."), true);
+      assert.equal(isMostlyNonEnglish("Triaged up to 40 patients per shift using the Australasian Triage Scale. Administered IV medications and managed wound care for trauma presentations. Precepted six graduate nurses through their first rotation."), false);
+      assert.equal(isMostlyNonEnglish("Barista. Made coffee. Served customers. Cleaned the store. Opened and closed shop. Handled cash. Worked weekends. Trained new staff on the espresso machine. Stocked shelves. Greeted regulars by name. Managed the till and balanced it at close of day."), false);
+    },
+  },
+  {
+    name: "an English profile is returned untouched by the translation step (no model call)",
+    run: async () => {
+      const profile = { name: "Sam", major: "Bachelor of Nursing", skills: "Triage, IV therapy, wound care, medication administration and patient education across emergency and medical wards for adult patients.", experiences: [{ role: "Registered Nurse", companyName: "Alfred Hospital", description: "- Triaged up to 40 patients per shift using the Australasian Triage Scale.\n- Administered IV medications and managed wound care for trauma presentations." }], projects: [] };
+      assert.equal(await translateProfileToEnglish(profile as never), profile);
     },
   },
   {
@@ -248,6 +274,10 @@ const tests: Array<{ name: string; run: () => void }> = [
       // Role name from the posting, "implied relevance" and vague lines are not claims; a specific claim still is.
       assert.ok(isNonClaimRemark("The draft mentions the role 'Senior Software Engineer, AI Tooling, Information Security' at Airwallex, but there is no candidate evidence or clarification that confirms the candidate applied for or"));
       assert.ok(isNonClaimRemark("The draft implies relevance to 'Information Security' through terms like 'Trust-First AI model'"));
+      assert.ok(isNonClaimRemark("Draft claims candidate is 'General Ledger Accountant' at Sao Viet Company, but evidence shows official title is 'Kế toán tổng hợp' (General Ledger Accountant)"));
+      assert.ok(isNonClaimRemark("Draft states candidate 'prepare quarterly financial statements', which is supported by evidence"));
+      assert.ok(!isNonClaimRemark("Draft claims candidate is 'Finance Director' at Sao Viet Company, but evidence shows official title is 'Kế toán tổng hợp' (General Ledger Accountant)"));
+      assert.ok(!isNonClaimRemark("Draft states candidate led a team of ten, which is not supported by evidence"));
       assert.ok(isNonClaimRemark("Claims about leadership roles lack verification"));
       assert.ok(!isNonClaimRemark("Candidate's claim to have led a 40-person team at Google is not supported"));
       assert.ok(!isNonClaimRemark("The draft says the candidate managed 12 engineers at Atlassian"));

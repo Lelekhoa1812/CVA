@@ -196,6 +196,7 @@ Rules:
 - Preserve the candidate's actual role and level of responsibility. Do not infer steps, decisions, collaboration, or causes that the evidence does not state. Do not repeat the resume or promise a result the evidence does not document.
 - Never invent or upgrade facts, employers, job titles, dates, skills, qualifications, work rights, tools, metrics, scope, seniority, outcomes, or motivation. Do not treat a job requirement as evidence about the candidate, and never state that the candidate mentored, supervised, managed, trained or recruited anyone, or holds a licence, registration or certification, unless the evidence or the qualifications on record say so. If evidence is missing, omit the claim. You may mention a supported adjacent skill only by calling it adjacent, not by implying direct experience.
 - Report each result in the evidence's own words and figures. Do not add outcome or quality words the evidence does not state (consistently, measurable, successful, improved engagement, supported retention, scaled, streamlined), and do not state what a result shows about the candidate's skills.
+- Write the whole letter in English, from the greeting to the sign-off, even when the job description or the candidate's data is in another language. Translate duties and job titles into natural English, and keep company names, product names, tool names and the candidate's name exactly as written.
 - Output only the final letter, without placeholders or meta-commentary.`;
 }
 
