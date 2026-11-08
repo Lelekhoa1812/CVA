@@ -407,3 +407,15 @@ Change in `8b15b35` (live as `dpl_Dps9WR2`, READY): when a draft still has a sen
 Live, Xero letter, test account, draft only, nothing approved: one rewrite took about 109 seconds from click to finished, close to the 120-second target. The letter was 1,768 characters, 10 sentences, with one sentence of 46 words. So the second pass reduces long sentences but did not remove them in this sample. The earlier readings in this run showed the previous letter still on screen and are not counted.
 
 Still open: long sentences can remain, and the latency has little room. Removing them fully needs a change to the letter agent itself.
+
+## Letter prompt: sentences under 30 words, live result (2026-11-09)
+
+Change in `8c8f634` (live as `dpl_ADfEFs`, READY): the letter prompt asks for sentences under 30 words, and for a sentence that stacks several tools, outcomes or responsibilities to be split. Offline suites pass; typecheck and lint are clean.
+
+Live, Xero letter, test account, draft only, nothing approved: two new rewrites, both clean.
+- 1,869 characters, 11 sentences, no sentence over 40 words, no trait line; about 100 seconds from click.
+- 1,263 characters, 10 sentences, no sentence over 40 words, no trait line; about 92 seconds from click.
+
+Readings that showed a letter of unchanged length were the previous letter still on screen and are not counted. Two samples are evidence, not proof for every letter. The letter agent is not deterministic, and the 40-word guard and the one-pass retry remain the backstop.
+
+Still open: the latency is 92 to 100 seconds, close to the 120-second target. The live empty, thin and Vietnamese cases are not run on production, as chosen.
