@@ -399,3 +399,11 @@ Live, Xero letter, test account, drafts only, nothing approved:
 Change in `c30423d`: the repair that drops "<experience> aligns with <Company>'s need" sentences also accepts a curly apostrophe (Xero’s). The second post-split sample contained "My work directly aligns with Xero’s need for production discipline", which that repair missed. Regression test added. Not yet verified on production at the time of writing.
 
 Live check of `c30423d` (`dpl_2ev9C1W9`, READY): one rewrite of the Xero letter, draft only. The new letter is 1,240 characters, 9 sentences, with no "aligns with … need" sentence, no sentence over 40 words and no trait line. One sample, so this is evidence the fix works, not proof for every letter.
+
+## Second rewrite pass: live result (2026-11-09)
+
+Change in `8b15b35` (live as `dpl_Dps9WR2`, READY): when a draft still has a sentence over 40 words, the pipeline now runs a second retry round, accepted only if the combined defect and claim count improves.
+
+Live, Xero letter, test account, draft only, nothing approved: one rewrite took about 109 seconds from click to finished, close to the 120-second target. The letter was 1,768 characters, 10 sentences, with one sentence of 46 words. So the second pass reduces long sentences but did not remove them in this sample. The earlier readings in this run showed the previous letter still on screen and are not counted.
+
+Still open: long sentences can remain, and the latency has little room. Removing them fully needs a change to the letter agent itself.
