@@ -40,6 +40,8 @@ export const autoApplyFiltersSchema = z.object({
   excludeKeywords: z.array(z.string().trim()).default([]),
   companyBlacklist: z.array(z.string().trim()).default([]),
   applicationLimit: z.number().int().min(1).max(100).default(10),
+  /** 0 = off. Otherwise a prepared application with at least this fit and nothing left to check is approved automatically. */
+  autoApproveMinFit: z.number().int().min(0).max(100).default(0),
   selectedSources: z.array(z.enum(SEARCH_SOURCES)).min(1).default([...SEARCH_SOURCES]),
   maxResultsPerSource: z
     .union(MAX_RESULTS_OPTIONS.map((value) => z.literal(value)) as [
@@ -63,6 +65,7 @@ export const defaultAutoApplyFilters: AutoApplyFilters = {
   excludeKeywords: [],
   companyBlacklist: [],
   applicationLimit: 10,
+  autoApproveMinFit: 0,
   selectedSources: [...SEARCH_SOURCES],
   maxResultsPerSource: 25,
 };

@@ -21,6 +21,7 @@ const preferencesSchema = z.object({
   howHeard: short,
   github: short,
   currentCompany: short,
+  standingConsent: z.enum(["", "yes"]).default(""),
 });
 
 export async function GET(req: NextRequest) {

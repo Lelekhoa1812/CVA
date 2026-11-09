@@ -1,4 +1,5 @@
 import { buildApiUrl } from "@/lib/api";
+import type { OpenQuestionGroup } from "@/lib/auto-apply/inbox";
 import type { ApplicantPreferences, BriefForm, JobDetail, SessionData, SessionSummary } from "./types";
 
 export class ApiError extends Error {
@@ -31,6 +32,7 @@ export function filtersFromBrief(brief: BriefForm) {
     excludeKeywords: splitCsv(brief.excludeKeywords),
     companyBlacklist: splitCsv(brief.companyBlacklist),
     applicationLimit: brief.applicationLimit,
+    autoApproveMinFit: brief.autoApproveMinFit,
     selectedSources: brief.selectedSources,
     maxResultsPerSource: 25,
   };
@@ -53,6 +55,9 @@ export const autoApplyApi = {
   cancel: (id: string) => call<{ cancelled: boolean }>(`/api/auto-apply/session/${id}/cancel`, { method: "POST" }),
   approve: (id: string, jobIds?: string[], undo?: boolean) =>
     call<{ approved: string[]; skipped: Array<{ id: string; reason: string }> }>(`/api/auto-apply/session/${id}/approve`, { method: "POST", body: JSON.stringify({ jobIds, all: !jobIds, undo }) }),
+  openQuestions: (id: string) => call<{ groups: OpenQuestionGroup[] }>(`/api/auto-apply/session/${id}/open-questions`),
+  answerOpenQuestion: (id: string, body: { key: string; value: string; remember: boolean }) =>
+    call<{ filled: number; stillOpen: number }>(`/api/auto-apply/session/${id}/open-questions`, { method: "POST", body: JSON.stringify(body) }),
   refreshAnswers: (id: string) => call<{ updated: number }>(`/api/auto-apply/session/${id}/refresh-answers`, { method: "POST" }),
   getJob: (id: string) => call<JobDetail>(`/api/auto-apply/job/${id}`),
   setStage: (id: string, stage: "selected" | "skipped" | "shortlisted" | "discovered") =>

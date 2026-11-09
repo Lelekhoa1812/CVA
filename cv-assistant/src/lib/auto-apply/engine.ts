@@ -9,6 +9,7 @@ import { AutoApplySessionModel } from "@/lib/models/AutoApplySession";
 import { UserModel, type Profile } from "@/lib/models/User";
 import { streamSearchJobs } from "@/lib/search/server/stream";
 import type { JobSearchResult } from "@/lib/search/types";
+import { autoApproveReady } from "./approval";
 import { buildCandidateSummary, candidateContact, hasUsableProfile, mergePreferences } from "./candidate";
 import { detectAts, safeHttpUrl, isJobBoardUrl } from "./ats";
 import { buildRoleMatcher, discoverFromDirectory, mapWithConcurrency, matchesLocation, matchesRole, resolveJob, type ResolvedJob } from "./discovery";
@@ -391,6 +392,10 @@ export async function preparePending(args: { sessionId: string; userId: string; 
     await logAutoApplyEvent({ userId: args.userId, sessionId: args.sessionId, type: "run_cancelled", message: "Run stopped." });
     return;
   }
+  // The applicant's auto-approve rule: complete drafts with nothing to check are approved without waiting for a click.
+  const auto = await autoApproveReady({ sessionId: args.sessionId, userId: args.userId }).catch(() => ({ approved: 0, held: 0 }));
+  if (auto.approved) stats.autoApproved = auto.approved;
+  if (auto.held) stats.autoHeld = auto.held;
   const remaining = await AutoApplyJobCandidateModel.countDocuments({ sessionId: args.sessionId, status: "selected" });
   const message = remaining
     ? `${remaining} more ${remaining === 1 ? "application is" : "applications are"} queued. Open Matches and press Prepare to continue.`
@@ -557,6 +562,7 @@ export async function refreshStandingAnswers(args: { sessionId: string; userId: 
   }
   if (updated) {
     await logAutoApplyEvent({ userId: args.userId, sessionId: args.sessionId, type: "answers_refreshed", message: `Applied your standing answers to ${updated} application${updated === 1 ? "" : "s"}.` });
+    await autoApproveReady({ sessionId: args.sessionId, userId: args.userId }).catch(() => undefined);
   }
   return updated;
 }

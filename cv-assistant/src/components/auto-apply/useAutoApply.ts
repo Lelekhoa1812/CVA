@@ -16,6 +16,7 @@ export const EMPTY_PREFS: ApplicantPreferences = {
   howHeard: "",
   github: "",
   currentCompany: "",
+  standingConsent: "",
 };
 
 export const DEFAULT_BRIEF: BriefForm = {
@@ -23,6 +24,7 @@ export const DEFAULT_BRIEF: BriefForm = {
   mode: "ai_coaching",
   location: "",
   applicationLimit: 10,
+  autoApproveMinFit: 0,
   seniority: "",
   workplaceMode: "any",
   employmentType: "any",
@@ -109,6 +111,7 @@ export function useAutoApply() {
               mode: latest.mode,
               location: latest.filters?.location || "",
               applicationLimit: latest.filters?.applicationLimit || 10,
+              autoApproveMinFit: latest.filters?.autoApproveMinFit || 0,
               selectedSources: latest.filters?.selectedSources?.length ? latest.filters.selectedSources : current.selectedSources,
             }));
           }
@@ -303,6 +306,7 @@ export function useAutoApply() {
       mode: session.mode,
       location: session.filters?.location || "",
       applicationLimit: session.filters?.applicationLimit || 10,
+      autoApproveMinFit: session.filters?.autoApproveMinFit || 0,
       selectedSources: session.filters?.selectedSources?.length ? session.filters.selectedSources : current.selectedSources,
     }));
     setSelectedJobId(null);

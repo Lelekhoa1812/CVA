@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ATS_LABELS, type AtsProvider } from "@/lib/auto-apply/ats";
 import { cn } from "@/lib/utils";
 import { autoApplyApi } from "./api";
+import OpenQuestions from "./OpenQuestions";
 import { Chip, EmptyState, Spinner, STAGE_LABELS } from "./ui";
 import type { AutoApplyController } from "./useAutoApply";
 import type { DraftAnswer } from "./types";
@@ -294,6 +295,7 @@ export default function ReviewStep({ c }: { c: AutoApplyController }) {
           {c.busy.approveAll ? <Spinner /> : null}Approve all ready ({ready.length})
         </button>
       </div>
+      <OpenQuestions c={c} />
       <div className="grid gap-5 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
         <ul aria-label="Applications" className="space-y-2 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-1">
           {jobs.map((job) => {

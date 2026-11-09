@@ -29,12 +29,14 @@ function trimUrlProtocol(value: string) {
 }
 
 /** Education, summary and skills on record: where a licence, registration or qualification can come from besides an experience. */
-export function buildQualificationsBlock(profile?: { major?: string; school?: string; studyPeriod?: string; profileSummary?: string; skills?: string } | null) {
+export function buildQualificationsBlock(profile?: { major?: string; school?: string; studyPeriod?: string; profileSummary?: string; skills?: string; languages?: string } | null) {
   const cut = (value: string | undefined, max: number) => cleanText(value).replace(/\s+/g, ' ').slice(0, max);
   const lines = [
     [cut(profile?.major, 120), cut(profile?.school, 120)].filter(Boolean).length ? `Education: ${[cut(profile?.major, 120), cut(profile?.school, 120)].filter(Boolean).join(', ')}` : '',
     cut(profile?.profileSummary, 300) ? `Summary: ${cut(profile?.profileSummary, 300)}` : '',
     cut(profile?.skills, 700) ? `Skills, licences and certifications: ${cut(profile?.skills, 700)}` : '',
+    // Languages are on the CV, so a letter that states them is supported; without this line the evidence check flagged them.
+    cut(profile?.languages, 200) ? `Languages: ${cut(profile?.languages, 200)}` : '',
   ].filter(Boolean);
   return lines.join('\n');
 }

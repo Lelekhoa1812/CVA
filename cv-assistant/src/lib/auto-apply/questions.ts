@@ -86,6 +86,8 @@ export type ApplicantPreferences = {
   howHeard: string;
   github: string;
   currentCompany: string;
+  /** The applicant has told us once that privacy, terms and background-check consents may be confirmed for them. */
+  standingConsent: "" | "yes";
 };
 
 export const EMPTY_PREFERENCES: ApplicantPreferences = {
@@ -99,6 +101,7 @@ export const EMPTY_PREFERENCES: ApplicantPreferences = {
   howHeard: "",
   github: "",
   currentCompany: "",
+  standingConsent: "",
 };
 
 export type CandidateProfile = {
@@ -176,6 +179,14 @@ const CATEGORY_RULES: Array<[QuestionCategory, RegExp]> = [
     /\bdescribe\b|\btell us\b|\bexample\b|\bexperience (with|in)\b|\bhow many years\b|\byears of experience\b|\bproject\b|\bachievement\b|\bwalk us through\b|\bexplain\b/,
   ],
 ];
+
+/** Consents to how the employer handles the application (privacy, terms, background checks) can be given once. Attestations about the applicant's own history never can. */
+const PERSONAL_ATTESTATION = /\b(convict\w*|criminal|offen[cs]e|bankrupt\w*|conflict of interest|disciplin\w*|misconduct|dismiss\w*|police|medical|health|disabilit\w*|pregnan\w*|declare (?:that )?(?:i|my)|certify (?:that )?(?:i|my)|i (?:have|has|am|was|do not have|did not|have not|haven't|have never) (?:been|ever|never|any|no|not|a|an|currently|previously|worked|held|served|convicted|declared))\b/i;
+const CONFIRMABLE_CONSENT = /\b(privacy (?:policy|notice|statement)|terms|consent\w*|background (?:check\w*|screening)|reference check\w*|acknowledg\w*|agree\w*)\b/i;
+export function isAutoConfirmableConsent(label: string) {
+  const text = label.replace(/\s+/g, " ").trim();
+  return CONFIRMABLE_CONSENT.test(text) && !PERSONAL_ATTESTATION.test(text);
+}
 
 export function classifyQuestion(label: string, type?: FormQuestionType): QuestionCategory {
   const normalized = normalizeQuestionLabel(label);
@@ -451,6 +462,12 @@ export function answerDeterministically(args: {
     case "consent": {
       // A declaration is the applicant's own attestation: only a remembered confirmation fills it, otherwise it waits for them once.
       if (remembered) return makeAnswer(question, remembered.answer, "memory", 0.9);
+      // A standing consent the applicant gave once covers privacy, terms and background-check consents. A statement of fact about them never is.
+      if (preferences.standingConsent === "yes" && isAutoConfirmableConsent(question.label)) {
+        // A consent box may offer "I agree" rather than "Yes": confirm with the form's own affirmative option.
+        const agree = question.options.find((option) => /^(yes|i agree|agree|i accept|accept|i consent|consent|i acknowledge|acknowledge|i confirm|confirm)\b/i.test(option.label.trim()));
+        return makeAnswer(question, agree ? agree.label : "Yes", "preference", 0.9, "Confirmed from your standing consent.");
+      }
       return { ...makeAnswer(question, "", "default", 0, "Your confirmation is required. Tick Remember and it is filled automatically next time."), needsInput: question.required };
     }
     default:

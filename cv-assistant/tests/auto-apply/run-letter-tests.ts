@@ -1,6 +1,7 @@
 /** Guards for the cover-letter agent that must hold regardless of the model. Run with `npm run test:auto-apply`. */
 import assert from "node:assert/strict";
 import { PREPARE_HARD_DEADLINE_MS, PREPARE_START_CUTOFF_MS } from "../../src/lib/auto-apply/engine";
+import { buildQualificationsBlock } from "../../src/lib/cover-letter";
 import { isMissingInputRemark, isNonClaimRemark, issueQuotesEvidence } from "../../src/lib/generate/claim-check";
 import { findProfileSpellingHints } from "../../src/lib/profile-hints";
 import { NoEvidenceError, buildRecordLetter, densityDefects, splitLongSentences, describeClaim, extractTechTerms, findLetterDefects, findUnsupportedClaims, isMostlyNonEnglish, isThinProfile, repairLetterStructure, runCoverLetterAgent, stripUnsupportedSentences, translateProfileToEnglish } from "../../src/lib/cover-letter-service";
@@ -501,6 +502,14 @@ const tests: Array<{ name: string; run: () => void }> = [
       assert.ok(PREPARE_HARD_DEADLINE_MS < 300_000, "deadline is inside the platform limit");
       assert.ok(PREPARE_HARD_DEADLINE_MS - PREPARE_START_CUTOFF_MS >= 150_000, "a job that starts at the cutoff still has at least 150 s");
       assert.ok(PREPARE_START_CUTOFF_MS >= 60_000, "the first batch always gets to start");
+    },
+  },
+  {
+    name: "the evidence block names the languages on the CV, so a letter that states them is not flagged",
+    run: () => {
+      const block = buildQualificationsBlock({ major: "Bachelor of Software Engineering", languages: "English (fluent), Vietnamese (fluent)" });
+      assert.match(block, /Languages: English \(fluent\), Vietnamese \(fluent\)/);
+      assert.doesNotMatch(buildQualificationsBlock({ major: "Bachelor of Software Engineering" }), /Languages:/);
     },
   },
 ];

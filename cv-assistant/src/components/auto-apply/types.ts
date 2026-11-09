@@ -15,6 +15,7 @@ export type SessionFilters = {
   excludeKeywords: string[];
   companyBlacklist: string[];
   applicationLimit: number;
+  autoApproveMinFit?: number;
   selectedSources: SearchSource[];
 };
 
@@ -87,6 +88,8 @@ export type BriefForm = {
   mode: "ai_coaching" | "manual_curate";
   location: string;
   applicationLimit: number;
+  /** 0 = off. Otherwise a ready draft at or above this fit, with nothing left to check, is approved automatically. */
+  autoApproveMinFit: number;
   seniority: string;
   workplaceMode: string;
   employmentType: string;

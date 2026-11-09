@@ -13,11 +13,15 @@ import {
   suggestOption,
   classifyQuestion,
   countMissing,
+  isAutoConfirmableConsent,
   matchOption,
   standardQuestionSet,
   type CandidateProfile,
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
+import { autoApprovalBlockers } from "../../src/lib/auto-apply/approval";
+import { groupOpenQuestions } from "../../src/lib/auto-apply/inbox";
+import type { DraftAnswer } from "../../src/lib/auto-apply/questions";
 const WORDS_ = (text: string) => text.split(/\s+/).filter(Boolean).length;
 import { findLetterDefects, findUnsupportedClaims, repairLetterStructure, stripUnsupportedSentences } from "../../src/lib/cover-letter-service";
 import { cleanTitle } from "../../src/lib/auto-apply/engine";
@@ -268,6 +272,59 @@ const tests: TestCase[] = [
       assert.equal(classifyQuestion("Why would you like to work at Acme?"), "motivation");
       assert.equal(classifyQuestion("LinkedIn Profile URL"), "linkedin");
       assert.equal(classifyQuestion("Attach", "file"), "resume");
+    },
+  },
+  {
+    name: "a standing consent confirms privacy, terms and background-check consents, never a statement about the applicant's history",
+    run: () => {
+      assert.ok(isAutoConfirmableConsent("Declaration & Background Checking"));
+      assert.ok(isAutoConfirmableConsent("I have read, understood and agree to the Megaport Privacy Policy"));
+      assert.ok(isAutoConfirmableConsent("I acknowledge the terms and conditions"));
+      assert.ok(!isAutoConfirmableConsent("I confirm I have never been convicted of a criminal offence"));
+      assert.ok(!isAutoConfirmableConsent("I declare that I have a conflict of interest with this employer"));
+      const consent = (standingConsent: "" | "yes", label: string) => answerDeterministically({ question: q(label, "boolean", ["Yes", "No"]), profile, preferences: { ...EMPTY_PREFERENCES, standingConsent }, memory: [], company: "Xero" });
+      assert.equal(consent("yes", "Declaration & Background Checking")?.value, "Yes");
+      assert.equal(consent("yes", "Declaration & Background Checking")?.needsInput, false);
+      const agree = answerDeterministically({ question: q("I have read, understood and agree to the Megaport Privacy Policy", "boolean", ["I agree"]), profile, preferences: { ...EMPTY_PREFERENCES, standingConsent: "yes" }, memory: [], company: "Megaport" });
+      assert.equal(agree?.value, "I agree", "a consent box that offers only 'I agree' is confirmed with that option");
+      assert.equal(agree?.needsInput, false);
+      assert.equal(consent("", "Declaration & Background Checking")?.needsInput, true, "without the standing consent the applicant is still asked");
+      assert.equal(consent("yes", "I confirm I have never been convicted of a criminal offence")?.needsInput, true, "an attestation always waits for the applicant");
+    },
+  },
+  {
+    name: "open questions are grouped so one answer serves every application, and unlike declarations stay apart",
+    run: () => {
+      const ans = (over: Partial<DraftAnswer>): DraftAnswer => ({ questionId: "q", fieldName: "q", label: "Question", type: "text", category: "other", required: true, options: [], value: "", source: "default", confidence: 0, needsInput: true, sensitive: false, ...over });
+      const yesNo = [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }];
+      const groups = groupOpenQuestions([
+        { job: { id: "j1", title: "A", company: "Xero" }, answers: [ans({ questionId: "a", label: "Working Rights", category: "work_rights" }), ans({ questionId: "b", label: "Declaration & Background Checking", category: "consent", type: "boolean", options: yesNo })] },
+        { job: { id: "j2", title: "B", company: "Megaport" }, answers: [ans({ questionId: "c", label: "Are you legally authorized to work here?", category: "work_rights" }), ans({ questionId: "d", label: "I agree to the Megaport Privacy Policy", category: "consent", type: "boolean", options: yesNo }), ans({ questionId: "e", label: "Filled", needsInput: false, value: "x" })] },
+      ]);
+      const rights = groups.find((group) => group.category === "work_rights");
+      assert.equal(rights?.items.length, 2, "work rights asked in two words is one question");
+      assert.equal(rights?.rememberDefault, true);
+      assert.equal(groups.filter((group) => group.category === "consent").length, 2, "two different declarations are never merged into one answer");
+      assert.ok(!groups.some((group) => group.label === "Filled"), "answered questions are not listed");
+      const different = groupOpenQuestions([
+        { job: { id: "j1", title: "A", company: "X" }, answers: [ans({ questionId: "a", label: "Working Rights", category: "work_rights", options: yesNo })] },
+        { job: { id: "j2", title: "B", company: "Y" }, answers: [ans({ questionId: "b", label: "Visa status", category: "work_rights", options: [{ label: "Citizen", value: "c" }, { label: "Visa holder", value: "v" }] })] },
+      ]);
+      assert.equal(different.length, 1);
+      assert.deepEqual(different[0].options, [], "forms that word the choices differently are answered in words");
+    },
+  },
+  {
+    name: "auto-approval holds anything a person should read",
+    run: () => {
+      const ans = (over: Partial<DraftAnswer>): DraftAnswer => ({ questionId: "q", fieldName: "q", label: "Question", type: "text", category: "other", required: true, options: [], value: "v", source: "profile", confidence: 0.99, needsInput: false, sensitive: false, ...over });
+      const clean = { answers: [ans({}), ans({ questionId: "w", label: "Why us", source: "ai", confidence: 0.8 })], riskNotes: [], letterClaims: [], coverLetterText: "Dear team" };
+      assert.deepEqual(autoApprovalBlockers(clean), []);
+      assert.match(autoApprovalBlockers({ ...clean, answers: [ans({ needsInput: true, value: "" })] })[0], /still missing/);
+      assert.match(autoApprovalBlockers({ ...clean, letterClaims: ["led a team of ten"] })[0], /claims to check/);
+      assert.match(autoApprovalBlockers({ ...clean, riskNotes: ["Cover letter: Please check these potentially unsupported claims against your own experience: x"] })[0], /potentially unsupported claims/);
+      assert.match(autoApprovalBlockers({ ...clean, answers: [ans({ questionId: "w", label: "How do you use AI", source: "ai", confidence: 0.6 })] })[0], /low-confidence/);
+      assert.match(autoApprovalBlockers({ ...clean, answers: [ans({ category: "cover_letter", label: "Cover letter" })], coverLetterText: "  " })[0], /letter is empty/);
     },
   },
   {

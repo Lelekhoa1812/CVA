@@ -1,8 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
-import { hashApplicationPayload } from "@/lib/auto-apply/prepare";
+import { approvePreparedJob } from "@/lib/auto-apply/approval";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
-import { countMissing, type DraftAnswer } from "@/lib/auto-apply/questions";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 import { AutoApplyApplicationDraftModel } from "@/lib/models/AutoApplyApplicationDraft";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
@@ -48,22 +47,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       approved.push(job._id.toString());
       continue;
     }
-    const answers = (draft.answers || []) as unknown as DraftAnswer[];
-    if (countMissing(answers)) {
-      skipped.push({ id: job._id.toString(), reason: "Some answers are still missing" });
-      continue;
-    }
-    const hash = hashApplicationPayload({ answers, coverLetter: draft.coverLetterText, applyUrl: draft.applyUrl });
-    const reviewed = body.reviewedHashes?.[job._id.toString()];
-    if (reviewed && reviewed !== hash) {
-      skipped.push({ id: job._id.toString(), reason: "Changed since you reviewed it" });
-      continue;
-    }
-    // Atomic claim: concurrent approvals of the same job act once.
-    const claimed = await AutoApplyJobCandidateModel.updateOne({ _id: job._id, status: "prepared" }, { $set: { status: "approved", approvedAt: new Date() }, $push: { stageHistory: { stage: "approved", at: new Date(), note: "Approved" } } });
-    if (!claimed.modifiedCount) continue;
-    await draft.updateOne({ $set: { finalReviewStatus: "approved", approvedAt: new Date(), payloadHash: hash } });
-    approved.push(job._id.toString());
+    const result = await approvePreparedJob({ jobId: job._id.toString(), userId: auth.userId, reviewedHash: body.reviewedHashes?.[job._id.toString()] });
+    if (result.ok) approved.push(job._id.toString());
+    else if (result.reason) skipped.push({ id: job._id.toString(), reason: result.reason });
   }
   if (approved.length) {
     await logAutoApplyEvent({ userId: auth.userId, sessionId: id, type: body.undo ? "approval_withdrawn" : "approved", message: `${body.undo ? "Withdrew approval for" : "Approved"} ${approved.length} application${approved.length === 1 ? "" : "s"}.` });

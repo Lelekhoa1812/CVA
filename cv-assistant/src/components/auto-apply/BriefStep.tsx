@@ -123,6 +123,14 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
               disabled={locked}
             />
           </Field>
+          <Field label="Approve ready applications automatically" hint="Only drafts that are complete, with no cover-letter claim to check and no weak guess, are approved. Anything else stays for you.">
+            <Select id="auto-approve" value={String(brief.autoApproveMinFit)} onChange={(value) => setBrief({ autoApproveMinFit: Number(value) || 0 })}>
+              <option value="0">Off: I approve each one</option>
+              <option value="80">Fit 80 or higher</option>
+              <option value="70">Fit 70 or higher</option>
+              <option value="62">Any shortlisted fit (62+)</option>
+            </Select>
+          </Field>
         </div>
 
         <fieldset disabled={locked} className="space-y-2">
@@ -223,6 +231,20 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
             <input value={prefs.github} onChange={(event) => setPrefs({ github: event.target.value })} placeholder="github.com/you" className="input-premium min-h-11" />
           </Field>
         </div>
+        <label className="surface-subtle flex cursor-pointer items-start gap-3 rounded-2xl p-4">
+          <input
+            type="checkbox"
+            checked={prefs.standingConsent === "yes"}
+            onChange={(event) => setPrefs({ standingConsent: event.target.checked ? "yes" : "" })}
+            className="mt-1 h-5 w-5 shrink-0"
+          />
+          <span className="text-sm leading-6">
+            <span className="text-foreground block font-semibold">Confirm privacy, terms and background-check consents for me</span>
+            <span className="text-muted-foreground block">
+              Employers ask you to agree to their privacy policy, terms or a background check. Tick this once and those boxes are filled for you. Statements about your own history, such as a criminal record or a conflict of interest, are never confirmed for you.
+            </span>
+          </span>
+        </label>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className="button-secondary min-h-11" disabled={!c.prefsDirty || Boolean(c.busy.savePrefs)} onClick={() => void c.act("savePrefs", () => c.savePrefs())}>
             {c.busy.savePrefs ? <Spinner /> : null}Save standing answers
