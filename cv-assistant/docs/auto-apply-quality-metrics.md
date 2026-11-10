@@ -458,7 +458,7 @@ Defects found by running on real forms and fixed:
 - a lone consent checkbox was never ticked; a required checkbox group counts as met when any box is ticked
 - Ashby parses an uploaded resume and fills its own fields: the resume now goes first, then the approved answers
 - a remembered status ("Australian citizen") was sent as the answer to a yes/no work-rights question
-- the dropdown for stored questions classified before the fix is migrated when an application is re-prepared
+- questions stored with the old (wrong) classification are reclassified when an application is re-prepared
 
 Results: 58 unit tests, 40 letter tests, 6 guard tests, 16 end-to-end agent checks in a real browser against local employer forms (send once, CAPTCHA, login, uncovered field, rejection, no confirmation, place search, resume parse overwrite). Check-mode runs on the real Megaport (Lever) form: filled and complete. On the real Kaluza (Ashby) form: 20 of 22 fields, nothing missing. The full chain (search, prepare, auto-approve, agent check) ran without a click: about 190 s to approved, then about 15 to 40 s per form.
 
