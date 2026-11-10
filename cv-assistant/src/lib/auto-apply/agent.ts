@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Locator, Page } from "playwright";
 import type { Profile } from "@/lib/models/User";
 import { safeHttpUrl } from "./ats";
 import { AUTOFILL_FUNCTION } from "./autofill-script";
@@ -240,8 +240,7 @@ async function attachResume(page: Page, context: BrowserContext, profile: Partia
   await pdfPage.close();
   for (let index = 0; index < count; index += 1) {
     const input = files.nth(index);
-    const hint = await input.evaluate((node) => `${node.getAttribute("name") || ""} ${node.getAttribute("id") || ""} ${node.getAttribute("aria-label") || ""} ${(node.closest("label, fieldset, div")?.textContent || "").slice(0, 120)}`).catch(() => "");
-    if (/cover/i.test(hint) && !/resume|cv/i.test(hint)) continue;
+    if ((await fileRole(input)) === "cover") continue;
     await input.setInputFiles(resumePath).catch(() => undefined);
     break;
   }
@@ -253,6 +252,45 @@ async function attachResume(page: Page, context: BrowserContext, profile: Partia
     if (!UPLOAD_BUSY.test(text) && (text.includes(resumeName) || held || Date.now() - started > 6000)) break;
     await page.waitForTimeout(500);
   }
+  return true;
+}
+
+/** Which field a file input belongs to, read from the nearest heading above it: "cover", "resume" or "" when unclear. */
+async function fileRole(input: Locator): Promise<string> {
+  return (await input.evaluate((node) => {
+    const labelled = node.id ? document.querySelector('label[for="' + node.id + '"]') : null;
+    const own = labelled ? ((labelled as HTMLElement).innerText || "").trim() : "";
+    if (/^cover letter/i.test(own)) return "cover";
+    if (/^resume/i.test(own)) return "resume";
+    let current: Element | null = node;
+    for (let depth = 0; depth < 5 && current; depth += 1) {
+      const first = ((current as HTMLElement).innerText || "").trim().split("\n")[0] || "";
+      if (/^cover letter/i.test(first)) return "cover";
+      if (/^resume/i.test(first)) return "resume";
+      current = current.parentElement;
+    }
+    return "";
+  }).catch(() => "")) as string;
+}
+
+/** Attaches the generated cover letter, as a PDF, to a file field labelled for a cover letter. Forms that take a letter as text are left to the answers. */
+async function attachCoverLetter(page: Page, context: BrowserContext, letter: string, workDir: string, fileName: string) {
+  if (!letter.trim()) return false;
+  const files = page.locator("input[type=file]");
+  const count = await files.count();
+  let target = -1;
+  for (let index = 0; index < count && target < 0; index += 1) {
+    if ((await fileRole(files.nth(index))) === "cover") target = index;
+  }
+  if (target < 0) return false;
+  const letterPath = path.join(workDir, fileName);
+  const esc = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const pdfPage = await context.newPage();
+  await pdfPage.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.45;margin:48px;color:#111}</style></head><body><div style="white-space:pre-wrap">${esc(letter)}</div></body></html>`);
+  await pdfPage.pdf({ path: letterPath, format: "A4", printBackground: true });
+  await pdfPage.close();
+  await files.nth(target).setInputFiles(letterPath).catch(() => undefined);
+  await page.waitForTimeout(1200);
   return true;
 }
 
@@ -342,6 +380,7 @@ export async function runApplyAgent(args: {
 
     const resumeName = `${(args.profile.name || "Resume").replace(/[^\w ]+/g, "").trim() || "Resume"} - Resume.pdf`;
     await attachResume(page, context, args.profile, workDir, resumeName);
+    await attachCoverLetter(page, context, args.pack.coverLetter, workDir, resumeName.replace(/ - Resume\.pdf$/, " - Cover Letter.pdf"));
 
     const report = (await page.evaluate(`(${AUTOFILL_FUNCTION})(${JSON.stringify({ ...args.pack, kind: "cva-autofill", version: 1 })})`)) as { filled: number; total: number; results: Array<{ label: string; status: string }> };
     // An answered field the page still shows empty is a gap, required or not: the agent must not call the form ready without it.

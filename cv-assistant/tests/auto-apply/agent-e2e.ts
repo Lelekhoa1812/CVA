@@ -47,6 +47,7 @@ const server = http.createServer((req, res) => {
   if (url === "/form-react-select") return res.end(page(`<div class="select-shell"><label for="country">Country *</label><div class="select__control"><div class="select__single-value">Australia</div><input id="country" role="combobox" aria-required="true" class="select__input" value=""></div><input class="requiredInput" required style="opacity:0;height:1px"></div>`));
   if (url === "/form-restricted") return res.end(`<!doctype html><html><body><h1>Access is temporarily restricted</h1><p>We detected unusual activity from your device or network.</p><iframe title="challenge" src="/hcaptcha-frame" width="300" height="78"></iframe></body></html>`);
   if (url === "/form-custom-dropdown") return res.end(page(`<label for="contact">Preferred contact method</label><div id="contact" role="button" tabindex="0" class="custom-select">Choose one</div>`));
+  if (url === "/form-cover-file") return res.end(page(`<label for="cover">Cover letter file</label><input id="cover" name="cover" type="file">`));
   if (url === "/hcaptcha-frame") return res.end("<p>captcha</p>");
   if (url === "/form-hidden-captcha") return res.end(page(`<iframe title="Widget containing checkbox for hCaptcha security challenge" src="/hcaptcha-frame" style="visibility:hidden;position:fixed;top:0;left:0;width:100%;height:100%"></iframe>`));
   if (url === "/form-badge") return res.end(page(`<p style="font-size:9px">This site is protected by reCAPTCHA and the Google Privacy Policy.</p>`));
@@ -123,6 +124,10 @@ async function main() {
 
   result = await run("/form-restricted", "check");
   check("a site that refuses automated access is reported as that, not as a CAPTCHA", result.status === "blocked" && /blocked automated access/i.test(result.reason), JSON.stringify(result));
+
+  received = 0;
+  result = await run("/form-cover-file", "submit");
+  check("the generated cover letter reaches a cover-letter file field as a PDF", result.status === "submitted" && received === 1 && /Cover Letter\.pdf/.test(lastBody), JSON.stringify(lastBody.match(/filename="[^"]*"/g)) + " " + received);
 
   result = await run("/form-react-select", "check");
   check("a react-select that shows its choice counts as filled", result.status === "ready", JSON.stringify(result));
