@@ -330,6 +330,23 @@ async function clickYesNo(page: Page, label: string, value: string) {
   )) as boolean;
 }
 
+/** Picks the radio whose own label reads exactly as the answer (a select rendered as radios). Returns whether it is now chosen. */
+async function clickRadioOption(page: Page, value: string) {
+  const wanted = value.replace(/\s+/g, " ").trim().toLowerCase();
+  if (!wanted) return false;
+  return (await page.evaluate((text: string) => {
+    const inputs = Array.prototype.slice.call(document.querySelectorAll("input[type=radio]")) as HTMLInputElement[];
+    for (const input of inputs) {
+      const box = input.closest("label, li, div");
+      const label = box ? (box.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
+      if (label !== text) continue;
+      if (!input.checked) input.click();
+      return input.checked;
+    }
+    return false;
+  }, wanted)) as boolean;
+}
+
 /** Attaches the generated cover letter, as a PDF, to a file field labelled for a cover letter. Forms that take a letter as text are left to the answers. */
 async function attachCoverLetter(page: Page, context: BrowserContext, letter: string, workDir: string, fileName: string) {
   if (!letter.trim()) return false;
@@ -442,7 +459,8 @@ export async function runApplyAgent(args: {
     const report = (await page.evaluate(`(${AUTOFILL_FUNCTION})(${JSON.stringify({ ...args.pack, kind: "cva-autofill", version: 1 })})`)) as { filled: number; total: number; results: Array<{ label: string; status: string }> };
     // The in-page script can report a Yes/No question as filled without choosing an option, so every Yes/No answer is set here.
     for (const field of args.pack.fields) {
-      if ((field.type === "boolean" || field.type === "select") && /^(yes|no)$/i.test(field.value.trim())) await clickYesNo(page, field.label, field.value).catch(() => false);
+      if (field.type !== "file" && /^(yes|no)$/i.test(field.value.trim())) await clickYesNo(page, field.label, field.value).catch(() => false);
+      else if (field.type === "select" && field.value) await clickRadioOption(page, field.value).catch(() => false);
     }
     // An answered field the page still shows empty is a gap, required or not: the agent must not call the form ready without it.
     const stillOpen: string[] = [];

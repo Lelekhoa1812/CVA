@@ -52,6 +52,7 @@ const server = http.createServer((req, res) => {
   if (url === "/form-custom-dropdown") return res.end(page(`<label for="contact">Preferred contact method</label><div id="contact" role="button" tabindex="0" class="custom-select">Choose one</div>`));
   if (url === "/form-cover-file") return res.end(page(`<label for="cover">Cover letter file</label><input id="cover" name="cover" type="file">`));
   if (url === "/form-yesno") return res.end(page(ASHBY_YES_NO));
+  if (url === "/form-radio-select") return res.end(page(`<div><div>Where will you work?</div><label><input type="radio" name="wh" value="office"> In one of our beautiful offices</label><label><input type="radio" name="wh" value="hybrid"> Hybrid - a combination of office and remote</label></div>`));
   if (url === "/hcaptcha-frame") return res.end("<p>captcha</p>");
   if (url === "/form-hidden-captcha") return res.end(page(`<iframe title="Widget containing checkbox for hCaptcha security challenge" src="/hcaptcha-frame" style="visibility:hidden;position:fixed;top:0;left:0;width:100%;height:100%"></iframe>`));
   if (url === "/form-badge") return res.end(page(`<p style="font-size:9px">This site is protected by reCAPTCHA and the Google Privacy Policy.</p>`));
@@ -135,6 +136,10 @@ async function main() {
 
   result = await run("/form-restricted", "check");
   check("a site that refuses automated access is reported as that, not as a CAPTCHA", result.status === "blocked" && /blocked automated access/i.test(result.reason), JSON.stringify(result));
+
+  received = 0;
+  result = await runApplyAgent({ pack: { ...pack(`http://127.0.0.1:${port}/form-radio-select`), fields: [...pack(`http://127.0.0.1:${port}/form-radio-select`).fields, { fieldName: "wh", label: "Where will you work?", type: "select", required: false, value: "Hybrid - a combination of office and remote", options: ["In one of our beautiful offices", "Hybrid - a combination of office and remote"] }] }, profile, mode: "submit", headless: true, allowLocalUrls: true, confirmTimeoutMs: 3000 });
+  check("a select answered from a list of radio options is submitted with the chosen option", received === 1 && /name="wh"\r\n\r\nhybrid/.test(lastBody) && result.status === "submitted", JSON.stringify(result).slice(0, 200) + " " + (lastBody.match(/name="wh"[\s\S]{0,30}/) || ["none"])[0]);
 
   received = 0;
   result = await run("/form-cover-file", "submit");
