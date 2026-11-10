@@ -102,10 +102,10 @@ type PageState = { text: string; url: string; challenge: boolean; errors: string
 async function pageState(page: Page): Promise<PageState> {
   return (await page.evaluate(`(function(){
     var visible=function(el){return !!(el&&(el.offsetWidth||el.offsetHeight||el.getClientRects().length));};
-    // An invisible challenge frame (visibility hidden, zero opacity) is a background check, not a wall in front of the applicant.
+    // An invisible challenge frame (visibility hidden, zero opacity) or the reCAPTCHA badge (Greenhouse's invisible mode) is a background check, not a wall in front of the applicant.
     var shown=function(el){return visible(el)&&(el.checkVisibility?el.checkVisibility({checkVisibilityCSS:true,checkOpacity:true}):getComputedStyle(el).visibility!=='hidden');};
     var text=(document.body&&document.body.innerText)||'';
-    var challenge=[].slice.call(document.querySelectorAll('iframe')).some(function(f){var src=(f.getAttribute('src')||'')+' '+(f.getAttribute('title')||'');var r=f.getBoundingClientRect();return /captcha|turnstile|challenge/i.test(src)&&r.width>=100&&r.height>=40&&shown(f);});
+    var challenge=[].slice.call(document.querySelectorAll('iframe')).some(function(f){var src=(f.getAttribute('src')||'')+' '+(f.getAttribute('title')||'');var r=f.getBoundingClientRect();return /captcha|turnstile|challenge/i.test(src)&&r.width>=100&&r.height>=40&&shown(f)&&!f.closest('.grecaptcha-badge');});
     var errors=[].slice.call(document.querySelectorAll('.error, .field-error, [class*="error"], [role="alert"]')).filter(visible).map(function(n){return (n.textContent||'').replace(/\\s+/g,' ').trim();}).filter(Boolean).slice(0,8);
     var invalid=[].slice.call(document.querySelectorAll('[aria-invalid="true"]')).filter(visible).length;
     return {text:text.slice(0,20000),url:location.href,challenge:challenge,errors:errors,invalid:invalid};
@@ -121,6 +121,10 @@ async function missingRequired(page: Page, resumeName: string): Promise<string[]
     [].slice.call(document.querySelectorAll('input,select,textarea')).forEach(function(el){
       if(el.type==='hidden'||el.disabled||(!visible(el)&&el.type!=='file'))return;
       var required=el.required||el.getAttribute('aria-required')==='true';if(!required)return;
+      // A react-select keeps its input empty and shows the chosen option beside it; its hidden validation input has no label.
+      var shell=el.closest('.select-shell,.select__container,[class*="select__control"],[class*="select-container"]')||(el.getAttribute('role')==='combobox'?el.closest('div[class*="select"]')&&el.closest('div[class*="select"]').parentElement:null);
+      var chosen=shell&&shell.querySelector('[class*="single-value"],[class*="singleValue"],[class*="multi-value__label"]');
+      if(chosen&&(chosen.textContent||'').trim())return;
       var empty=false;
       if(el.type==='checkbox'){var group=el.name?[].slice.call(document.querySelectorAll('input[type=checkbox]')).filter(function(c){return c.name===el.name;}):[el];if(group.length>1){if(seen['cb:'+el.name])return;seen['cb:'+el.name]=1;empty=!group.some(function(c){return c.checked;});}else empty=!el.checked;}
       else if(el.type==='radio'){if(seen[el.name])return;seen[el.name]=1;empty=![].slice.call(document.querySelectorAll('input[type=radio][name="'+el.name+'"]')).some(function(r){return r.checked;});}
@@ -130,6 +134,19 @@ async function missingRequired(page: Page, resumeName: string): Promise<string[]
     });
     return out;
   })()`)) as string[];
+}
+
+const AU_STATE = /\b(?:vic|nsw|qld|wa|sa|tas|act|nt|victoria|new south wales|queensland|western australia|south australia|tasmania|australian capital territory|northern territory|australia)\b/i;
+
+/** The country a required Country box should name, when the profile makes it plain (an Australian state or a +61 / 04 phone). Empty when unclear. */
+export function inferCountry(profile: Partial<Profile>, location = ""): string {
+  const place = location;
+  if (AU_STATE.test(place)) return "Australia";
+  const phone = String(profile.phone || "").replace(/[\s().-]/g, "");
+  if (/^(?:\+?61|0061)\d{9}$/.test(phone) || /^04\d{8}$/.test(phone)) return "Australia";
+  if (/\b(?:ho chi minh|hanoi|vietnam)\b/i.test(place) || /^\+84/.test(phone)) return "Vietnam";
+  if (/\b(?:united states|usa|new york|california|texas)\b/i.test(place) || /^\+1\d{10}$/.test(phone)) return "United States";
+  return "";
 }
 
 const LOCATION_LABEL = /\b(?:current )?location\b|\bcity\b|\bsuburb\b|where are you (?:currently )?(?:based|located|living)\b/i;
@@ -298,6 +315,10 @@ export async function runApplyAgent(args: {
       if (field.type !== "text" || !field.value || !LOCATION_LABEL.test(field.label)) continue;
       await pickLocation(page, field.fieldName, field.label, field.value).catch(() => false);
     }
+
+    // A required Country box is not one of the posting's questions; the profile usually settles it.
+    const country = inferCountry(args.profile, args.pack.fields.find((field) => field.value && LOCATION_LABEL.test(field.label))?.value || "");
+    if (country && (await page.getByRole("combobox", { name: /^country\b/i }).count())) await typeIntoCombobox(page, "Country", country).catch(() => false);
 
     const missing = await missingRequired(page, resumeName);
     state = await pageState(page);
