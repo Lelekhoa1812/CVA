@@ -46,6 +46,7 @@ const server = http.createServer((req, res) => {
   // Greenhouse's react-select: the input stays empty, the choice shows beside it, and a hidden unlabeled input only serves validation.
   if (url === "/form-react-select") return res.end(page(`<div class="select-shell"><label for="country">Country *</label><div class="select__control"><div class="select__single-value">Australia</div><input id="country" role="combobox" aria-required="true" class="select__input" value=""></div><input class="requiredInput" required style="opacity:0;height:1px"></div>`));
   if (url === "/form-restricted") return res.end(`<!doctype html><html><body><h1>Access is temporarily restricted</h1><p>We detected unusual activity from your device or network.</p><iframe title="challenge" src="/hcaptcha-frame" width="300" height="78"></iframe></body></html>`);
+  if (url === "/form-custom-dropdown") return res.end(page(`<label for="contact">Preferred contact method</label><div id="contact" role="button" tabindex="0" class="custom-select">Choose one</div>`));
   if (url === "/hcaptcha-frame") return res.end("<p>captcha</p>");
   if (url === "/form-hidden-captcha") return res.end(page(`<iframe title="Widget containing checkbox for hCaptcha security challenge" src="/hcaptcha-frame" style="visibility:hidden;position:fixed;top:0;left:0;width:100%;height:100%"></iframe>`));
   if (url === "/form-badge") return res.end(page(`<p style="font-size:9px">This site is protected by reCAPTCHA and the Google Privacy Policy.</p>`));
@@ -114,6 +115,11 @@ async function main() {
 
   result = await run("/form-recaptcha-badge", "check");
   check("the reCAPTCHA Enterprise badge frame, as on real Greenhouse forms, is not a challenge", result.status === "ready", JSON.stringify(result));
+
+  // An optional custom dropdown the agent cannot set is a gap, not a ready form.
+  const withDropdown = (path: string) => ({ ...pack(`http://127.0.0.1:${port}${path}`), fields: [...pack(`http://127.0.0.1:${port}${path}`).fields, { fieldName: "contact", label: "Preferred contact method", type: "select", required: false, value: "Email", options: ["Email", "Phone"] }] });
+  result = await runApplyAgent({ pack: withDropdown("/form-custom-dropdown"), profile, mode: "check", headless: true, allowLocalUrls: true, confirmTimeoutMs: 3000 });
+  check("an answered dropdown the agent cannot fill blocks the check instead of passing as ready", result.status === "blocked" && /could not fill/i.test(result.reason) && /Preferred contact method/.test(result.reason), JSON.stringify(result));
 
   result = await run("/form-restricted", "check");
   check("a site that refuses automated access is reported as that, not as a CAPTCHA", result.status === "blocked" && /blocked automated access/i.test(result.reason), JSON.stringify(result));

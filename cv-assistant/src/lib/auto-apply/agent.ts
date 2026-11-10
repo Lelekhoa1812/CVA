@@ -116,6 +116,11 @@ async function pageState(page: Page): Promise<PageState> {
   })()`)) as PageState;
 }
 
+/** Visible form controls on the page. A job description page has almost none; the application form has many. */
+async function visibleFieldCount(page: Page) {
+  return (await page.evaluate(`[].slice.call(document.querySelectorAll('input:not([type=hidden]):not([type=search]),textarea,select')).filter(function(el){return !!(el.offsetWidth||el.offsetHeight);}).length`)) as number;
+}
+
 /** Required controls with no value, by their on-page label. File inputs count as filled when the page shows the file's name. */
 async function missingRequired(page: Page, resumeName: string): Promise<string[]> {
   return (await page.evaluate(`(function(){
@@ -305,13 +310,48 @@ export async function runApplyAgent(args: {
     const before = pageBlockers(state.text, state.url, state.challenge);
     if (before.length) return { ...base, status: "blocked", reason: blockerMessage(before), url: state.url, screenshot: await shot("blocked.png") };
 
+    // Many job pages show the description first and open the form behind an Apply button (Airbnb, Stripe). Opening it is
+    // navigation, not a submission, so the agent follows it when the page shows too few fields to be the form.
+    if (await visibleFieldCount(page) < 3) {
+      const applyControls = page.locator("a, button").filter({ hasText: /^\s*apply( now| for (?:this|the) (?:role|job|position))?\s*$/i });
+      const count = await applyControls.count();
+      let clicked = false;
+      for (let index = 0; index < count && !clicked; index += 1) {
+        const control = applyControls.nth(index);
+        if (!(await control.isVisible().catch(() => false))) continue;
+        await control.click({ timeout: 5_000 }).catch(() => undefined);
+        clicked = true;
+      }
+      if (clicked) {
+        await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => undefined);
+        await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+        await page.waitForTimeout(1200);
+        state = await pageState(page);
+      }
+    }
+    // Some career sites embed the applicant form in an iframe (Stripe embeds Greenhouse's). The form is then opened on its own page.
+    if (await visibleFieldCount(page) < 3) {
+      const embedded = await page.evaluate(() => [...document.querySelectorAll("iframe")].map((frame) => frame.src).find((src) => /greenhouse\.io\/embed\/job_app|lever\.co\/[^/]+\/[^/]+\/apply|ashbyhq\.com\/[^/]+\/[^/]+\/application/i.test(src)) || "");
+      if (embedded) {
+        await page.goto(embedded, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => undefined);
+        await page.waitForTimeout(1500);
+        state = await pageState(page);
+      }
+    }
+
     const resumeName = `${(args.profile.name || "Resume").replace(/[^\w ]+/g, "").trim() || "Resume"} - Resume.pdf`;
     await attachResume(page, context, args.profile, workDir, resumeName);
 
     const report = (await page.evaluate(`(${AUTOFILL_FUNCTION})(${JSON.stringify({ ...args.pack, kind: "cva-autofill", version: 1 })})`)) as { filled: number; total: number; results: Array<{ label: string; status: string }> };
+    // An answered field the page still shows empty is a gap, required or not: the agent must not call the form ready without it.
+    const stillOpen: string[] = [];
     for (const entry of report.results.filter((result) => result.status === "partial" || result.status === "missing")) {
       const field = args.pack.fields.find((candidate) => candidate.label === entry.label);
-      if (field?.value && field.type !== "file") await typeIntoCombobox(page, field.label, field.value).catch(() => false);
+      if (field?.value && field.type !== "file") {
+        const picked = await typeIntoCombobox(page, field.label, field.value).catch(() => false);
+        if (!picked) stillOpen.push(entry.label);
+      }
     }
 
     // Place searches (Lever's location box) need a suggestion picked; the in-page fill only types the text.
@@ -331,6 +371,7 @@ export async function runApplyAgent(args: {
     const result = { ...base, filled: report.filled, total: report.total, missing, url: state.url, screenshot: shotReady };
     if (afterFill.length) return { ...result, status: "blocked", reason: blockerMessage(afterFill) };
     if (missing.length) return { ...result, status: "blocked", reason: `Required ${missing.length === 1 ? "field" : "fields"} the approved answers do not cover: ${missing.slice(0, 4).join("; ")}.` };
+    if (stillOpen.length) return { ...result, status: "blocked", reason: `${stillOpen.length === 1 ? "A field" : `${stillOpen.length} fields`} the agent could not fill from your answers: ${stillOpen.slice(0, 4).join("; ")}. Open the form and pick ${stillOpen.length === 1 ? "it" : "them"} yourself.` };
     if (args.mode === "check") return { ...result, status: "ready", reason: "The form is filled and complete. Nothing was submitted." };
 
     // Submit, then read what the employer's page says. Without a confirmation the agent does not retry: it could duplicate the application.

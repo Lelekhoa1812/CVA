@@ -11,6 +11,7 @@ import { streamSearchJobs } from "@/lib/search/server/stream";
 import type { JobSearchResult } from "@/lib/search/types";
 import { autoApproveReady } from "./approval";
 import { buildCandidateSummary, candidateContact, hasUsableProfile, mergePreferences } from "./candidate";
+import { candidateLevel, seniorityPenalty } from "./seniority";
 import { detectAts, safeHttpUrl, isJobBoardUrl } from "./ats";
 import { buildRoleMatcher, discoverFromDirectory, mapWithConcurrency, matchesLocation, matchesRole, resolveJob, type ResolvedJob } from "./discovery";
 import { scoreJobsWithLlm } from "./fit";
@@ -256,6 +257,7 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       description: resolvedByKey.get(job.dedupeKey)?.descriptionText || job.descriptionText || job.snippet || "",
     }));
     const fits = await scoreJobsWithLlm({ candidate: candidateSummary, targetRole: session.prompt, jobs: fitInputs, signal: AbortSignal.timeout(90_000) });
+    const seniority = candidateLevel((profile?.experiences || []).map((experience) => experience.role));
     stats.llmScored = fits.size;
 
     // 4) Persist every candidate. User-owned stages are never overwritten by a re-run.
@@ -269,7 +271,12 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
       if (!finalLocation) score = Math.min(score, SELECT_MIN_SCORE - 1);
       else if (!matchesLocation(finalLocation, targetLocation, "")) score = Math.min(score, 40);
       if (extra?.discoveredVia === "job_board" && !matchesRole(job.title, roleMatcher)) score = Math.min(score, 74);
+      // A clear seniority mismatch costs points whatever the model said, and the reason goes in the gaps the applicant sees.
+      const seniorityCheck = seniorityPenalty(job.title, seniority);
+      score = Math.max(0, score - seniorityCheck.penalty);
       const reasons = fit?.reasons.length ? fit.reasons : job.fitReasons;
+      const gaps = [...(fit?.gaps || job.missingRequirements)];
+      if (seniorityCheck.note && !gaps.includes(seniorityCheck.note)) gaps.unshift(seniorityCheck.note);
       const applyUrl = resolved?.applyUrl || safeHttpUrl(job.applicationUrl) || safeHttpUrl(job.listingUrl);
       const company = resolved?.company && !isPlaceholder(resolved.company) ? resolved.company : job.company;
       return {
@@ -295,8 +302,8 @@ export async function runPipeline(args: { sessionId: string; userId: string }) {
               fitVerdict: fit?.verdict || "",
               scoredBy: fit ? "llm" : "heuristic",
               fitReasons: reasons,
-              fitGaps: fit?.gaps || job.missingRequirements,
-              missingRequirements: fit?.gaps || job.missingRequirements,
+              fitGaps: gaps,
+              missingRequirements: gaps,
               riskFlags: job.riskFlags.filter((flag) => !flag.startsWith("restricted")),
               applicationStrategy: resolved?.formSource === "employer_schema" ? "Employer application form read; answers drafted from your profile." : "Standard application pack prepared for this listing.",
               ats: resolved ? { provider: ats.provider, board: ats.board, jobId: ats.jobId, matchedBy: resolved.ats.matchedBy, confidence: resolved.ats.confidence } : { provider: ats.provider, board: ats.board, jobId: ats.jobId, matchedBy: "", confidence: 0 },

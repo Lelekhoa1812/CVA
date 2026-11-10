@@ -3,6 +3,7 @@ import { companySlugCandidates, detectAts, safeHttpUrl, titleSimilarity } from "
 import { parseLeverApplicationForm, htmlToText } from "../../src/lib/auto-apply/ats-clients";
 import { buildRoleMatcher, extractListingDetails, matchesLocation, matchesRole, mapWithConcurrency } from "../../src/lib/auto-apply/discovery";
 import { buildFitPrompt, verdictFor } from "../../src/lib/auto-apply/fit";
+import { candidateLevel, levelOf, seniorityPenalty } from "../../src/lib/auto-apply/seniority";
 import { buildAutofillPack, packToText } from "../../src/lib/auto-apply/pack";
 import { echoMatches, hashApplicationPayload, isNonQuestionField, isWellFormedLetter } from "../../src/lib/auto-apply/prepare";
 import {
@@ -763,6 +764,43 @@ const tests: TestCase[] = [
       });
       assert.deepEqual(out, [2, 4, 6, 8, 10, 12]);
       assert.equal(peak <= 2, true);
+    },
+  },
+  {
+    name: "seniority reads a level from a title and ignores titles with none",
+    run: () => {
+      assert.equal(levelOf("Director, Solutions Engineering | Chicago"), "director");
+      assert.equal(levelOf("Senior Software Engineer"), "senior");
+      assert.equal(levelOf("Sr. Backend Engineer"), "senior");
+      assert.equal(levelOf("Principal Engineer"), "lead");
+      assert.equal(levelOf("Head of Product"), "director");
+      assert.equal(levelOf("VP Engineering"), "executive");
+      assert.equal(levelOf("Junior Developer"), "junior");
+      assert.equal(levelOf("Graduate Software Engineer"), "intern");
+      assert.equal(levelOf("Software Engineer"), null);
+      assert.equal(levelOf("Senior Manager"), "lead");
+    },
+  },
+  {
+    name: "the candidate's level is the highest level named in their experience titles",
+    run: () => {
+      assert.equal(candidateLevel(["Software Engineer", "Senior Developer", "Intern"]), "senior");
+      assert.equal(candidateLevel(["Software Engineer", undefined, ""]), null);
+    },
+  },
+  {
+    name: "a clear seniority mismatch costs points; one level either way is free; a title with no level is not guessed at",
+    run: () => {
+      assert.equal(seniorityPenalty("Senior Engineer", "mid").penalty, 0);
+      assert.equal(seniorityPenalty("Lead Engineer", "senior").penalty, 0);
+      assert.equal(seniorityPenalty("Director of Engineering", "senior").penalty, 15);
+      assert.equal(seniorityPenalty("VP Engineering", "senior").penalty, 20);
+      assert.equal(seniorityPenalty("Director of Engineering", "junior").penalty, 25);
+      assert.equal(seniorityPenalty("Junior Developer", "senior").penalty, 10);
+      assert.match(seniorityPenalty("Director of Engineering", "senior").note, /above your senior experience/);
+      assert.equal(seniorityPenalty("Software Engineer", "senior").penalty, 0);
+      assert.equal(seniorityPenalty("Director of Engineering", null).penalty, 0);
+      assert.equal(seniorityPenalty("Director of Engineering", "senior").penalty <= 30, true);
     },
   },
 ];
