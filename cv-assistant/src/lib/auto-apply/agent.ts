@@ -273,6 +273,63 @@ async function fileRole(input: Locator): Promise<string> {
   }).catch(() => "")) as string;
 }
 
+/** Ashby draws Yes/No questions as two buttons (data-option), not radios. Each group reports its question and whether one option is selected. */
+async function yesNoGroups(page: Page): Promise<Array<{ question: string; required: boolean; pressed: boolean }>> {
+  return (await page.evaluate(() => {
+    // Selected: aria-pressed says so, or the option has the filled background the autofill script leaves without aria-pressed.
+    const selected = (option: Element) => {
+      const background = getComputedStyle(option).backgroundColor;
+      return option.getAttribute("aria-pressed") === "true" || (background !== "rgba(0, 0, 0, 0)" && background !== "transparent");
+    };
+    const out: Array<{ question: string; required: boolean; pressed: boolean }> = [];
+    const seen: Element[] = [];
+    document.querySelectorAll("button[data-option]").forEach((button) => {
+      const group = button.parentElement;
+      if (!group || seen.indexOf(group) >= 0) return;
+      seen.push(group);
+      let question: Element | null = group.previousElementSibling;
+      for (let hop = 0; hop < 4 && question && !/\?/.test(question.textContent || ""); hop += 1) question = question.previousElementSibling;
+      const text = question ? question.textContent || "" : "";
+      if (!text) return;
+      const pressed = Array.prototype.some.call(group.querySelectorAll("button[data-option]"), selected);
+      out.push({ question: text.replace(/\*/g, "").replace(/\s+/g, " ").trim(), required: /\*/.test(text), pressed });
+    });
+    return out;
+  })) as Array<{ question: string; required: boolean; pressed: boolean }>;
+}
+
+/** Picks the Yes or No button of the question whose text matches the label. Returns whether the question is answered. */
+async function clickYesNo(page: Page, label: string, value: string) {
+  const option = value.trim().toLowerCase();
+  if (option !== "yes" && option !== "no") return false;
+  const key = label.replace(/\*/g, "").replace(/\s+/g, " ").trim().slice(0, 50).toLowerCase();
+  return (await page.evaluate(
+    ({ key, option }) => {
+      const selected = (element: Element) => {
+        const background = getComputedStyle(element).backgroundColor;
+        return element.getAttribute("aria-pressed") === "true" || (background !== "rgba(0, 0, 0, 0)" && background !== "transparent");
+      };
+      let answered = false;
+      const seen: Element[] = [];
+      document.querySelectorAll("button[data-option]").forEach((button) => {
+        const group = button.parentElement;
+        if (!group || answered || seen.indexOf(group) >= 0) return;
+        seen.push(group);
+        let question: Element | null = group.previousElementSibling;
+        for (let hop = 0; hop < 4 && question && !/\?/.test(question.textContent || ""); hop += 1) question = question.previousElementSibling;
+        const text = (question ? question.textContent || "" : "").replace(/\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+        if (!text || text.indexOf(key) < 0) return;
+        const target = group.querySelector('button[data-option="' + option + '"]') as HTMLElement | null;
+        if (!target) return;
+        if (!selected(target)) target.click();
+        answered = true;
+      });
+      return answered;
+    },
+    { key, option },
+  )) as boolean;
+}
+
 /** Attaches the generated cover letter, as a PDF, to a file field labelled for a cover letter. Forms that take a letter as text are left to the answers. */
 async function attachCoverLetter(page: Page, context: BrowserContext, letter: string, workDir: string, fileName: string) {
   if (!letter.trim()) return false;
@@ -383,12 +440,16 @@ export async function runApplyAgent(args: {
     await attachCoverLetter(page, context, args.pack.coverLetter, workDir, resumeName.replace(/ - Resume\.pdf$/, " - Cover Letter.pdf"));
 
     const report = (await page.evaluate(`(${AUTOFILL_FUNCTION})(${JSON.stringify({ ...args.pack, kind: "cva-autofill", version: 1 })})`)) as { filled: number; total: number; results: Array<{ label: string; status: string }> };
+    // The in-page script can report a Yes/No question as filled without choosing an option, so every Yes/No answer is set here.
+    for (const field of args.pack.fields) {
+      if ((field.type === "boolean" || field.type === "select") && /^(yes|no)$/i.test(field.value.trim())) await clickYesNo(page, field.label, field.value).catch(() => false);
+    }
     // An answered field the page still shows empty is a gap, required or not: the agent must not call the form ready without it.
     const stillOpen: string[] = [];
     for (const entry of report.results.filter((result) => result.status === "partial" || result.status === "missing")) {
       const field = args.pack.fields.find((candidate) => candidate.label === entry.label);
       if (field?.value && field.type !== "file") {
-        const picked = await typeIntoCombobox(page, field.label, field.value).catch(() => false);
+        const picked = (await typeIntoCombobox(page, field.label, field.value).catch(() => false)) || (await clickYesNo(page, field.label, field.value).catch(() => false));
         if (!picked) stillOpen.push(entry.label);
       }
     }
@@ -404,6 +465,8 @@ export async function runApplyAgent(args: {
     if (country && (await page.getByRole("combobox", { name: /^country\b/i }).count())) await typeIntoCombobox(page, "Country", country).catch(() => false);
 
     const missing = await missingRequired(page, resumeName);
+    // Ashby keeps the required mark in CSS, so any Yes/No question left unselected counts as missing.
+    for (const group of await yesNoGroups(page).catch(() => [])) if (!group.pressed) missing.push(group.question.slice(0, 80));
     state = await pageState(page);
     const afterFill = pageBlockers(state.text, state.url, state.challenge);
     const shotReady = await shot(missing.length ? "incomplete.png" : "filled.png");

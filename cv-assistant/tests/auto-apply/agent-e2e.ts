@@ -21,6 +21,9 @@ const FIELDS = `
 <label><input id="consent" name="consent" type="checkbox" required> I agree to the privacy policy *</label>
 <p>Will you now or in the future require sponsorship? *</p><ul><li><label><input type="radio" name="sponsor" value="Yes" required> Yes</label></li><li><label><input type="radio" name="sponsor" value="No"> No</label></li></ul>`;
 
+// Ashby draws Yes/No questions as two buttons with data-option, not radios; a required one has a "*" and needs one pressed.
+const ASHBY_YES_NO = `<script>function pickOption(b){b.parentElement.querySelectorAll('button[data-option]').forEach(function(x){x.setAttribute('aria-pressed','false');x.style.background='transparent';});b.setAttribute('aria-pressed','true');b.style.background='#1d1b3e';}</script><div><div>Will you now or in the future require visa sponsorship to work in Australia?*</div><div><button type="button" data-option="yes" aria-pressed="false" style="background:transparent" onclick="pickOption(this)">Yes</button><button type="button" data-option="no" aria-pressed="false" style="background:transparent" onclick="pickOption(this)">No</button></div></div>`;
+
 const page = (extra = "", message = "", button = "Submit application") => `<!doctype html><html><body><h1>Backend Engineer</h1>${message}
 <form method="post" action="/apply" enctype="multipart/form-data">${FIELDS}${extra}<button type="submit">${button}</button></form></body></html>`;
 
@@ -48,6 +51,7 @@ const server = http.createServer((req, res) => {
   if (url === "/form-restricted") return res.end(`<!doctype html><html><body><h1>Access is temporarily restricted</h1><p>We detected unusual activity from your device or network.</p><iframe title="challenge" src="/hcaptcha-frame" width="300" height="78"></iframe></body></html>`);
   if (url === "/form-custom-dropdown") return res.end(page(`<label for="contact">Preferred contact method</label><div id="contact" role="button" tabindex="0" class="custom-select">Choose one</div>`));
   if (url === "/form-cover-file") return res.end(page(`<label for="cover">Cover letter file</label><input id="cover" name="cover" type="file">`));
+  if (url === "/form-yesno") return res.end(page(ASHBY_YES_NO));
   if (url === "/hcaptcha-frame") return res.end("<p>captcha</p>");
   if (url === "/form-hidden-captcha") return res.end(page(`<iframe title="Widget containing checkbox for hCaptcha security challenge" src="/hcaptcha-frame" style="visibility:hidden;position:fixed;top:0;left:0;width:100%;height:100%"></iframe>`));
   if (url === "/form-badge") return res.end(page(`<p style="font-size:9px">This site is protected by reCAPTCHA and the Google Privacy Policy.</p>`));
@@ -121,6 +125,13 @@ async function main() {
   const withDropdown = (path: string) => ({ ...pack(`http://127.0.0.1:${port}${path}`), fields: [...pack(`http://127.0.0.1:${port}${path}`).fields, { fieldName: "contact", label: "Preferred contact method", type: "select", required: false, value: "Email", options: ["Email", "Phone"] }] });
   result = await runApplyAgent({ pack: withDropdown("/form-custom-dropdown"), profile, mode: "check", headless: true, allowLocalUrls: true, confirmTimeoutMs: 3000 });
   check("an answered dropdown the agent cannot fill blocks the check instead of passing as ready", result.status === "blocked" && /could not fill/i.test(result.reason) && /Preferred contact method/.test(result.reason), JSON.stringify(result));
+
+  result = await run("/form-yesno", "check");
+  check("a required Yes/No question left unpressed blocks the check, as Ashby's submit would reject it", result.status === "blocked" && /sponsorship/i.test(result.reason), JSON.stringify(result).slice(0, 300));
+
+  const withSponsorship = { ...pack(`http://127.0.0.1:${port}/form-yesno`), fields: [...pack(`http://127.0.0.1:${port}/form-yesno`).fields, { fieldName: "sponsor_ashby", label: "Will you now or in the future require visa sponsorship to work in Australia?", type: "select", required: true, value: "No", options: ["Yes", "No"] }] };
+  result = await runApplyAgent({ pack: withSponsorship, profile, mode: "check", headless: true, allowLocalUrls: true, confirmTimeoutMs: 3000 });
+  check("an Ashby Yes/No question is answered from the approved answers and the check passes", result.status === "ready", JSON.stringify(result).slice(0, 300));
 
   result = await run("/form-restricted", "check");
   check("a site that refuses automated access is reported as that, not as a CAPTCHA", result.status === "blocked" && /blocked automated access/i.test(result.reason), JSON.stringify(result));
