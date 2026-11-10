@@ -294,6 +294,16 @@ function yesNo(value: "" | "yes" | "no") {
   return value === "yes" ? "Yes" : value === "no" ? "No" : "";
 }
 
+/** "Australian citizen" answers "Are you legally authorised to work here?" with Yes. A status that does not clearly give the right is never turned into an answer. */
+export function yesNoFromWorkRights(status: string) {
+  const text = status.trim();
+  return /citizen|permanent|unrestricted|full|yes|valid|working visa|right to work|authori[sz]ed/i.test(text) && !/\b(no|not|requires?|need)\b/i.test(text) ? "Yes" : "";
+}
+
+function isYesNoQuestion(question: Pick<FormQuestion, "type" | "options">) {
+  return question.type === "boolean" || (question.options.length === 2 && question.options.every((option) => /^(yes|no)\b/i.test(option.label.trim())));
+}
+
 function makeAnswer(
   question: FormQuestion,
   value: string,
@@ -317,6 +327,12 @@ function makeAnswer(
       finalValue = "";
       note = note || "Could not map the answer onto one of the form's options.";
     }
+  }
+  // A yes/no question cannot take a sentence: leave it for the applicant rather than send text a form will not accept.
+  if (question.type === "boolean" && !question.options.length && finalValue && !/^(yes|no)$/i.test(finalValue)) {
+    needsInput = question.required;
+    finalValue = "";
+    note = note || "This question needs a Yes or No.";
   }
   if (!finalValue && question.required && question.type !== "file") needsInput = true;
   return {
@@ -408,7 +424,7 @@ export function answerDeterministically(args: {
       // Filled with the generated cover letter by the preparer.
       return null;
     case "work_rights":
-      if (remembered) {
+      if (remembered && !(isYesNoQuestion(question) && !/^(yes|no|true|false|y|n)$/i.test(remembered.answer.trim()))) {
         const fromMemory = makeAnswer(question, remembered.answer, "memory", 0.95);
         // A remembered status from another form's wording may not exist in this form's options; then use the saved preference.
         if (!fromMemory.needsInput || !question.options.length) return fromMemory;
@@ -422,7 +438,7 @@ export function answerDeterministically(args: {
         }
       }
       if (question.options.length || question.type === "boolean") {
-        const hasRights = /citizen|permanent|unrestricted|full|yes|valid|working visa|right to work|authori[sz]ed/i.test(preferences.workRights) && !/\b(no|not|requires?|need)\b/i.test(preferences.workRights);
+        const hasRights = yesNoFromWorkRights(preferences.workRights) === "Yes";
         const answer = preferences.workRights ? (hasRights ? "Yes" : preferences.workRights) : "";
         return makeAnswer(question, answer, "preference", 0.9);
       }
@@ -518,7 +534,8 @@ export function applyUserAnswer(answer: DraftAnswer, value: string): DraftAnswer
     options: answer.options,
     category: answer.category,
   };
-  const next = makeAnswer(question, value, "user", 1);
+  const asked = question.category === "work_rights" && isYesNoQuestion(question) && !/^(yes|no|true|false|y|n)$/i.test(value.trim()) ? yesNoFromWorkRights(value) || value : value;
+  const next = makeAnswer(question, asked, "user", 1);
   return { ...next, note: next.needsInput ? next.note : undefined };
 }
 

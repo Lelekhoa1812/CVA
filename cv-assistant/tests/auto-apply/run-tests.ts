@@ -379,6 +379,22 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: "a work-rights status answers a yes/no question with Yes, and a sentence never lands in a yes/no answer",
+    run: () => {
+      const rights = buildQuestion({ id: "w", fieldName: "w", label: "Are you legally authorized to work in Australia?", type: "boolean", required: true, options: [] });
+      const fromMemory = answerDeterministically({ question: rights, profile, preferences: { ...EMPTY_PREFERENCES, workRights: "Australian citizen" }, memory: [{ questionPattern: "Are you legally authorized to work in Australia?", answer: "Australian citizen" }], company: "Kaluza" });
+      assert.equal(fromMemory?.value, "Yes", "a remembered status is not sent as the answer to a yes/no question");
+      assert.equal(fromMemory?.needsInput, false);
+      const typed = applyUserAnswer({ questionId: "w", fieldName: "w", label: rights.label, type: "boolean", category: "work_rights", required: true, options: [], value: "", source: "default", confidence: 0, needsInput: true, sensitive: true }, "Australian citizen");
+      assert.equal(typed.value, "Yes");
+      assert.equal(typed.needsInput, false);
+      const vague = applyUserAnswer({ questionId: "w", fieldName: "w", label: rights.label, type: "boolean", category: "work_rights", required: true, options: [], value: "", source: "default", confidence: 0, needsInput: true, sensitive: true }, "Student visa, no work rights");
+      assert.equal(vague.needsInput, true, "a status that does not give the right is not guessed into an answer");
+      const other = applyUserAnswer({ questionId: "o", fieldName: "o", label: "Do you live in Melbourne?", type: "boolean", category: "other", required: true, options: [], value: "", source: "default", confidence: 0, needsInput: true, sensitive: false }, "somewhere nearby");
+      assert.equal(other.needsInput, true);
+    },
+  },
+  {
     name: "deterministic answers use the profile and never invent sensitive facts",
     run: () => {
       const answer = (label: string, type: Parameters<typeof q>[1] = "text", options: string[] = [], company = "Xero") => answerDeterministically({ question: q(label, type, options), profile, preferences: prefs, memory: [], company });

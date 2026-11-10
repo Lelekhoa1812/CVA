@@ -53,6 +53,7 @@ const server = http.createServer((req, res) => {
 inp.addEventListener('keyup',function(){ld.style.display='block';box.innerHTML='';setTimeout(function(){ld.style.display='none';
 ['Melbourne, FL, USA','Melbourne, Victoria, AUS'].forEach(function(t){var d=document.createElement('div');d.className='dropdown-location';d.textContent=t;d.onclick=function(){inp.value=t;document.getElementById('sel').value=t;box.innerHTML='';};box.appendChild(d);});},2500);});</script>
 <button type="submit">Submit application</button></form></body></html>`);
+  if (url === "/form-parse") return res.end(page(`<div id="note"></div><script>document.getElementById('resume').addEventListener('change',function(){var n=document.getElementById('note');n.textContent='Parsing your resume. Autofilling key fields...';setTimeout(function(){document.getElementById('name').value='WRONG PARSED NAME';n.textContent='';},2500);});</script>`));
   if (url === "/form-login") return res.end(`<html><body><h1>Sign in to apply</h1><p>Log in to apply for this role.</p></body></html>`);
   res.end(page());
 });
@@ -106,6 +107,10 @@ async function main() {
 
   result = await run("/form-hidden-captcha", "check");
   check("an invisible hCaptcha frame, as on real Lever forms, is not a challenge", result.status === "ready", JSON.stringify(result));
+
+  received = 0;
+  result = await run("/form-parse", "submit");
+  check("a form that parses the resume and autofills its own fields does not overwrite the approved answers", result.status === "submitted" && /Taylor Nguyen/.test(lastBody) && !/WRONG PARSED NAME/.test(lastBody), JSON.stringify(result) + lastBody.slice(0, 300));
 
   received = 0;
   const withLocation = pack("http://127.0.0.1:" + port + "/form-location");

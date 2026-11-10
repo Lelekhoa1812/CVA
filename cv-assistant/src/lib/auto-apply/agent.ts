@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import type { Profile } from "@/lib/models/User";
 import { safeHttpUrl } from "./ats";
 import { AUTOFILL_FUNCTION } from "./autofill-script";
@@ -196,6 +196,40 @@ async function typeIntoCombobox(page: Page, label: string, value: string) {
   return false;
 }
 
+const UPLOAD_BUSY = /parsing your resume|analy[sz]ing (?:your )?resume|autofilling|uploading|processing your (?:resume|file)/i;
+
+/**
+ * Attaches a plain resume built from the profile to the form's file field and waits until the form has taken it in. Many
+ * forms parse the file and fill their own fields from it, so this runs before the approved answers are written: the
+ * answers then have the last word.
+ */
+async function attachResume(page: Page, context: BrowserContext, profile: Partial<Profile>, workDir: string, resumeName: string) {
+  const files = page.locator("input[type=file]");
+  const count = await files.count();
+  if (!count) return false;
+  const resumePath = path.join(workDir, resumeName);
+  const pdfPage = await context.newPage();
+  await pdfPage.setContent(buildResumeHtml(profile));
+  await pdfPage.pdf({ path: resumePath, format: "A4", printBackground: true });
+  await pdfPage.close();
+  for (let index = 0; index < count; index += 1) {
+    const input = files.nth(index);
+    const hint = await input.evaluate((node) => `${node.getAttribute("name") || ""} ${node.getAttribute("id") || ""} ${node.getAttribute("aria-label") || ""} ${(node.closest("label, fieldset, div")?.textContent || "").slice(0, 120)}`).catch(() => "");
+    if (/cover/i.test(hint) && !/resume|cv/i.test(hint)) continue;
+    await input.setInputFiles(resumePath).catch(() => undefined);
+    break;
+  }
+  const started = Date.now();
+  await page.waitForTimeout(800);
+  while (Date.now() - started < 25_000) {
+    const text = await page.evaluate("document.body.innerText").catch(() => "") as string;
+    const held = await page.evaluate(`[].slice.call(document.querySelectorAll('input[type=file]')).some(function(i){return i.files&&i.files.length;})`).catch(() => false);
+    if (!UPLOAD_BUSY.test(text) && (text.includes(resumeName) || held || Date.now() - started > 6000)) break;
+    await page.waitForTimeout(500);
+  }
+  return true;
+}
+
 export async function runApplyAgent(args: {
   pack: AutofillPack;
   profile: Partial<Profile>;
@@ -250,6 +284,9 @@ export async function runApplyAgent(args: {
     const before = pageBlockers(state.text, state.url, state.challenge);
     if (before.length) return { ...base, status: "blocked", reason: blockerMessage(before), url: state.url, screenshot: await shot("blocked.png") };
 
+    const resumeName = `${(args.profile.name || "Resume").replace(/[^\w ]+/g, "").trim() || "Resume"} - Resume.pdf`;
+    await attachResume(page, context, args.profile, workDir, resumeName);
+
     const report = (await page.evaluate(`(${AUTOFILL_FUNCTION})(${JSON.stringify({ ...args.pack, kind: "cva-autofill", version: 1 })})`)) as { filled: number; total: number; results: Array<{ label: string; status: string }> };
     for (const entry of report.results.filter((result) => result.status === "partial" || result.status === "missing")) {
       const field = args.pack.fields.find((candidate) => candidate.label === entry.label);
@@ -260,26 +297,6 @@ export async function runApplyAgent(args: {
     for (const field of args.pack.fields) {
       if (field.type !== "text" || !field.value || !LOCATION_LABEL.test(field.label)) continue;
       await pickLocation(page, field.fieldName, field.label, field.value).catch(() => false);
-    }
-
-    // The resume: a required file field the pack cannot supply is filled with a plain resume built from the profile.
-    const resumeName = `${(args.profile.name || "Resume").replace(/[^\w ]+/g, "").trim() || "Resume"} - Resume.pdf`;
-    const files = page.locator("input[type=file]");
-    if (await files.count()) {
-      const resumePath = path.join(workDir, resumeName);
-      const pdfPage = await context.newPage();
-      await pdfPage.setContent(buildResumeHtml(args.profile));
-      await pdfPage.pdf({ path: resumePath, format: "A4", printBackground: true });
-      await pdfPage.close();
-      const count = await files.count();
-      for (let index = 0; index < count; index += 1) {
-        const input = files.nth(index);
-        const hint = await input.evaluate((node) => `${node.getAttribute("name") || ""} ${node.getAttribute("id") || ""} ${node.getAttribute("aria-label") || ""} ${(node.closest("label, fieldset, div")?.textContent || "").slice(0, 120)}`).catch(() => "");
-        if (/cover/i.test(hint) && !/resume|cv/i.test(hint)) continue;
-        await input.setInputFiles(resumePath).catch(() => undefined);
-        break;
-      }
-      await page.waitForTimeout(1500);
     }
 
     const missing = await missingRequired(page, resumeName);
