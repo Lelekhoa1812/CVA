@@ -435,3 +435,36 @@ The user signed off on closing the mission, with these limits recorded:
 - Verified offline: the three `test:auto-apply` suites and `tests/generate/claim-check-tests.ts` pass. Production deploy of d4d124e is READY on cva-mauve.vercel.app.
 - Not verified live: the old warning stays on the draft until its next cover-letter rewrite, and no rewrite was run after closure.
 - Live cases after closure: the user chose to stay closed. The empty and thin cases were not run. The Vietnamese case was not run because the account has no draft with a Vietnamese-language posting.
+
+## Autonomy round (2026-11-10): local run with real NIM calls
+
+Setup: local Next dev server on port 3200 against a throwaway Mongo container (not the Atlas database in `.env`), a dummy account and CV, real NIM calls, real employer career pages. No application was submitted to any real employer.
+
+What a fresh account did before the changes: search, scoring and preparing 3 applications took about 190 s, and all 3 stopped at "needs input" (work rights, salary, notice, sponsorship, consent). The cause was empty standing answers and unanswered consent boxes, not the models.
+
+Built and verified live:
+- Standing consent (opt-in): privacy, terms and background-check consents are confirmed from one tick; statements about the applicant's own history never are. 8 open answers fell to 1 after standing answers and consent were set.
+- Answer once, apply to all: open questions are grouped across applications (work rights asked in three wordings is one question). One UI answer filled 2 applications and saved to the standing answers.
+- Auto-approve rule: a complete draft with no cover-letter claim to check and no model answer below 0.75 confidence is approved at the chosen fit threshold. Live: Megaport approved automatically; two Xero drafts and a re-prepared Kaluza draft were held, each with its reason in the activity log.
+- The claim check now sees the CV's languages, so a letter that states them is no longer flagged.
+- Local apply agent (`AUTO_APPLY_AGENT=true`, local only): fills the real form, attaches a resume built from the profile, checks nothing required is empty, and in `agent_submit` mode presses Submit and reads the employer's confirmation. It stops at a CAPTCHA, sign-in wall, access block, uncovered required field or rejected form, never retries what it could not confirm, never submits twice, keeps a daily limit (25) and a human pace. Check mode blocks every submission request at the network layer.
+
+Defects found by running on real forms and fixed:
+- an invisible hCaptcha frame (Lever) was read as a challenge
+- a consent statement that mentions the resume was classified as the resume upload and never answered
+- the AI ticked an optional marketing opt-in on Lever; optional contact opt-ins are now left unticked
+- Lever's location box needs a suggestion picked from a list that takes several seconds to load
+- radios wrapped one per list item (Lever) were never selected; groups now resolve by name
+- a lone consent checkbox was never ticked; a required checkbox group counts as met when any box is ticked
+- Ashby parses an uploaded resume and fills its own fields: the resume now goes first, then the approved answers
+- a remembered status ("Australian citizen") was sent as the answer to a yes/no work-rights question
+- the dropdown for stored questions classified before the fix is migrated when an application is re-prepared
+
+Results: 58 unit tests, 40 letter tests, 6 guard tests, 16 end-to-end agent checks in a real browser against local employer forms (send once, CAPTCHA, login, uncovered field, rejection, no confirmation, place search, resume parse overwrite). Check-mode runs on the real Megaport (Lever) form: filled and complete. On the real Kaluza (Ashby) form: 20 of 22 fields, nothing missing. The full chain (search, prepare, auto-approve, agent check) ran without a click: about 190 s to approved, then about 15 to 40 s per form.
+
+Limits:
+- `agent_submit` was verified only against forms this repository serves locally. It has never been run against a real employer, and no real application was sent.
+- Check mode was verified on Lever and Ashby. Greenhouse, SmartRecruiters and other forms are untried.
+- The agent is local only: a serverless host cannot keep a browser, so production shows the existing bookmarklet flow plus the standing consent, inbox and auto-approve rule.
+- A Chromium build is needed: `npx playwright install chromium`, or `AUTO_APPLY_BROWSER_PATH` pointing at one.
+- Seniority-aware scoring was not built: "Senior" roles still score 74 for a candidate with about three years of experience.
