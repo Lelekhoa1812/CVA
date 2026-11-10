@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BrowserContext, Locator, Page } from "playwright";
+import type { BrowserContext, ElementHandle, Locator, Page } from "playwright";
 import type { Profile } from "@/lib/models/User";
 import { safeHttpUrl } from "./ats";
 import { AUTOFILL_FUNCTION } from "./autofill-script";
@@ -241,8 +241,8 @@ async function attachResume(page: Page, context: BrowserContext, profile: Partia
   for (let index = 0; index < count; index += 1) {
     const input = files.nth(index);
     if ((await fileRole(input)) === "cover") continue;
+    // Every resume field gets the file: Ashby's autofill box and its required resume field are separate inputs, and only the required one blocks Submit.
     await input.setInputFiles(resumePath).catch(() => undefined);
-    break;
   }
   const started = Date.now();
   await page.waitForTimeout(800);
@@ -251,6 +251,17 @@ async function attachResume(page: Page, context: BrowserContext, profile: Partia
     const held = await page.evaluate(`[].slice.call(document.querySelectorAll('input[type=file]')).some(function(i){return i.files&&i.files.length;})`).catch(() => false);
     if (!UPLOAD_BUSY.test(text) && (text.includes(resumeName) || held || Date.now() - started > 6000)) break;
     await page.waitForTimeout(500);
+  }
+  // A required resume field can be emptied by the form once its own upload finishes; give each such field the file again.
+  const after = page.locator("input[type=file]");
+  for (let index = 0; index < (await after.count()); index += 1) {
+    const input = after.nth(index);
+    if ((await fileRole(input)) !== "resume") continue;
+    const empty = await input.evaluate((node) => !(node as HTMLInputElement).files || (node as HTMLInputElement).files!.length === 0).catch(() => false);
+    if (empty) {
+      await input.setInputFiles(resumePath).catch(() => undefined);
+      await page.waitForTimeout(1200);
+    }
   }
   return true;
 }
@@ -298,53 +309,57 @@ async function yesNoGroups(page: Page): Promise<Array<{ question: string; requir
   })) as Array<{ question: string; required: boolean; pressed: boolean }>;
 }
 
-/** Picks the Yes or No button of the question whose text matches the label. Returns whether the question is answered. */
+/** Picks the Yes or No button of the question whose text matches the label. A real mouse click, so the form's own state updates. Returns whether it is now chosen. */
 async function clickYesNo(page: Page, label: string, value: string) {
   const option = value.trim().toLowerCase();
   if (option !== "yes" && option !== "no") return false;
   const key = label.replace(/\*/g, "").replace(/\s+/g, " ").trim().slice(0, 50).toLowerCase();
-  return (await page.evaluate(
+  const handle = await page.evaluateHandle(
     ({ key, option }) => {
-      const selected = (element: Element) => {
-        const background = getComputedStyle(element).backgroundColor;
-        return element.getAttribute("aria-pressed") === "true" || (background !== "rgba(0, 0, 0, 0)" && background !== "transparent");
-      };
-      let answered = false;
+      const hit: { element: HTMLElement | null } = { element: null };
       const seen: Element[] = [];
       document.querySelectorAll("button[data-option]").forEach((button) => {
         const group = button.parentElement;
-        if (!group || answered || seen.indexOf(group) >= 0) return;
+        if (!group || hit.element || seen.indexOf(group) >= 0) return;
         seen.push(group);
         let question: Element | null = group.previousElementSibling;
         for (let hop = 0; hop < 4 && question && !/\?/.test(question.textContent || ""); hop += 1) question = question.previousElementSibling;
         const text = (question ? question.textContent || "" : "").replace(/\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
         if (!text || text.indexOf(key) < 0) return;
-        const target = group.querySelector('button[data-option="' + option + '"]') as HTMLElement | null;
-        if (!target) return;
-        if (!selected(target)) target.click();
-        answered = true;
+        hit.element = group.querySelector('button[data-option="' + option + '"]') as HTMLElement | null;
       });
-      return answered;
+      return hit.element;
     },
     { key, option },
-  )) as boolean;
+  );
+  const element = handle.asElement() as ElementHandle<HTMLElement> | null;
+  if (!element) return false;
+  const chosen = () =>
+    element.evaluate((node) => {
+      const background = getComputedStyle(node).backgroundColor;
+      return node.getAttribute("aria-pressed") === "true" || (background !== "rgba(0, 0, 0, 0)" && background !== "transparent");
+    });
+  if (!(await chosen())) await element.click({ timeout: 5_000 }).catch(() => undefined);
+  return chosen();
 }
 
-/** Picks the radio whose own label reads exactly as the answer (a select rendered as radios). Returns whether it is now chosen. */
+/** Picks the radio whose own label reads exactly as the answer (a select rendered as radios), with a real click. Returns whether it is now chosen. */
 async function clickRadioOption(page: Page, value: string) {
   const wanted = value.replace(/\s+/g, " ").trim().toLowerCase();
   if (!wanted) return false;
-  return (await page.evaluate((text: string) => {
+  const handle = await page.evaluateHandle((text: string) => {
     const inputs = Array.prototype.slice.call(document.querySelectorAll("input[type=radio]")) as HTMLInputElement[];
     for (const input of inputs) {
       const box = input.closest("label, li, div");
       const label = box ? (box.textContent || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
-      if (label !== text) continue;
-      if (!input.checked) input.click();
-      return input.checked;
+      if (label === text) return input;
     }
-    return false;
-  }, wanted)) as boolean;
+    return null;
+  }, wanted);
+  const element = handle.asElement() as ElementHandle<HTMLInputElement> | null;
+  if (!element) return false;
+  if (!(await element.isChecked().catch(() => false))) await element.check({ timeout: 5_000 }).catch(() => undefined);
+  return element.isChecked().catch(() => false);
 }
 
 /** Attaches the generated cover letter, as a PDF, to a file field labelled for a cover letter. Forms that take a letter as text are left to the answers. */
