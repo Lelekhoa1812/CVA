@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { mergePreferences } from "@/lib/auto-apply/candidate";
+import { isAgentEnabled } from "@/lib/auto-apply/agent";
+import { AGENT_DAILY_CAP } from "@/lib/auto-apply/agent-run";
 import { loadUserContext } from "@/lib/auto-apply/engine";
 import { isAuthPayload, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 import { connectToDatabase } from "@/lib/db";
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
     preferences: mergePreferences(storedPreferences),
     hasProfile: Boolean(profile && (profile.name || (profile.experiences || []).length)),
     profileName: profile?.name || "",
+    agent: { available: isAgentEnabled(), dailyCap: AGENT_DAILY_CAP },
   });
 }
 

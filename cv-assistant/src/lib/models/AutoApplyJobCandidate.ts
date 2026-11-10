@@ -77,6 +77,25 @@ const AutoApplyJobCandidateSchema = new Schema(
     appliedAt: { type: Date, default: null },
     lastError: { type: String, default: "" },
     attempts: { type: Number, default: 0 },
+    // What the local apply agent last did with this application. Absent until it has run.
+    agent: {
+      type: new Schema(
+        {
+          status: { type: String, default: "" },
+          mode: { type: String, default: "" },
+          reason: { type: String, default: "" },
+          filled: { type: Number, default: 0 },
+          total: { type: Number, default: 0 },
+          missing: { type: [String], default: [] },
+          confirmation: { type: String, default: "" },
+          screenshot: { type: String, default: "" },
+          at: { type: Date, default: null },
+          running: { type: Boolean, default: false },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

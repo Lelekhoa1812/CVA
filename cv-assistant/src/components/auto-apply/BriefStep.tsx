@@ -46,7 +46,11 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
           ["Search", "Employer career sites and job boards. Each employer's own form is read."],
           ["Prepare", "Every role is scored against your CV; answers and a cover letter are drafted from your real experience."],
           ["Approve", "Review once and approve in one click. Sensitive answers come only from you."],
-          ["Apply", "Autofill the form in your own browser, then press Submit yourself."],
+          ["Apply", c.agentAvailable && brief.applyMode === "agent_submit"
+            ? "The agent fills and submits each form, and hands back anything it cannot finish."
+            : c.agentAvailable && brief.applyMode === "agent_check"
+              ? "The agent fills and checks each form here; you press Submit."
+              : "Autofill the form in your own browser, then press Submit yourself."],
         ].map(([title, body], index) => (
           <li key={title} className="surface-subtle flex gap-3 rounded-2xl p-3">
             <span className="bg-primary/15 text-foreground grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold" aria-hidden="true">{index + 1}</span>
@@ -131,6 +135,23 @@ export default function BriefStep({ c }: { c: AutoApplyController }) {
               <option value="62">Any shortlisted fit (62+)</option>
             </Select>
           </Field>
+          {c.agentAvailable ? (
+            <Field
+              label="When an application is approved"
+              hint={brief.applyMode === "agent_submit"
+                ? "Sends the application to the employer as soon as the agent has filled it, and that cannot be undone. It stops at any CAPTCHA, sign-in, required question it cannot answer, or rejected form, and hands that one back to you."
+                : brief.applyMode === "agent_check"
+                  ? "The agent opens each form, fills it and checks nothing required is empty. It never presses Submit; you do."
+                  : "You open each form from the Apply step and press Submit yourself."}
+              className="sm:col-span-2"
+            >
+              <Select id="apply-mode" value={brief.applyMode} onChange={(value) => setBrief({ applyMode: value as "manual" | "agent_check" | "agent_submit" })}>
+                <option value="manual">I open each form and press Submit myself</option>
+                <option value="agent_check">The agent fills and checks each form, I press Submit</option>
+                <option value="agent_submit">The agent fills and submits for me</option>
+              </Select>
+            </Field>
+          ) : null}
         </div>
 
         <fieldset disabled={locked} className="space-y-2">

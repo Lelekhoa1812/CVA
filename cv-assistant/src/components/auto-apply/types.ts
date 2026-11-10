@@ -4,6 +4,10 @@ import type { SearchSource } from "@/lib/search/types";
 
 export type { ApplicantPreferences, DraftAnswer, JobStage, PipelineCounts, SessionPhase };
 
+export type ApplyMode = "manual" | "agent_check" | "agent_submit";
+
+export type AgentState = { status?: "ready" | "blocked" | "failed" | "uncertain" | "submitted" | ""; mode?: string; reason?: string; filled?: number; total?: number; missing?: string[]; confirmation?: string; at?: string; running?: boolean };
+
 export type RunState = { phase?: string; message?: string; stats?: Record<string, number>; updatedAt?: string; startedAt?: string };
 
 export type SessionFilters = {
@@ -16,6 +20,7 @@ export type SessionFilters = {
   companyBlacklist: string[];
   applicationLimit: number;
   autoApproveMinFit?: number;
+  applyMode?: ApplyMode;
   selectedSources: SearchSource[];
 };
 
@@ -54,6 +59,7 @@ export type JobSummary = {
   hasCoverLetter: boolean;
   postedAt?: string;
   lastError?: string;
+  agent?: AgentState;
 };
 
 export type EventItem = { _id: string; type: string; message: string; createdAt: string };
@@ -90,6 +96,8 @@ export type BriefForm = {
   applicationLimit: number;
   /** 0 = off. Otherwise a ready draft at or above this fit, with nothing left to check, is approved automatically. */
   autoApproveMinFit: number;
+  /** What happens to an approved application: the applicant submits it, or the local agent fills it, or fills and submits it. */
+  applyMode: ApplyMode;
   seniority: string;
   workplaceMode: string;
   employmentType: string;

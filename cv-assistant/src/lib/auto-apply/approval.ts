@@ -4,6 +4,7 @@ import { AutoApplyApplicationDraftModel } from "@/lib/models/AutoApplyApplicatio
 import { AutoApplyEventModel } from "@/lib/models/AutoApplyEvent";
 import { AutoApplyJobCandidateModel } from "@/lib/models/AutoApplyJobCandidate";
 import { AutoApplySessionModel } from "@/lib/models/AutoApplySession";
+import { kickAgent } from "./agent-run";
 import { logAutoApplyEvent } from "./persistence";
 import { hashApplicationPayload } from "./prepare";
 import { countMissing, type DraftAnswer } from "./questions";
@@ -87,5 +88,7 @@ export async function autoApproveReady(args: { sessionId: string; userId: string
       await logAutoApplyEvent({ userId: args.userId, sessionId: args.sessionId, jobCandidateId: job._id.toString(), type: "auto_approved", message: `Approved automatically: ${job.title} at ${job.company}.` });
     }
   }
+  // Approved applications go straight to the local agent when the session's apply mode asks for it.
+  if (approved) void kickAgent({ sessionId: args.sessionId, userId: args.userId });
   return { approved, held };
 }

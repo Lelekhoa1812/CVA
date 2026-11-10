@@ -188,6 +188,9 @@ export function isAutoConfirmableConsent(label: string) {
   return CONFIRMABLE_CONSENT.test(text) && !PERSONAL_ATTESTATION.test(text);
 }
 
+/** Optional opt-ins to future contact: talent pools, job alerts, newsletters, marketing. */
+const OPTIONAL_CONTACT_OPT_IN = /\b(contact me (?:about|regarding|for)|future (?:job )?(?:opportunities|roles|vacancies)|talent (?:pool|community|network)|job alerts?|newsletter|marketing|keep my (?:resume|cv|details|information|profile) on file|stay in touch)\b/i;
+
 export function classifyQuestion(label: string, type?: FormQuestionType): QuestionCategory {
   const normalized = normalizeQuestionLabel(label);
   if (type === "file") {
@@ -195,6 +198,8 @@ export function classifyQuestion(label: string, type?: FormQuestionType): Questi
     return "resume";
   }
   for (const [category, pattern] of CATEGORY_RULES) {
+    // A long statement that merely mentions the resume ("you will need to submit your resume ... Privacy Statement") is not the upload.
+    if (category === "resume" && normalized.length > 45) continue;
     if (pattern.test(normalized)) return category;
   }
   return "other";
@@ -365,6 +370,10 @@ export function answerDeterministically(args: {
   company: string;
 }): DraftAnswer | null {
   const { question, profile, preferences } = args;
+  // An optional tick-box that asks to be contacted about other roles or marketing is the applicant's own choice: it is left unticked, never guessed.
+  if (!question.required && question.type !== "file" && OPTIONAL_CONTACT_OPT_IN.test(question.label)) {
+    return { ...makeAnswer(question, "", "default", 1, "Left unticked: being contacted about other roles is your choice."), needsInput: false };
+  }
   const name = splitName(profile.name || "");
   const remembered = findMemoryAnswer(question, args.memory);
 

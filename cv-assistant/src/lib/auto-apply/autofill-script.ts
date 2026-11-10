@@ -4,7 +4,7 @@
 //
 // Kept as a plain JavaScript string so it is not transpiled with framework helpers and can run on any page.
 
-export const AUTOFILL_VERSION = 6;
+export const AUTOFILL_VERSION = 8;
 
 export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
   var VERSION = ${AUTOFILL_VERSION};
@@ -193,12 +193,25 @@ export const AUTOFILL_FUNCTION = String.raw`async function cvaAutofill(pack) {
     nodes.forEach(function (n) { used.add(n); });
     var box = container(el);
 
+    // Radios of one question share a name. Some forms wrap each radio in its own list item, so the group is found by name, not by container.
+    if (el.matches('input[type=radio]') && el.name) {
+      var radios = Array.prototype.slice.call(document.querySelectorAll('input[type=radio]')).filter(function (r) { return r.name === el.name; });
+      var chosen = bestOption(radios, value, function (r) { return (r.closest('label') ? r.closest('label').textContent : '') + ' ' + (r.value || ''); });
+      if (chosen) { if (!chosen.checked) chosen.click(); return chosen.checked ? 'filled' : 'missing'; }
+    }
     if (el.matches('input[type=radio], input[type=checkbox]') || (el.matches('input[type=hidden]') && box)) {
       var group = box ? box : el.parentElement;
       if (field.type === 'multiselect') {
         var ok = false;
         value.split('|').forEach(function (v) { ok = clickChoice(group, v.trim()) || ok; });
         return ok ? 'filled' : 'missing';
+      }
+      // A lone consent checkbox ("I agree to the privacy policy"): its label never resembles "Yes", so tick or clear it by the answer.
+      if (el.matches('input[type=checkbox]') && group.querySelectorAll('input[type=checkbox]').length === 1 && !group.querySelector('input[type=radio]')) {
+        var agree = /^(yes|true|y|agree|i agree|accept|i accept|consent|i consent|confirm|i confirm|checked)\b/i.test(String(value).trim());
+        var decline = /^(no|false|n|unchecked)\b/i.test(String(value).trim());
+        if (agree) { if (!el.checked) el.click(); return el.checked ? 'filled' : 'missing'; }
+        if (decline) { if (el.checked) el.click(); return 'filled'; }
       }
       return clickChoice(group, value) ? 'filled' : 'missing';
     }

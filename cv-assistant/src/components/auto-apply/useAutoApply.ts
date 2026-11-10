@@ -25,6 +25,7 @@ export const DEFAULT_BRIEF: BriefForm = {
   location: "",
   applicationLimit: 10,
   autoApproveMinFit: 0,
+  applyMode: "manual",
   seniority: "",
   workplaceMode: "any",
   employmentType: "any",
@@ -47,6 +48,8 @@ export function useAutoApply() {
   const [prefsDirty, setPrefsDirty] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+  // The local apply agent needs a browser on this machine, so the server says whether it is switched on.
+  const [agentAvailable, setAgentAvailable] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [data, setData] = useState<SessionData | null>(null);
@@ -112,6 +115,7 @@ export function useAutoApply() {
               location: latest.filters?.location || "",
               applicationLimit: latest.filters?.applicationLimit || 10,
               autoApproveMinFit: latest.filters?.autoApproveMinFit || 0,
+              applyMode: latest.filters?.applyMode || "manual",
               selectedSources: latest.filters?.selectedSources?.length ? latest.filters.selectedSources : current.selectedSources,
             }));
           }
@@ -120,6 +124,7 @@ export function useAutoApply() {
       if (prefResult.status === "fulfilled") {
         setPrefsState({ ...EMPTY_PREFS, ...prefResult.value.preferences });
         setHasProfile(prefResult.value.hasProfile);
+        setAgentAvailable(Boolean(prefResult.value.agent?.available));
         setProfileName(prefResult.value.profileName);
       } else setHasProfile(true);
       setLoading(false);
@@ -307,6 +312,7 @@ export function useAutoApply() {
       location: session.filters?.location || "",
       applicationLimit: session.filters?.applicationLimit || 10,
       autoApproveMinFit: session.filters?.autoApproveMinFit || 0,
+      applyMode: session.filters?.applyMode || "manual",
       selectedSources: session.filters?.selectedSources?.length ? session.filters.selectedSources : current.selectedSources,
     }));
     setSelectedJobId(null);
@@ -328,7 +334,7 @@ export function useAutoApply() {
   }, [counts]);
 
   return {
-    brief, setBrief, prefs, setPrefs, prefsDirty, savePrefs, profileName, hasProfile,
+    brief, setBrief, prefs, setPrefs, prefsDirty, savePrefs, profileName, hasProfile, agentAvailable,
     sessions, activeId, data, running, loading, step, setStep, steps,
     selectedJobId, detail, detailLoading, openJob, reloadDetail,
     busy, act, notice, setNotice, notify,

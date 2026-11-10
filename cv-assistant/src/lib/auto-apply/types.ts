@@ -42,6 +42,8 @@ export const autoApplyFiltersSchema = z.object({
   applicationLimit: z.number().int().min(1).max(100).default(10),
   /** 0 = off. Otherwise a prepared application with at least this fit and nothing left to check is approved automatically. */
   autoApproveMinFit: z.number().int().min(0).max(100).default(0),
+  /** manual: the applicant opens each form and presses Submit. agent_check: the local agent fills and verifies it. agent_submit: it also presses Submit. */
+  applyMode: z.enum(["manual", "agent_check", "agent_submit"]).default("manual"),
   selectedSources: z.array(z.enum(SEARCH_SOURCES)).min(1).default([...SEARCH_SOURCES]),
   maxResultsPerSource: z
     .union(MAX_RESULTS_OPTIONS.map((value) => z.literal(value)) as [
@@ -66,6 +68,7 @@ export const defaultAutoApplyFilters: AutoApplyFilters = {
   companyBlacklist: [],
   applicationLimit: 10,
   autoApproveMinFit: 0,
+  applyMode: "manual",
   selectedSources: [...SEARCH_SOURCES],
   maxResultsPerSource: 25,
 };

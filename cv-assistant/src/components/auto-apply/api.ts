@@ -33,6 +33,7 @@ export function filtersFromBrief(brief: BriefForm) {
     companyBlacklist: splitCsv(brief.companyBlacklist),
     applicationLimit: brief.applicationLimit,
     autoApproveMinFit: brief.autoApproveMinFit,
+    applyMode: brief.applyMode,
     selectedSources: brief.selectedSources,
     maxResultsPerSource: 25,
   };
@@ -55,6 +56,8 @@ export const autoApplyApi = {
   cancel: (id: string) => call<{ cancelled: boolean }>(`/api/auto-apply/session/${id}/cancel`, { method: "POST" }),
   approve: (id: string, jobIds?: string[], undo?: boolean) =>
     call<{ approved: string[]; skipped: Array<{ id: string; reason: string }> }>(`/api/auto-apply/session/${id}/approve`, { method: "POST", body: JSON.stringify({ jobIds, all: !jobIds, undo }) }),
+  agentRun: (id: string, force?: boolean) => call<{ started: boolean; mode: string; approved: number }>(`/api/auto-apply/session/${id}/agent-run`, { method: "POST", body: JSON.stringify({ force }) }),
+  agentJob: (id: string, mode: "check" | "submit", force?: boolean) => call<{ outcome: { status: string; reason: string } }>(`/api/auto-apply/job/${id}/agent`, { method: "POST", body: JSON.stringify({ mode, force }) }),
   openQuestions: (id: string) => call<{ groups: OpenQuestionGroup[] }>(`/api/auto-apply/session/${id}/open-questions`),
   answerOpenQuestion: (id: string, body: { key: string; value: string; remember: boolean }) =>
     call<{ filled: number; stillOpen: number }>(`/api/auto-apply/session/${id}/open-questions`, { method: "POST", body: JSON.stringify(body) }),
@@ -68,6 +71,6 @@ export const autoApplyApi = {
   prepare: (id: string) => call<{ outcome: string }>(`/api/auto-apply/job/${id}/prepare`, { method: "POST" }),
   pack: (id: string) => call<{ pack: unknown; text: string; applyUrl: string }>(`/api/auto-apply/job/${id}/pack`),
   markApplied: (id: string, undo = false) => call<{ stage: string }>(`/api/auto-apply/job/${id}/applied`, { method: "POST", body: JSON.stringify(undo ? { undo: true } : { confirm: true }) }),
-  getPreferences: () => call<{ preferences: ApplicantPreferences; hasProfile: boolean; profileName: string }>("/api/auto-apply/preferences"),
+  getPreferences: () => call<{ preferences: ApplicantPreferences; hasProfile: boolean; profileName: string; agent?: { available: boolean; dailyCap: number } }>("/api/auto-apply/preferences"),
   savePreferences: (preferences: ApplicantPreferences) => call<{ preferences: ApplicantPreferences }>("/api/auto-apply/preferences", { method: "PUT", body: JSON.stringify(preferences) }),
 };

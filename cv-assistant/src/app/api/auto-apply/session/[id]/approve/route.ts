@@ -1,5 +1,6 @@
 import { isValidObjectId } from "mongoose";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { kickAgent } from "@/lib/auto-apply/agent-run";
 import { approvePreparedJob } from "@/lib/auto-apply/approval";
 import { logAutoApplyEvent } from "@/lib/auto-apply/persistence";
 import { isAuthPayload, loadOwnedSession, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   if (approved.length) {
     await logAutoApplyEvent({ userId: auth.userId, sessionId: id, type: body.undo ? "approval_withdrawn" : "approved", message: `${body.undo ? "Withdrew approval for" : "Approved"} ${approved.length} application${approved.length === 1 ? "" : "s"}.` });
     await session.updateOne({ $set: { status: "review" } });
+    if (!body.undo) after(() => kickAgent({ sessionId: id, userId: auth.userId }));
   }
   return NextResponse.json({ approved, skipped });
 }

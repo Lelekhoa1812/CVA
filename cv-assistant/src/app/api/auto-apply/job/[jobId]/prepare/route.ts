@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { autoApproveReady } from "@/lib/auto-apply/approval";
 import { prepareJobById } from "@/lib/auto-apply/engine";
 import { isAuthPayload, loadOwnedJob, requireAutoApplyAuth } from "@/lib/auto-apply/routes";
 
@@ -18,5 +19,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
   const outcome = await prepareJobById({ jobId, userId: auth.userId });
   if (outcome === "busy") return NextResponse.json({ error: "This application is already being prepared." }, { status: 409 });
   if (outcome === "failed") return NextResponse.json({ error: "Preparation failed. Try again in a moment.", outcome }, { status: 502 });
+  // A re-prepared draft goes through the same auto-approve rule as a fresh run.
+  if (outcome === "prepared") await autoApproveReady({ sessionId: job.sessionId.toString(), userId: auth.userId }).catch(() => undefined);
   return NextResponse.json({ outcome });
 }

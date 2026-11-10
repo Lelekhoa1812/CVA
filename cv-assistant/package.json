@@ -12,6 +12,7 @@
     "test:ai": "node -r tsconfig-paths/register -r sucrase/register/ts tests/ai/run-tests.ts",
     "verify:career": "npm run lint && npm run test:unit && npm run test:auto-apply",
     "test:auto-apply": "node -r tsconfig-paths/register -r sucrase/register/ts tests/auto-apply/run-tests.ts && node -r tsconfig-paths/register -r sucrase/register/ts tests/auto-apply/run-letter-tests.ts && node -r tsconfig-paths/register -r sucrase/register/ts tests/generate/letter-guard-tests.ts",
+    "test:agent": "node -r tsconfig-paths/register -r sucrase/register/ts tests/auto-apply/agent-e2e.ts",
     "test:autofill-safari": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/autofill-safari.ts",
     "agent:fill": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/agent-fill.ts",
     "test:autofill-live": "node -r tsconfig-paths/register -r sucrase/register/ts scripts/autofill-live.ts",

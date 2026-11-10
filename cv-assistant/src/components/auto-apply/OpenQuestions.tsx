@@ -10,6 +10,8 @@ function GroupCard({ group, c, onAnswered }: { group: OpenQuestionGroup; c: Auto
   const [value, setValue] = useState("");
   const [remember, setRemember] = useState(group.rememberDefault);
   const busyKey = `oq:${group.key}`;
+  // A group key holds colons and spaces, which an element id cannot.
+  const inputId = `oq-${group.key.replace(/[^a-z0-9]+/gi, "-").slice(0, 60)}`;
   const busy = Boolean(c.busy[busyKey]);
   const companies = [...new Set(group.items.map((item) => item.company))];
   // A yes/no declaration may carry no option list of its own; it is still answered with a choice.
@@ -34,14 +36,14 @@ function GroupCard({ group, c, onAnswered }: { group: OpenQuestionGroup; c: Auto
       <p className="text-muted-foreground text-xs leading-5">{companies.slice(0, 4).join(", ")}{companies.length > 4 ? ` and ${companies.length - 4} more` : ""}{group.note ? ` · ${group.note}` : ""}</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-56">
-          <label className="sr-only" htmlFor={`oq-${group.key}`}>Answer for {group.label}</label>
+          <label className="sr-only" htmlFor={inputId}>Answer for {group.label}</label>
           {choices.length ? (
-            <select id={`oq-${group.key}`} value={value} onChange={(event) => setValue(event.target.value)} className="input-premium min-h-11 w-full">
+            <select id={inputId} value={value} onChange={(event) => setValue(event.target.value)} className="input-premium min-h-11 w-full">
               <option value="">Choose…</option>
               {choices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
             </select>
           ) : (
-            <input id={`oq-${group.key}`} value={value} onChange={(event) => setValue(event.target.value)} placeholder="Your answer" className="input-premium min-h-11 w-full" />
+            <input id={inputId} value={value} onChange={(event) => setValue(event.target.value)} placeholder="Your answer" className="input-premium min-h-11 w-full" />
           )}
         </div>
         <button type="button" className="button-primary min-h-11" disabled={!value.trim() || busy} onClick={() => void submit()}>

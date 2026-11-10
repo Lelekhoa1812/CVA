@@ -20,6 +20,8 @@ import {
 } from "../../src/lib/auto-apply/questions";
 import { isSubmitRequest } from "../../src/lib/auto-apply/submit-guard";
 import { autoApprovalBlockers } from "../../src/lib/auto-apply/approval";
+import { buildResumeHtml, confirmationIn, locationOptionScore, pageBlockers } from "../../src/lib/auto-apply/agent";
+import { agentModeFor, agentShouldSkip } from "../../src/lib/auto-apply/agent-run";
 import { groupOpenQuestions } from "../../src/lib/auto-apply/inbox";
 import type { DraftAnswer } from "../../src/lib/auto-apply/questions";
 const WORDS_ = (text: string) => text.split(/\s+/).filter(Boolean).length;
@@ -325,6 +327,55 @@ const tests: TestCase[] = [
       assert.match(autoApprovalBlockers({ ...clean, riskNotes: ["Cover letter: Please check these potentially unsupported claims against your own experience: x"] })[0], /potentially unsupported claims/);
       assert.match(autoApprovalBlockers({ ...clean, answers: [ans({ questionId: "w", label: "How do you use AI", source: "ai", confidence: 0.6 })] })[0], /low-confidence/);
       assert.match(autoApprovalBlockers({ ...clean, answers: [ans({ category: "cover_letter", label: "Cover letter" })], coverLetterText: "  " })[0], /letter is empty/);
+    },
+  },
+  {
+    name: "the agent reads the employer's confirmation, tells a CAPTCHA from a badge, and builds a resume from the profile alone",
+    run: () => {
+      assert.match(confirmationIn("Thank you for applying! Your application has been received."), /thank you for applying/i);
+      assert.equal(confirmationIn("Submit your application. We will review it soon."), "", "a form that merely mentions applications is not a confirmation");
+      assert.deepEqual(pageBlockers("This site is protected by reCAPTCHA and the Google Privacy Policy applies.", "https://jobs.lever.co/x/apply", false), [], "the reCAPTCHA line is not a challenge");
+      assert.deepEqual(pageBlockers("Please verify you are human to continue", "https://jobs.example.com/apply", false), ["captcha"]);
+      assert.deepEqual(pageBlockers("Apply", "https://jobs.example.com/apply", true), ["captcha"]);
+      assert.ok(pageBlockers("Please sign in to apply for this role", "https://www.linkedin.com/jobs/1", false).includes("platform_login_required"));
+      const html = buildResumeHtml({ name: "Taylor <Nguyen>", email: "t@example.com", skills: "TypeScript", experiences: [{ companyName: "Northwind", role: "Engineer", timeFrom: "2023", timeTo: "Present", description: "Built an API. Cut report time from 90 s to 25 s." }] } as never);
+      const options = ["Melbourne, FL, USA", "Melbourne, Victoria, AUS", "Melbourne, South Derbyshire, England, GBR"];
+      const scores = options.map((option) => locationOptionScore(option, "Melbourne, VIC"));
+      assert.equal(scores.indexOf(Math.max(...scores)), 1, "Melbourne, VIC picks the Victorian suggestion");
+      assert.equal(locationOptionScore("Sydney, New South Wales, AUS", "Melbourne, VIC"), 0);
+      assert.match(html, /Taylor &lt;Nguyen&gt;/, "profile text is escaped");
+      assert.match(html, /<li>Built an API\.<\/li><li>Cut report time from 90 s to 25 s\.<\/li>/);
+      assert.doesNotMatch(html, /Projects|Languages/, "empty sections are left out");
+    },
+  },
+  {
+    name: "the agent acts only as far as the apply mode allows and never retries what it could not confirm",
+    run: () => {
+      assert.equal(agentModeFor("manual"), null);
+      assert.equal(agentModeFor("agent_check"), "check");
+      assert.equal(agentModeFor("agent_submit"), "submit");
+      assert.equal(agentShouldSkip(undefined, false), null);
+      assert.equal(agentShouldSkip({ status: "ready" }, false), null, "a checked application can be submitted later");
+      assert.match(agentShouldSkip({ status: "uncertain" }, false) || "", /never saw a confirmation/);
+      assert.match(agentShouldSkip({ status: "submitted" }, true) || "", /already submitted/, "even a forced run never submits twice");
+      assert.match(agentShouldSkip({ status: "blocked" }, false) || "", /stopped by this form/);
+      assert.equal(agentShouldSkip({ status: "blocked" }, true), null, "a forced run may try a blocked form again");
+      assert.match(agentShouldSkip({ status: "ready", running: true, at: new Date() }, true) || "", /already working/);
+      assert.equal(agentShouldSkip({ status: "ready", running: true, at: new Date(Date.now() - 3_600_000) }, true), null, "a crashed run does not lock the application forever");
+    },
+  },
+  {
+    name: "a consent statement that mentions the resume is a consent, and an optional contact opt-in is never ticked for the applicant",
+    run: () => {
+      const label = "As with any job application process, you will need to submit your resume and answer certain screening questions. You can choose to have Megaport keep your resume on file. See our Recruitment Privacy Statement for more details about how Megaport will process the data you submit.";
+      assert.equal(classifyQuestion(label, "multiselect"), "consent");
+      assert.equal(classifyQuestion("Resume/CV", "text"), "resume");
+      assert.equal(classifyQuestion("Resume", "file"), "resume");
+      const optIn = answerDeterministically({ question: buildQuestion({ id: "m", fieldName: "consent[marketing]", label: "Yes, Megaport can contact me about future job opportunities for up to 4 years", type: "multiselect", required: false, options: [{ label: "1", value: "1" }] }), profile, preferences: { ...EMPTY_PREFERENCES, standingConsent: "yes" }, memory: [], company: "Megaport" });
+      assert.equal(optIn?.value, "", "the opt-in stays unticked even with a standing consent");
+      assert.equal(optIn?.needsInput, false);
+      const required = answerDeterministically({ question: buildQuestion({ id: "c", fieldName: "c", label, type: "multiselect", required: true, options: [{ label: "I consent to the collection, use and/or disclosure of my personal data as set out in the Recruitment Privacy Statement.", value: "a" }, { label: "Keep my resume on file to contact me about future job opportunities.", value: "b" }] }), profile, preferences: { ...EMPTY_PREFERENCES, standingConsent: "yes" }, memory: [], company: "Megaport" });
+      assert.match(required?.value || "", /^I consent to the collection/, "the required consent is confirmed with its own option, not the opt-in");
     },
   },
   {

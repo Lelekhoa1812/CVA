@@ -16,7 +16,7 @@ import { buildRoleMatcher, discoverFromDirectory, mapWithConcurrency, matchesLoc
 import { scoreJobsWithLlm } from "./fit";
 import { hashApplicationPayload, prepareApplication } from "./prepare";
 import { logAutoApplyEvent } from "./persistence";
-import { answerDeterministically, countMissing, type ApplicantPreferences, type DraftAnswer, type FormQuestion, type MemoryEntry } from "./questions";
+import { answerDeterministically, classifyQuestion, countMissing, type ApplicantPreferences, type DraftAnswer, type FormQuestion, type MemoryEntry } from "./questions";
 import { fromSearchResult, rankAutoApplyCandidates, type RankableJob } from "./ranking";
 import { PREPARE_LOCK_MS, RUN_STALL_MS, normalizeStage } from "./state";
 import { autoApplyFiltersSchema, toSearchRequest } from "./types";
@@ -434,7 +434,8 @@ export async function prepareJobById(args: { jobId: string; userId: string; forc
             applyUrl: job.applyUrl || job.url,
             listingUrl: job.url,
             descriptionText: job.descriptionText,
-            questions: job.questions as unknown as FormQuestion[],
+            // Forms read before a classifier fix keep their old categories: a long consent statement that mentions the resume was stored as the upload.
+            questions: (job.questions as unknown as FormQuestion[]).map((question) => (question.category === "resume" && question.type !== "file" && question.label.length > 45 ? { ...question, category: classifyQuestion(question.label, question.type) } : question)),
             formSource: job.formSource as ResolvedJob["formSource"],
             company: job.company,
             location: job.location,
