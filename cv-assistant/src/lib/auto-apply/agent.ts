@@ -50,7 +50,11 @@ export function pageBlockers(text: string, url: string, challengeVisible: boolea
   const out = new Set<string>();
   if (challengeVisible || CHALLENGE_TEXT.test(text)) out.add("captcha");
   for (const blocker of detectAutomationBlockers(text, url)) if (blocker === "platform_login_required" || blocker === "employer_login_required" || blocker === "paywall") out.add(blocker);
-  if (/access denied|request blocked|unusual traffic|you have been blocked/i.test(text)) out.add("automation_blocked");
+  if (/access denied|request blocked|unusual traffic|unusual activity|you have been blocked|access is temporarily restricted/i.test(text)) {
+    // The site's own refusal is the real reason; a challenge frame on that page is part of the same wall.
+    out.delete("captcha");
+    out.add("automation_blocked");
+  }
   return [...out];
 }
 
